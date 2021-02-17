@@ -1339,6 +1339,32 @@
             }
         },
         {
+            "endpoint": "ntp/query",
+            "methods": {
+                "GET": {
+                    "desc": "Test clock offset against NTP servers",
+                    "output": {
+                        "meta": {
+                            "success": "true"
+                        },
+                        "data": {
+                            "server": "0.pool.ntp.org",
+                            "version": 3,
+                            "mode": 4,
+                            "stratum": 2,
+                            "origin_time": 1613557332.032843,
+                            "received": 1613557332.073978,
+                            "delay": 12,
+                            "ntptime": "2021-02-17 10:22:12.1286",
+                            "localtime": "2021-02-17 10:22:12",
+                            "remotetime": "2021-02-17 10:22:12",
+                            "offset": 41
+                        }
+                    }
+                }
+            }
+        },
+        {
             "endpoint": "playlists",
             "methods": {
                 "GET": {
