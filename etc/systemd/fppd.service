@@ -8,6 +8,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+EnvironmentFile=-/opt/fpp/etc/systemd/fpp-audio.env
 ExecStart=/opt/fpp/src/fppd -f
 ExecStop=/opt/fpp/scripts/fppd_stop
 ExecStartPre=-/opt/fpp/src/fppinit bootPre

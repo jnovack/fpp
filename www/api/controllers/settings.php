@@ -162,6 +162,11 @@ function PutSetting()
         unset($output);
     } else if ($setting == "AudioOutput") {
         SetAudioOutput($value);
+    } else if ($setting == "AudioBackend") {
+        ApplySetting($setting, $value);
+        SendCommand("SetSetting,$setting,$value,");
+        exec($SUDO . " " . $settings['fppDir'] . "/src/fppinit setupAudio", $output, $return_val);
+        unset($output);
     } else if ($setting == "EnableTethering") {
         $ssid = ReadSettingFromFile("TetherSSID");
         $psk = ReadSettingFromFile("TetherPSK");

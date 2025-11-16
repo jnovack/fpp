@@ -36,7 +36,9 @@ ARG PACKAGE_LIST="alsa-utils arping avahi-daemon avahi-utils locales nano net-to
     gettext x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain \
     libmosquitto-dev mosquitto-clients mosquitto libzstd-dev xz-utils zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev libnl-3-dev libnl-genl-3-dev \
     fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
-    flex bison pkg-config libasound2-dev python3-setuptools libssl-dev libtool bsdextrautils iw rsyslog tzdata ccache libsystemd-dev"
+    flex bison pkg-config libasound2-dev python3-setuptools libssl-dev libtool bsdextrautils iw rsyslog tzdata ccache libsystemd-dev \
+    pipewire pipewire-bin pipewire-alsa pipewire-pulse pipewire-jack pipewire-audio-client-libraries wireplumber \
+    libspa-0.2-bluetooth pulseaudio-utils"
 
 ARG PACKAGE_LIST_DOCKER=ssh
 

@@ -20,6 +20,7 @@
 #include <cmath>
 #include <errno.h>
 #include <stdbool.h>
+#include <cstdlib>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -601,6 +602,12 @@ static SDL sdlManager;
 
 bool SDL::initSDL() {
     if (_state == SDLSTATE::SDLUNINITIALISED) {
+        std::string backend = toLowerCopy(getSetting("AudioBackend"));
+        std::string desiredDriver = (backend == "pipewire") ? "pulse" : "alsa";
+        const char* currentDriver = getenv("SDL_AUDIODRIVER");
+        if (!currentDriver || toLowerCopy(currentDriver) != desiredDriver) {
+            setenv("SDL_AUDIODRIVER", desiredDriver.c_str(), 1);
+        }
         if (SDL_Init(SDL_INIT_AUDIO)) {
             LogErr(VB_MEDIAOUT, "Could not initialize SDL - %s\n", SDL_GetError());
             return false;

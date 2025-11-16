@@ -655,10 +655,14 @@ install_base_packages() {
                       gettext apt-utils x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain clang-format \
                       libmosquitto-dev mosquitto-clients mosquitto libzstd-dev lzma zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev libnl-3-dev libnl-genl-3-dev \
                       fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
-                      pipewire-alsa pipewire-jack pipewire-audio-client-libraries libpipewire-0.3-dev pulseaudio-utils linuxptp gstreamer1.0-tools \
-                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire \
-                      gstreamer1.0-libav libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev wireplumber pipewire-bin pipewire \
-                      flex bison pkg-config libasound2-dev python3-setuptools libssl-dev libtool bsdextrautils iw rsyslog tzdata libsystemd-dev"
+                      pipewire pipewire-bin pipewire-alsa pipewire-pulse pipewire-jack pipewire-audio-client-libraries wireplumber \
+                      libpipewire-0.3-dev libspa-0.2-bluetooth pulseaudio-utils linuxptp \
+                      gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+                      gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire \
+                      gstreamer1.0-libav gstreamer1.0-gl gstreamer1.0-x \
+                      libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-0 \
+                      flex bison pkg-config libasound2-dev python3-setuptools libssl-dev libtool bsdextrautils iw rsyslog tzdata libsystemd-dev \
+                      yt-dlp"
 
         if [ "$FPPPLATFORM" == "Raspberry Pi" -o "$FPPPLATFORM" == "BeagleBone Black"  -o "$FPPPLATFORM" == "BeagleBone 64" ]; then
             PACKAGE_LIST="$PACKAGE_LIST firmware-realtek firmware-atheros firmware-ralink firmware-brcm80211 firmware-iwlwifi firmware-libertas firmware-zd1211 firmware-ti-connectivity zram-tools"
@@ -1758,6 +1762,18 @@ esac
 install_fpp_services() {
     echo "FPP - Configuring FPP startup"
     cp /opt/fpp/etc/systemd/*.service /lib/systemd/system/
+
+    mkdir -p /etc/pipewire /etc/pipewire/pipewire.conf.d
+    cp -a /opt/fpp/etc/pipewire/pipewire.conf.d/. /etc/pipewire/pipewire.conf.d/
+    mkdir -p /etc/wireplumber/main.lua.d
+    cp -a /opt/fpp/etc/wireplumber/main.lua.d/. /etc/wireplumber/main.lua.d/
+    if [ ! -f /etc/pipewire/pipewire.conf ] && [ -f /usr/share/pipewire/pipewire.conf ]; then
+        cp /usr/share/pipewire/pipewire.conf /etc/pipewire/pipewire.conf
+    fi
+    if [ ! -f /etc/pipewire/pipewire-pulse.conf ] && [ -f /usr/share/pipewire/pipewire-pulse.conf ]; then
+        cp /usr/share/pipewire/pipewire-pulse.conf /etc/pipewire/pipewire-pulse.conf
+    fi
+
     if $isimage; then
         mkdir -p /etc/networkd-dispatcher/initialized.d
         cp -a /opt/fpp/etc/networkd-dispatcher/* /etc/networkd-dispatcher
@@ -1768,7 +1784,8 @@ install_fpp_services() {
 
     local svc
     for svc in fppinit fpprtc fppoled fppd fpp_postnetwork \
-               fpp-install-kiosk fpp-reboot; do
+               fpp-install-kiosk fpp-reboot \
+               fpp-pipewire fpp-wireplumber fpp-pipewire-pulse; do
         systemctl enable ${svc}.service
     done
 }

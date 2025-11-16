@@ -27,9 +27,12 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <algorithm>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <vector>
+#include <cctype>
 
 #include "common_mini.h"
 #include <arpa/inet.h>
@@ -1556,6 +1559,16 @@ static void setupAudio() {
     if (!FileExists("/root/.libao")) {
         PutFileContents("/root/.libao", "dev=default");
     }
+    std::string audioBackend = "alsa";
+    getRawSetting("AudioBackend", audioBackend);
+    std::string audioBackendLower = audioBackend;
+    std::transform(audioBackendLower.begin(), audioBackendLower.end(), audioBackendLower.begin(), [](unsigned char c) {
+        return std::tolower(c);
+    });
+    bool usePipeWireBackend = (audioBackendLower == "pipewire");
+    bool runningInDocker = FileExists("/.dockerenv");
+    const std::string audioEnvPath = "/opt/fpp/etc/systemd/fpp-audio.env";
+    printf("FPP - Audio backend: %s\n", usePipeWireBackend ? "PipeWire" : "ALSA");
     std::string aplay = execAndReturn("/usr/bin/aplay -l 2>&1");
     std::vector<std::string> lines = split(aplay, '\n');
     std::map<std::string, std::string> cards;
@@ -1698,7 +1711,9 @@ static void setupAudio() {
         }
     }
     if (asoundrc.empty()) {
-        if (contains(cardType, "vc4-hdmi")) {
+        if (usePipeWireBackend) {
+            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.pipewire");
+        } else if (contains(cardType, "vc4-hdmi")) {
             replaceAll(cardType, "-", "");
             asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.hdmi");
         } else if (contains(cardType, "bcm2")) {
@@ -1718,6 +1733,7 @@ static void setupAudio() {
         }
     }
     int rate = getRawSettingInt("AudioFormat", 0);
+    int pipewireSampleRate = 44100;
     switch (rate) {
     case 1:
     case 2:
@@ -1728,16 +1744,43 @@ static void setupAudio() {
     case 5:
     case 6:
         replaceAll(asoundrc, "rate 44100", "rate 48000");
+        pipewireSampleRate = 48000;
         break;
     case 7:
     case 8:
     case 9:
         replaceAll(asoundrc, "rate 44100", "rate 96000");
+        pipewireSampleRate = 96000;
         break;
     default:
         break;
     }
     PutFileContents("/root/.asoundrc", asoundrc);
+    const std::string pipewireSinkConfPath = "/etc/pipewire/pipewire.conf.d/95-fpp-alsa-sink.conf";
+    if (usePipeWireBackend) {
+        exec("/bin/mkdir -p /etc/pipewire/pipewire.conf.d");
+        std::ostringstream pipewireSink;
+        pipewireSink << "context.objects = [\n"
+                     << "  { factory = adapter\n"
+                     << "    args = {\n"
+                     << "      factory.name = api.alsa.pcm.sink\n"
+                     << "      node.name = \"alsa_output.fpp_card" << card << "\"\n"
+                     << "      node.description = \"FPP Hardware Output (" << cardType << ")\"\n"
+                     << "      media.class = \"Audio/Sink\"\n"
+                     << "      api.alsa.path = \"hw:" << card << "\"\n"
+                     << "      api.alsa.period-size = " << perSize << "\n"
+                     << "      api.alsa.headroom = 0\n"
+                     << "      audio.format = \"S16LE\"\n"
+                     << "      audio.rate = " << pipewireSampleRate << "\n"
+                     << "      audio.channels = 2\n"
+                     << "      audio.position = [ FL FR ]\n"
+                     << "    }\n"
+                     << "  }\n"
+                     << "]\n";
+        PutFileContents(pipewireSinkConfPath, pipewireSink.str());
+    } else if (FileExists(pipewireSinkConfPath)) {
+        unlink(pipewireSinkConfPath.c_str());
+    }
     std::string mixers = execAndReturn("/usr/bin/amixer -c " + std::to_string(card) + " scontrols | cut -f2 -d\"'\"");
     if (mixers.empty()) {
         // for some sound cards, the mixer devices won't show up
@@ -1762,6 +1805,29 @@ static void setupAudio() {
     }
     exec("/usr/bin/amixer -c " + std::to_string(card) + " set " + mixer + " " + std::to_string(v) + "% > /dev/null 2>&1");
     setRawSetting("AudioCardType", cardType);
+
+    if (!runningInDocker) {
+        std::ostringstream audioEnv;
+        audioEnv << "SDL_AUDIODRIVER=" << (usePipeWireBackend ? "pulse" : "alsa") << "\n";
+        if (usePipeWireBackend) {
+            audioEnv << "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp\n"
+                     << "XDG_RUNTIME_DIR=/run/pipewire-fpp\n"
+                     << "PIPEWIRE_CONFIG_DIR=/etc/pipewire\n";
+        }
+        PutFileContents(audioEnvPath, audioEnv.str());
+    } else if (FileExists(audioEnvPath)) {
+        unlink(audioEnvPath.c_str());
+    }
+
+    if (usePipeWireBackend && !runningInDocker) {
+        exec("/usr/bin/systemctl restart fpp-pipewire.service");
+        exec("/usr/bin/systemctl restart fpp-wireplumber.service");
+        exec("/usr/bin/systemctl restart fpp-pipewire-pulse.service");
+    } else if (!runningInDocker) {
+        exec("/usr/bin/systemctl stop fpp-pipewire-pulse.service");
+        exec("/usr/bin/systemctl stop fpp-wireplumber.service");
+        exec("/usr/bin/systemctl stop fpp-pipewire.service");
+    }
 }
 void setupKiosk(bool force = false) {
     int km = getRawSettingInt("Kiosk", 0);

@@ -124,6 +124,7 @@
 			"description": "Audio",
 			"settings": [
 				"AudioOutput",
+				"AudioBackend",
 				"AudioMixerDevice",
 				"AudioFormat",
 				"AudioLayout",
@@ -726,6 +727,23 @@
 				"AudioMixerDevice"
 			],
 			"optionsURL": "api/settings/AudioOutput/options"
+		},
+		"AudioBackend": {
+			"name": "AudioBackend",
+			"description": "Audio Backend",
+			"tip": "Select whether FPP talks directly to ALSA hardware or routes playback through the PipeWire stack. PipeWire enables low-latency mixing via WirePlumber/pipewire-pulse, while ALSA keeps the legacy direct-to-device path.",
+			"gatherStats": true,
+			"restart": 0,
+			"reboot": 0,
+			"default": "alsa",
+			"type": "select",
+			"options": {
+				"Direct ALSA (Default)": "alsa",
+				"PipeWire (Experimental)": "pipewire"
+			},
+			"platforms": [
+				"!MacOS"
+			]
 		},
 		"backgroundColor": {
 			"name": "backgroundColor",

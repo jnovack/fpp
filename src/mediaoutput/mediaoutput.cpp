@@ -86,6 +86,9 @@ void setVolume(int vol) {
     std::string mixerDevice = getSetting("AudioMixerDevice");
     int audioOutput = getSettingInt("AudioOutput");
     std::string audio0Type = getSetting("AudioCard0Type");
+    std::string audioBackend = toLowerCopy(getSetting("AudioBackend"));
+
+    bool usePipeWireBackend = (audioBackend == "pipewire");
 
 #ifndef PLATFORM_OSX
     volume = vol;
@@ -97,12 +100,25 @@ void setVolume(int vol) {
         fvol += 50;
     }
 #endif
-    snprintf(buffer, 60, "amixer set -c %d '%s' -- %.2f%% >/dev/null 2>&1",
-             audioOutput, mixerDevice.c_str(), fvol);
+    if (usePipeWireBackend) {
+        double normalizedVolume = fvol / 100.0f;
+        if (normalizedVolume < 0.0) {
+            normalizedVolume = 0.0;
+        } else if (normalizedVolume > 1.0) {
+            normalizedVolume = 1.0;
+        }
+        snprintf(buffer, 60, "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ %.3f >/dev/null 2>&1",
+                 normalizedVolume);
+        LogDebug(VB_MEDIAOUT, "Calling wpctl to set the PipeWire volume: %s \n", buffer);
+        system(buffer);
+    } else {
+        snprintf(buffer, 60, "amixer set -c %d '%s' -- %.2f%% >/dev/null 2>&1",
+                 audioOutput, mixerDevice.c_str(), fvol);
 
-    LogDebug(VB_SETTING, "Volume change: %d \n", volume);
-    LogDebug(VB_MEDIAOUT, "Calling amixer to set the volume: %s \n", buffer);
-    system(buffer);
+        LogDebug(VB_SETTING, "Volume change: %d \n", volume);
+        LogDebug(VB_MEDIAOUT, "Calling amixer to set the volume: %s \n", buffer);
+        system(buffer);
+    }
 #else
     MacOSSetVolume(vol);
 #endif
