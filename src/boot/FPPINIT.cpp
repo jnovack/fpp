@@ -1703,6 +1703,9 @@ static void setupAudio() {
     printf("FPP - Found sound card of type %s\n", cardType.c_str());
     std::string asoundrc;
     if (usePipeWireBackend) {
+        if (!FileExists("/etc/pipewire/client.conf") && FileExists("/usr/share/pipewire/client.conf")) {
+            CopyFileContents("/usr/share/pipewire/client.conf", "/etc/pipewire/client.conf");
+        }
         asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.pipewire");
     } else {
         if (FileExists("/home/fpp/media/tmp/asoundrc")) {

@@ -1773,6 +1773,9 @@ install_fpp_services() {
     if [ ! -f /etc/pipewire/pipewire-pulse.conf ] && [ -f /usr/share/pipewire/pipewire-pulse.conf ]; then
         cp /usr/share/pipewire/pipewire-pulse.conf /etc/pipewire/pipewire-pulse.conf
     fi
+    if [ ! -f /etc/pipewire/client.conf ] && [ -f /usr/share/pipewire/client.conf ]; then
+        cp /usr/share/pipewire/client.conf /etc/pipewire/client.conf
+    fi
 
     if $isimage; then
         mkdir -p /etc/networkd-dispatcher/initialized.d
