@@ -257,7 +257,9 @@ public:
             }
 #ifndef PLATFORM_OSX
             args.push_back("-A");
-            args.push_back("alsa");
+            std::string audioBackend = toLowerCopy(getSetting("AudioBackend"));
+            const char* audioModule = (audioBackend == "pipewire") ? "pipewire" : "alsa";
+            args.push_back(audioModule);
 
             args.push_back("-I");
             args.push_back("dummy");
