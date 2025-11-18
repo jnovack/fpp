@@ -1702,24 +1702,26 @@ static void setupAudio() {
     cardType = cardType.substr(0, cardType.find("]"));
     printf("FPP - Found sound card of type %s\n", cardType.c_str());
     std::string asoundrc;
-    if (FileExists("/home/fpp/media/tmp/asoundrc")) {
-        if (contains(cardType, "pcm510")) {
-            printf("FPP - Using Cape Provided asoundrc\n");
-            asoundrc = GetFileContents("/home/fpp/media/tmp/asoundrc");
-        } else {
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+    if (usePipeWireBackend) {
+        asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.pipewire");
+    } else {
+        if (FileExists("/home/fpp/media/tmp/asoundrc")) {
+            if (contains(cardType, "pcm510")) {
+                printf("FPP - Using Cape Provided asoundrc\n");
+                asoundrc = GetFileContents("/home/fpp/media/tmp/asoundrc");
+            } else {
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+            }
         }
-    }
-    if (asoundrc.empty()) {
-        if (usePipeWireBackend) {
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.pipewire");
-        } else if (contains(cardType, "vc4-hdmi")) {
-            replaceAll(cardType, "-", "");
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.hdmi");
-        } else if (contains(cardType, "bcm2")) {
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.plain");
-        } else {
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+        if (asoundrc.empty()) {
+            if (contains(cardType, "vc4-hdmi")) {
+                replaceAll(cardType, "-", "");
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.hdmi");
+            } else if (contains(cardType, "bcm2")) {
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.plain");
+            } else {
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+            }
         }
     }
     int bufSize = getRawSettingInt("AudioBufferSize", 3072);
