@@ -76,7 +76,7 @@ int getVolume() {
 #endif
 
 void setVolume(int vol) {
-    char buffer[60];
+    char buffer[256];
 
     if (vol < 0)
         vol = 0;
@@ -107,8 +107,10 @@ void setVolume(int vol) {
         } else if (normalizedVolume > 1.0) {
             normalizedVolume = 1.0;
         }
-        snprintf(buffer, 60, "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ %.3f >/dev/null 2>&1",
-                 normalizedVolume);
+        std::string pipewireSink = "alsa_output.fpp_card" + std::to_string(audioOutput);
+        snprintf(buffer, sizeof(buffer),
+             "wpctl set-volume -l 1.0 \"%s\" %.3f >/dev/null 2>&1 || wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ %.3f >/dev/null 2>&1",
+             pipewireSink.c_str(), normalizedVolume, normalizedVolume);
         LogDebug(VB_MEDIAOUT, "Calling wpctl to set the PipeWire volume: %s \n", buffer);
         system(buffer);
     } else {
