@@ -66,6 +66,7 @@ void CleanupMediaOutput(void) {
 
 #ifndef PLATFORM_OSX
 static int volume = 70;
+static int lastPipeWireVolume = -1;  // Track last volume to avoid redundant mute toggles
 int getVolume() {
     return volume;
 }
@@ -93,14 +94,9 @@ void setVolume(int vol) {
 #ifndef PLATFORM_OSX
     volume = vol;
     float fvol = volume;
-#ifdef PLATFORM_PI
-    if (audioOutput == 0 && audio0Type == "bcm2") {
-        fvol = volume;
-        fvol /= 2;
-        fvol += 50;
-    }
-#endif
+    
     if (usePipeWireBackend) {
+        const bool shouldMute = (volume == 0);
         double normalizedVolume = fvol / 100.0f;
         if (normalizedVolume < 0.0) {
             normalizedVolume = 0.0;
@@ -108,15 +104,85 @@ void setVolume(int vol) {
             normalizedVolume = 1.0;
         }
         std::string pipewireSink = getSetting("PipeWireSinkName");
-        if (pipewireSink.empty()) {
-            pipewireSink = "alsa_output.fpp_card" + std::to_string(audioOutput);
+        
+        // wpctl must run as fpp user to access its PipeWire session
+        // Get fpp UID dynamically
+        FILE* fp = popen("id -u fpp 2>/dev/null", "r");
+        std::string fppUID = "500";
+        if (fp) {
+            char uidBuf[32];
+            if (fgets(uidBuf, sizeof(uidBuf), fp)) {
+                fppUID = std::string(uidBuf);
+                // Strip newline
+                fppUID.erase(fppUID.find_last_not_of("\n\r") + 1);
+            }
+            pclose(fp);
         }
-        snprintf(buffer, sizeof(buffer),
-             "wpctl set-volume -l 1.0 \"%s\" %.3f >/dev/null 2>&1",
-             pipewireSink.c_str(), normalizedVolume);
-        LogDebug(VB_MEDIAOUT, "Calling wpctl to set the PipeWire volume: %s \n", buffer);
-        system(buffer);
+        std::string runtimeDir = "/run/user/" + fppUID;
+        std::string paPrefix = "sudo -u fpp XDG_RUNTIME_DIR=" + runtimeDir + " ";
+
+        // If no sink specified, query the actual default sink name for pactl
+        if (pipewireSink.empty()) {
+            fp = popen((paPrefix + "pactl get-default-sink 2>/dev/null").c_str(), "r");
+            if (fp) {
+                char sinkBuf[256];
+                if (fgets(sinkBuf, sizeof(sinkBuf), fp)) {
+                    pipewireSink = std::string(sinkBuf);
+                    pipewireSink.erase(pipewireSink.find_last_not_of("\n\r") + 1);
+                }
+                pclose(fp);
+            }
+            if (pipewireSink.empty()) {
+                pipewireSink = "@DEFAULT_SINK@";  // fallback
+            }
+        }
+
+        bool wasZero = (lastPipeWireVolume == 0);
+        bool isZero = shouldMute;
+        
+        // First call: initialize from actual volume value
+        if (lastPipeWireVolume == -1) {
+            wasZero = isZero;  // Treat first call as if we're already in that state
+        }
+
+        // Use pactl for smoother volume transitions (PipeWire PulseAudio compat layer)
+        // Convert to percentage for pactl (0-100%)
+        int volumePercent = (int)(normalizedVolume * 100.0);
+
+        if (isZero && !wasZero) {
+            // Going to zero: mute immediately
+            snprintf(buffer, sizeof(buffer),
+                 "%s pactl set-sink-mute \"%s\" 1 >/dev/null 2>&1",
+                 paPrefix.c_str(), pipewireSink.c_str());
+            LogDebug(VB_MEDIAOUT, "Calling pactl to mute PipeWire: %s \n", buffer);
+            system(buffer);
+        } else if (!isZero && wasZero) {
+            // Coming from zero: set volume first, then unmute
+            snprintf(buffer, sizeof(buffer),
+                 "%s sh -c 'pactl set-sink-volume \"%s\" %d%% && pactl set-sink-mute \"%s\" 0' >/dev/null 2>&1",
+                 paPrefix.c_str(), pipewireSink.c_str(), volumePercent, pipewireSink.c_str());
+            LogDebug(VB_MEDIAOUT, "Calling pactl to set PipeWire volume and unmute: %s \n", buffer);
+            system(buffer);
+        } else if (!isZero) {
+            // Volume change while playing: only adjust volume, don't touch mute
+            snprintf(buffer, sizeof(buffer),
+                 "%s pactl set-sink-volume \"%s\" %d%% >/dev/null 2>&1",
+                 paPrefix.c_str(), pipewireSink.c_str(), volumePercent);
+            LogDebug(VB_MEDIAOUT, "Calling pactl to set PipeWire volume: %s \n", buffer);
+            system(buffer);
+        }
+        
+        // Update state after processing
+        lastPipeWireVolume = volume;
     } else {
+#ifdef PLATFORM_PI
+        // Apply bcm2 audio scaling for ALSA only
+        if (audioOutput == 0 && audio0Type == "bcm2") {
+            fvol = volume;
+            fvol /= 2;
+            fvol += 50;
+        }
+#endif
         snprintf(buffer, 60, "amixer set -c %d '%s' -- %.2f%% >/dev/null 2>&1",
                  audioOutput, mixerDevice.c_str(), fvol);
 
