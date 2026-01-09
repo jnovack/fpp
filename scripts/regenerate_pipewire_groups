@@ -1,0 +1,168 @@
+#!/usr/bin/php
+<?php
+/////////////////////////////////////////////////////////////////////////////
+// regenerate_pipewire_groups
+//
+// Regenerates PipeWire audio output group and input group configs from the
+// JSON configuration files.  Called by FPPINIT after PipeWire is started
+// to ensure the combine-stream and filter-chain configs reflect the
+// current set of ALSA/PipeWire devices (card numbers may have changed
+// since the cached .conf was last generated).
+//
+// Usage:  regenerate_pipewire_groups [--force]
+//   --force  Regenerate even if the cached config looks complete
+//
+// Exit codes:
+//   0  Success (config regenerated or nothing to do)
+//   1  Error
+/////////////////////////////////////////////////////////////////////////////
+
+// Bootstrap minimal FPP environment
+$SUDO = "";
+if (posix_getuid() !== 0) {
+    $SUDO = "sudo";
+}
+
+// Load settings
+$settings = array();
+$settingsFile = "/home/fpp/media/settings";
+if (file_exists($settingsFile)) {
+    $lines = file($settingsFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if (empty($line) || $line[0] === '#')
+            continue;
+        if (strpos($line, '=') !== false) {
+            list($key, $value) = explode('=', $line, 2);
+            $key = trim($key);
+            $value = trim($value, " \t\n\r\0\x0B\"'");
+            $settings[$key] = $value;
+        }
+    }
+}
+if (!isset($settings['mediaDirectory']))
+    $settings['mediaDirectory'] = '/home/fpp/media';
+
+// Include API controller which has the generation functions.
+// Set CWD to www/api/ so relative require paths in pipewire.php work
+// (pipewire.php does require_once '../commandsocket.php' which resolves
+// from CWD in PHP's include resolution chain).
+$fppDir = isset($settings['fppDir']) ? $settings['fppDir'] : '/opt/fpp';
+chdir($fppDir . '/www/api');
+
+// Suppress HTML output from config.php (it outputs <script> tags etc.)
+ob_start();
+// Suppress warnings from config.php about missing $_SERVER keys in CLI mode
+$_SERVER['REQUEST_URI'] = '/api/pipewire';
+$_SERVER['PHP_SELF'] = 'regenerate_pipewire_groups';
+
+// Define json() stub for CLI (API functions call dispatch framework's json())
+if (!function_exists('json')) {
+    function json($data) { return json_encode($data); }
+}
+
+// Source the needed functions
+require_once $fppDir . '/www/common.php';
+require_once $fppDir . '/www/api/controllers/pipewire.php';
+
+// Discard any HTML output from includes
+ob_end_clean();
+
+$force = in_array('--force', $argv);
+
+$groupsJsonPath = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+$cachedConfPath = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.conf";
+$destConfPath   = "/etc/pipewire/pipewire.conf.d/97-fpp-audio-groups.conf";
+
+if (!file_exists($groupsJsonPath)) {
+    // No groups configured — nothing to do
+    exit(0);
+}
+
+$data = json_decode(file_get_contents($groupsJsonPath), true);
+if ($data === null || !isset($data['groups']) || empty($data['groups'])) {
+    exit(0);
+}
+
+// Check if regeneration is needed
+if (!$force && file_exists($cachedConfPath)) {
+    $cached = file_get_contents($cachedConfPath);
+    if (strpos($cached, '# WARNING:') === false) {
+        // Cached config looks complete — skip regeneration
+        fprintf(STDERR, "FPP - PipeWire groups config looks complete, skipping regeneration\n");
+        exit(0);
+    }
+    fprintf(STDERR, "FPP - PipeWire groups config has warnings, regenerating...\n");
+}
+
+// Generate fresh config
+$genResult = GeneratePipeWireGroupsConfig($data['groups'], true);
+$conf = $genResult['conf'];
+$resolvedCardMap = $genResult['cardNodeMap'];
+
+// Store resolved nodeTarget back into JSON
+$jsonDirty = false;
+foreach ($data['groups'] as &$grp) {
+    if (!isset($grp['members']))
+        continue;
+    foreach ($grp['members'] as &$mbr) {
+        $cid = isset($mbr['cardId']) ? $mbr['cardId'] : '';
+        if (!empty($cid) && isset($resolvedCardMap[$cid])) {
+            $newTarget = $resolvedCardMap[$cid];
+            if (!isset($mbr['nodeTarget']) || $mbr['nodeTarget'] !== $newTarget) {
+                $mbr['nodeTarget'] = $newTarget;
+                $jsonDirty = true;
+            }
+        }
+    }
+    unset($mbr);
+}
+unset($grp);
+if ($jsonDirty) {
+    file_put_contents($groupsJsonPath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+}
+
+// Check if anything changed
+if (file_exists($cachedConfPath)) {
+    $oldConf = file_get_contents($cachedConfPath);
+    if ($oldConf === $conf) {
+        fprintf(STDERR, "FPP - PipeWire groups config unchanged after regeneration\n");
+        exit(0);
+    }
+}
+
+// Write new config
+file_put_contents($cachedConfPath, $conf);
+
+// Copy to /etc/pipewire/pipewire.conf.d/
+$tmpFile = tempnam(sys_get_temp_dir(), 'fpp_pw_regen_');
+file_put_contents($tmpFile, $conf);
+exec(($SUDO ? "$SUDO " : "") . "cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($destConfPath));
+exec(($SUDO ? "$SUDO " : "") . "chmod 644 " . escapeshellarg($destConfPath));
+unlink($tmpFile);
+
+// Also regenerate input groups config if present
+$igJsonPath = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+if (file_exists($igJsonPath)) {
+    $igData = json_decode(file_get_contents($igJsonPath), true);
+    if (is_array($igData) && isset($igData['inputGroups']) && !empty($igData['inputGroups'])) {
+        $igConf = GeneratePipeWireInputGroupsConfig($igData['inputGroups'], $data['groups']);
+        $igConfDest = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
+        $igTmpFile = tempnam(sys_get_temp_dir(), 'fpp_pw_ig_regen_');
+        file_put_contents($igTmpFile, $igConf);
+        exec(($SUDO ? "$SUDO " : "") . "cp " . escapeshellarg($igTmpFile) . " " . escapeshellarg($igConfDest));
+        exec(($SUDO ? "$SUDO " : "") . "chmod 644 " . escapeshellarg($igConfDest));
+        unlink($igTmpFile);
+        file_put_contents($settings['mediaDirectory'] . "/config/pipewire-input-groups.conf", $igConf);
+    }
+}
+
+$hasWarnings = (strpos($conf, '# WARNING:') !== false);
+if ($hasWarnings) {
+    fprintf(STDERR, "FPP - PipeWire groups config regenerated (some devices still unresolved)\n");
+} else {
+    fprintf(STDERR, "FPP - PipeWire groups config regenerated successfully\n");
+}
+
+// Return 2 if config changed (caller may need to restart PipeWire)
+exit(2);

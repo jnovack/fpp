@@ -159,7 +159,36 @@ function ApplyPipeWireAudioGroups()
     }
 
     // Generate PipeWire config
-    $conf = GeneratePipeWireGroupsConfig($data['groups']);
+    $genResult = GeneratePipeWireGroupsConfig($data['groups'], true);
+    $conf = $genResult['conf'];
+    $resolvedCardMap = $genResult['cardNodeMap'];
+
+    // Store resolved PipeWire node names (nodeTarget) back into the JSON
+    // so future regenerations (including boot-time) work even when
+    // PipeWire hasn't enumerated all devices yet.  WirePlumber node names
+    // are deterministic (based on USB VID/PID/serial), so they remain
+    // valid across reboots and USB re-plugs.
+    $jsonDirty = false;
+    foreach ($data['groups'] as &$grp) {
+        if (!isset($grp['members']))
+            continue;
+        foreach ($grp['members'] as &$mbr) {
+            $cid = isset($mbr['cardId']) ? $mbr['cardId'] : '';
+            if (!empty($cid) && isset($resolvedCardMap[$cid])) {
+                $newTarget = $resolvedCardMap[$cid];
+                if (!isset($mbr['nodeTarget']) || $mbr['nodeTarget'] !== $newTarget) {
+                    $mbr['nodeTarget'] = $newTarget;
+                    $jsonDirty = true;
+                }
+            }
+        }
+        unset($mbr);
+    }
+    unset($grp);
+    if ($jsonDirty) {
+        $configFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+        file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
 
     // Ensure directory exists
     exec($SUDO . " /bin/mkdir -p /etc/pipewire/pipewire.conf.d");
@@ -2679,7 +2708,7 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
 
 /////////////////////////////////////////////////////////////////////////////
 // Helper: Generate PipeWire combine-stream config from groups
-function GeneratePipeWireGroupsConfig($groups)
+function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
 {
     global $SUDO, $settings;
 
@@ -2706,12 +2735,19 @@ function GeneratePipeWireGroupsConfig($groups)
     // Query existing PipeWire sink node names so we can match the
     // combine-stream rules against nodes that already exist
     // (created by WirePlumber or the 95-fpp-alsa-sink config).
-    // -----------------------------------------------------------
-    // Use pw-dump (JSON) to get full node properties including
-    // alsa.card and api.alsa.path for reliable card→sink mapping.
+    //
+    // We build TWO maps for robust resolution:
+    //   1. sinkCardIdMap:  ALSA card ID string → PipeWire node.name
+    //      (primary — stable across reboots, no card-number dependency)
+    //   2. sinkCardNumMap: ALSA card number → PipeWire node.name
+    //      (fallback)
+    //
+    // Card IDs are read from /proc/asound/cardN/id which is the kernel's
+    // stable identifier (e.g. "S3", "ICUSBAUDIO7D").
     // -----------------------------------------------------------
     $existingSinks = array(); // node.name => true
     $sinkCardNumMap = array(); // ALSA card number (int) => node.name
+    $sinkCardIdMap = array();  // ALSA card ID (string) => node.name
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
     $pwDumpJson = '';
     exec($SUDO . " " . $env . " pw-dump 2>/dev/null", $pwDumpLines);
@@ -2728,20 +2764,18 @@ function GeneratePipeWireGroupsConfig($groups)
             $mediaClass = isset($props['media.class']) ? $props['media.class'] : '';
             if ($nodeName && $mediaClass === 'Audio/Sink') {
                 $existingSinks[$nodeName] = true;
-                // Map ALSA card number to this sink node name.
+                $cn = -1;
+
                 // WirePlumber-managed sinks have alsa.card set directly.
                 if (isset($props['alsa.card'])) {
                     $cn = intval($props['alsa.card']);
-                    if (!isset($sinkCardNumMap[$cn])) {
-                        $sinkCardNumMap[$cn] = $nodeName;
-                    }
                 }
-                // FPP-created sinks have api.alsa.path (e.g. "hw:0" or "hw:S3")
-                // but no alsa.card.  Resolve the path to a card number.
-                elseif (isset($props['api.alsa.path'])) {
+                // FPP-created and WP sinks may have api.alsa.path
+                // (e.g. "hw:0", "hw:S3", "front:3").
+                if ($cn < 0 && isset($props['api.alsa.path'])) {
                     $alsaPath = $props['api.alsa.path'];
-                    // Extract device specifier after "hw:"
-                    if (preg_match('/^hw:(.+)$/', $alsaPath, $hm)) {
+                    // Match hw:X, front:X, surround*:X, iec958:X, default:X etc.
+                    if (preg_match('/^[a-zA-Z0-9_]+:(\w+)/', $alsaPath, $hm)) {
                         $dev = $hm[1];
                         if (ctype_digit($dev)) {
                             $cn = intval($dev);
@@ -2749,8 +2783,20 @@ function GeneratePipeWireGroupsConfig($groups)
                             // Stable card ID — resolve via /proc/asound
                             $cn = ResolveCardIdToNumber($dev);
                         }
-                        if ($cn >= 0 && !isset($sinkCardNumMap[$cn])) {
-                            $sinkCardNumMap[$cn] = $nodeName;
+                    }
+                }
+
+                if ($cn >= 0) {
+                    if (!isset($sinkCardNumMap[$cn])) {
+                        $sinkCardNumMap[$cn] = $nodeName;
+                    }
+                    // Reverse-resolve card number → stable ALSA card ID
+                    // via /proc/asound/cardN/id so we can look up by cardId directly.
+                    $cardIdFromProc = @file_get_contents("/proc/asound/card$cn/id");
+                    if ($cardIdFromProc !== false) {
+                        $cardIdFromProc = trim($cardIdFromProc);
+                        if (!empty($cardIdFromProc) && !isset($sinkCardIdMap[$cardIdFromProc])) {
+                            $sinkCardIdMap[$cardIdFromProc] = $nodeName;
                         }
                     }
                 }
@@ -2759,10 +2805,12 @@ function GeneratePipeWireGroupsConfig($groups)
     }
     unset($pwDumpData);
 
-    // Resolve card IDs to existing PipeWire node names using the
-    // alsa.card / api.alsa.path map built from pw-dump above.
-    // If no existing sink is found, we'll skip the card (can't safely
-    // create raw ALSA adapters for cards like HDMI that need special formats).
+    // Resolve card IDs to PipeWire node names.
+    // Priority order:
+    //   1. Previously-stored nodeTarget in member JSON (survives PipeWire being down)
+    //   2. Direct cardId→nodeName via sinkCardIdMap (no card-number dependency)
+    //   3. cardId→cardNum→nodeName via sinkCardNumMap (legacy fallback)
+    //   4. Skip card with warning
     $cardNodeMap = array();   // cardId -> PipeWire node name
     $unresolvedCards = array();
 
@@ -2787,13 +2835,7 @@ function GeneratePipeWireGroupsConfig($groups)
                         foreach ($aes67Json['instances'] as $ai) {
                             if (isset($ai['id']) && intval($ai['id']) === $aes67InstId && isset($ai['enabled']) && $ai['enabled']) {
                                 $aesNodeName = 'aes67_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ai['name'])) . '_send';
-                                // Check if running in PipeWire; if so use the running name
-                                if (isset($existingSinks[$aesNodeName])) {
-                                    $cardNodeMap[$cardId] = $aesNodeName;
-                                } else {
-                                    // May not be running yet but will be after apply
-                                    $cardNodeMap[$cardId] = $aesNodeName;
-                                }
+                                $cardNodeMap[$cardId] = $aesNodeName;
                                 break;
                             }
                         }
@@ -2805,19 +2847,45 @@ function GeneratePipeWireGroupsConfig($groups)
                 continue;
             }
 
-            $cardNum = ResolveCardIdToNumber($cardId);
-            if ($cardNum < 0) {
-                $unresolvedCards[] = $cardId;
+            // Priority 1: Previously-stored nodeTarget from last successful Apply
+            if (isset($member['nodeTarget']) && !empty($member['nodeTarget'])) {
+                $storedTarget = $member['nodeTarget'];
+                // Verify it still exists in PipeWire; if so, use it directly
+                if (isset($existingSinks[$storedTarget])) {
+                    $cardNodeMap[$cardId] = $storedTarget;
+                    continue;
+                }
+                // Even if not currently in PipeWire (device unplugged), the
+                // WirePlumber node name is deterministic and will be correct
+                // when the device reappears.  Use it as a last-resort below.
+            }
+
+            // Priority 2: Direct cardId → node name (no card-number dependency)
+            if (isset($sinkCardIdMap[$cardId])) {
+                $cardNodeMap[$cardId] = $sinkCardIdMap[$cardId];
                 continue;
             }
 
-            // Look up PipeWire sink via the alsa.card / api.alsa.path
-            // map built from pw-dump above.  This is reliable regardless
-            // of how WirePlumber chose to name the node.
-            if (isset($sinkCardNumMap[$cardNum])) {
+            // Priority 3: cardId → card number → node name
+            $cardNum = ResolveCardIdToNumber($cardId);
+            if ($cardNum >= 0 && isset($sinkCardNumMap[$cardNum])) {
                 $cardNodeMap[$cardId] = $sinkCardNumMap[$cardNum];
-            } else {
+                continue;
+            }
+
+            // Priority 4: Use stored nodeTarget even though device isn't present
+            // WirePlumber names are deterministic (based on USB VID/PID/serial),
+            // so the stored name will be correct when the device reappears.
+            if (isset($member['nodeTarget']) && !empty($member['nodeTarget'])) {
+                $cardNodeMap[$cardId] = $member['nodeTarget'];
+                continue;
+            }
+
+            // Could not resolve
+            if ($cardNum >= 0) {
                 $unresolvedCards[] = $cardId . " (card $cardNum — no PipeWire sink found)";
+            } else {
+                $unresolvedCards[] = $cardId . " (ALSA card not present)";
             }
         }
     }
@@ -3084,6 +3152,9 @@ function GeneratePipeWireGroupsConfig($groups)
 
     $conf .= "]\n";
 
+    if ($returnCardMap) {
+        return array('conf' => $conf, 'cardNodeMap' => $cardNodeMap);
+    }
     return $conf;
 }
 
