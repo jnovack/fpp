@@ -377,7 +377,11 @@
                 if (nm.startsWith('fppd_stream_')) {
                     const parts = [];
                     if (p['fpp.stream.slot']) parts.push('slot ' + p['fpp.stream.slot']);
-                    if (p['fpp.stream.target']) {
+                    if (p['fpp.stream.targets'] && p['fpp.stream.targets'].length) {
+                        const names = p['fpp.stream.targets'].map(t =>
+                            t.replace(/^fpp_input_/, '').replace(/_/g, ' '));
+                        parts.push('→ ' + names.join(', '));
+                    } else if (p['fpp.stream.target']) {
                         const t = p['fpp.stream.target'].replace(/^fpp_input_/, '').replace(/_/g, ' ');
                         parts.push('→ ' + t);
                     }

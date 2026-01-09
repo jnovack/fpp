@@ -3580,8 +3580,9 @@ function GetPipeWireGraph()
             $liveFppdStreams[$node['name']] = true;
         }
     }
-    // Build lookup: which input group each fppd stream slot is configured for
-    $fppdStreamTargets = array(); // streamName => igSlug
+    // Build lookup: which input groups each fppd stream slot targets
+    // A single fppd_stream can be a member of multiple input groups.
+    $fppdStreamTargets = array(); // streamName => [igSlug, igSlug, ...]
     if ($igCfg && isset($igCfg['inputGroups'])) {
         foreach ($igCfg['inputGroups'] as $ig) {
             if (!isset($ig['enabled']) || !$ig['enabled'])
@@ -3592,7 +3593,12 @@ function GetPipeWireGraph()
             foreach ($ig['members'] as $mbr) {
                 if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
                     $sid = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
-                    $fppdStreamTargets[$sid] = $igSlug;
+                    if (!isset($fppdStreamTargets[$sid])) {
+                        $fppdStreamTargets[$sid] = array();
+                    }
+                    if (!in_array($igSlug, $fppdStreamTargets[$sid])) {
+                        $fppdStreamTargets[$sid][] = $igSlug;
+                    }
                 }
             }
         }
@@ -3618,7 +3624,9 @@ function GetPipeWireGraph()
                 if ($node['name'] === $streamName) {
                     $node['properties']['fpp.stream.slot'] = $i;
                     if (isset($fppdStreamTargets[$streamName])) {
-                        $node['properties']['fpp.stream.target'] = $fppdStreamTargets[$streamName];
+                        $targets = $fppdStreamTargets[$streamName];
+                        $node['properties']['fpp.stream.target'] = implode(', ', $targets);
+                        $node['properties']['fpp.stream.targets'] = $targets;
                     }
                     break;
                 }
@@ -3627,12 +3635,12 @@ function GetPipeWireGraph()
             continue;
         }
 
-        // Determine target for virtual link
-        $target = '';
+        // Determine targets for virtual links
+        $targets = array();
         if (isset($fppdStreamTargets[$streamName])) {
-            $target = $fppdStreamTargets[$streamName];
+            $targets = $fppdStreamTargets[$streamName];
         } elseif ($i === 1 && !empty($defaultTarget)) {
-            $target = $defaultTarget;
+            $targets = array($defaultTarget);
         }
 
         // Create virtual node
@@ -3648,7 +3656,8 @@ function GetPipeWireGraph()
             'properties' => array(
                 'fpp.stream.slot' => $i,
                 'fpp.stream.virtual' => true,
-                'fpp.stream.target' => $target,
+                'fpp.stream.target' => implode(', ', $targets),
+                'fpp.stream.targets' => $targets,
                 'audio.channels' => 2,
             ),
         );
@@ -3658,8 +3667,8 @@ function GetPipeWireGraph()
         $ports[] = array('id' => $portFL, 'nodeId' => $vNodeId, 'name' => 'output_FL', 'direction' => 'output', 'channel' => 'FL');
         $ports[] = array('id' => $portFR, 'nodeId' => $vNodeId, 'name' => 'output_FR', 'direction' => 'output', 'channel' => 'FR');
 
-        // Create virtual links to the target node if it exists
-        if (!empty($target)) {
+        // Create virtual links to ALL target nodes
+        foreach ($targets as $target) {
             // Find the target node's input ports
             $targetNodeId = null;
             foreach ($nodes as $tn) {
