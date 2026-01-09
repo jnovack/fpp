@@ -521,7 +521,7 @@
             // Output routing
             html += '<div class="output-routing">';
             html += '<label><i class="fas fa-arrow-right"></i> Route to Output Groups: ';
-            html += '<a href="pipewire-routing-matrix.php" style="font-size:0.8rem;font-weight:normal;" title="Open Routing Matrix for per-path volume control">';
+            html += '<a href="pipewire-routing-matrix.php" target="_blank" style="font-size:0.8rem;font-weight:normal;" title="Open Routing Matrix for per-path volume control">';
             html += '<i class="fas fa-th"></i> Matrix View</a></label>';
             html += '<div>';
             var outputs = ig.outputs || [];
@@ -744,6 +744,10 @@
             // Don't send real-time API for fppd_stream (no loopback node)
             if (mbr.type === 'fppd_stream') return;
 
+            // If muted, save the new volume but don't send it to PipeWire
+            // (PipeWire node stays at 0 until unmuted)
+            if (mbr.mute) return;
+
             // Debounce: only send after 150ms of no further changes
             var key = groupIdx + '_' + memberIdx;
             if (_volumeTimers[key]) clearTimeout(_volumeTimers[key]);
@@ -769,6 +773,28 @@
             var mbr = inputGroups.inputGroups[groupIdx].members[memberIdx];
             mbr.mute = !mbr.mute;
             RenderAll();
+
+            // Send real-time mute/unmute to PipeWire via the volume API.
+            // Mute = volume 0, unmute = restore saved volume.
+            // fppd_stream members don't have loopback nodes.
+            if (mbr.type === 'fppd_stream') return;
+
+            var effectiveVol = mbr.mute ? 0 : (mbr.volume !== undefined ? mbr.volume : 100);
+            var groupId = inputGroups.inputGroups[groupIdx].id;
+            $.ajax({
+                url: '/api/pipewire/audio/input-groups/volume',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    groupId: groupId,
+                    memberIndex: memberIdx,
+                    volume: effectiveVol,
+                    mute: mbr.mute
+                }),
+                error: function () {
+                    // Silent fail — mute will be applied on next Save & Apply
+                }
+            });
         }
 
         function ToggleOutput(groupIdx, outputGroupId, checked) {

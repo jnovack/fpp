@@ -3,15 +3,16 @@
 
 <head>
     <?php
+    $modalMode = isset($_GET['modal']) && $_GET['modal'] == '1';
     include 'common/htmlMeta.inc';
     require_once "common.php";
     require_once 'config.php';
-    include 'common/menuHead.inc';
+    if (!$modalMode) {
+        include 'common/menuHead.inc';
+    }
     ?>
 
     <title><? echo $pageTitle; ?> - Audio Routing Matrix</title>
-
-    <?php $modalMode = isset($_GET['modal']) && $_GET['modal'] == '1'; ?>
 
     <style>
         .routing-matrix-container {

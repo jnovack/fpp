@@ -1509,10 +1509,16 @@ function SetInputGroupMemberVolume()
     }
 
     // Also update the saved config for persistence
-    $targetGroup['members'][$memberIndex]['volume'] = $volumePct;
+    // If this is a mute toggle, persist the mute flag but don't overwrite the saved volume
+    $isMuteToggle = isset($body['mute']);
     foreach ($data['inputGroups'] as &$ig) {
         if (isset($ig['id']) && intval($ig['id']) === $groupId) {
-            $ig['members'][$memberIndex]['volume'] = $volumePct;
+            if ($isMuteToggle) {
+                $ig['members'][$memberIndex]['mute'] = (bool)$body['mute'];
+            } else {
+                $ig['members'][$memberIndex]['volume'] = $volumePct;
+                $ig['members'][$memberIndex]['mute'] = false;
+            }
             break;
         }
     }
@@ -2657,8 +2663,9 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
                 continue;
             }
 
-            // Per-member volume (0-100 → 0.0-1.0)
-            $volume = isset($mbr['volume']) ? floatval($mbr['volume']) / 100.0 : 1.0;
+            // Per-member volume (0-100 → 0.0-1.0), respecting mute flag
+            $isMuted = isset($mbr['mute']) && $mbr['mute'] === true;
+            $volume = $isMuted ? 0.0 : (isset($mbr['volume']) ? floatval($mbr['volume']) / 100.0 : 1.0);
 
             $conf .= "  # Loopback: $loopbackDesc\n";
             $conf .= "  { name = libpipewire-module-loopback\n";
