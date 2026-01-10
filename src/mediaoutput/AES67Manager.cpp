@@ -191,6 +191,7 @@ bool AES67Manager::ApplyConfig() {
         m_sapRecvThread.join();
     }
     StopAllPipelines();
+    ShutdownPTP();
 
     if (!FileExists(m_configPath)) {
         LogInfo(VB_MEDIAOUT, "AES67Manager: No config file, nothing to apply\n");
