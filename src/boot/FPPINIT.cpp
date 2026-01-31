@@ -1817,7 +1817,8 @@ static void setupAudio() {
         if (usePipeWireBackend) {
             audioEnv << "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp\n"
                      << "XDG_RUNTIME_DIR=/run/pipewire-fpp\n"
-                     << "PIPEWIRE_CONFIG_DIR=/etc/pipewire\n";
+                     << "PIPEWIRE_CONFIG_DIR=/etc/pipewire\n"
+                     << "PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse\n";
         }
         PutFileContents(audioEnvPath, audioEnv.str());
     } else if (FileExists(audioEnvPath)) {

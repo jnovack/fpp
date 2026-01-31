@@ -97,33 +97,15 @@ void setVolume(int vol) {
     
     if (usePipeWireBackend) {
         const bool shouldMute = (volume == 0);
-        double normalizedVolume = fvol / 100.0f;
-        if (normalizedVolume < 0.0) {
-            normalizedVolume = 0.0;
-        } else if (normalizedVolume > 1.0) {
-            normalizedVolume = 1.0;
-        }
         std::string pipewireSink = getSetting("PipeWireSinkName");
         
-        // wpctl must run as fpp user to access its PipeWire session
-        // Get fpp UID dynamically
-        FILE* fp = popen("id -u fpp 2>/dev/null", "r");
-        std::string fppUID = "500";
-        if (fp) {
-            char uidBuf[32];
-            if (fgets(uidBuf, sizeof(uidBuf), fp)) {
-                fppUID = std::string(uidBuf);
-                // Strip newline
-                fppUID.erase(fppUID.find_last_not_of("\n\r") + 1);
-            }
-            pclose(fp);
-        }
-        std::string runtimeDir = "/run/user/" + fppUID;
-        std::string paPrefix = "sudo -u fpp XDG_RUNTIME_DIR=" + runtimeDir + " ";
+        // For system-wide PipeWire, use the FPP runtime directory
+        std::string pwPrefix = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp ";
 
-        // If no sink specified, query the actual default sink name for pactl
+        FILE* fp;
+        // If no sink specified, query the default sink name for pactl
         if (pipewireSink.empty()) {
-            fp = popen((paPrefix + "pactl get-default-sink 2>/dev/null").c_str(), "r");
+            fp = popen((pwPrefix + "pactl get-default-sink 2>/dev/null").c_str(), "r");
             if (fp) {
                 char sinkBuf[256];
                 if (fgets(sinkBuf, sizeof(sinkBuf), fp)) {
@@ -146,28 +128,27 @@ void setVolume(int vol) {
         }
 
         // Use pactl for smoother volume transitions (PipeWire PulseAudio compat layer)
-        // Convert to percentage for pactl (0-100%)
-        int volumePercent = (int)(normalizedVolume * 100.0);
+        // pactl uses percentage values (0-100%) which matches FPP's volume range
 
         if (isZero && !wasZero) {
             // Going to zero: mute immediately
             snprintf(buffer, sizeof(buffer),
                  "%s pactl set-sink-mute \"%s\" 1 >/dev/null 2>&1",
-                 paPrefix.c_str(), pipewireSink.c_str());
+                 pwPrefix.c_str(), pipewireSink.c_str());
             LogDebug(VB_MEDIAOUT, "Calling pactl to mute PipeWire: %s \n", buffer);
             system(buffer);
         } else if (!isZero && wasZero) {
             // Coming from zero: set volume first, then unmute
             snprintf(buffer, sizeof(buffer),
                  "%s sh -c 'pactl set-sink-volume \"%s\" %d%% && pactl set-sink-mute \"%s\" 0' >/dev/null 2>&1",
-                 paPrefix.c_str(), pipewireSink.c_str(), volumePercent, pipewireSink.c_str());
+                 pwPrefix.c_str(), pipewireSink.c_str(), vol, pipewireSink.c_str());
             LogDebug(VB_MEDIAOUT, "Calling pactl to set PipeWire volume and unmute: %s \n", buffer);
             system(buffer);
         } else if (!isZero) {
             // Volume change while playing: only adjust volume, don't touch mute
             snprintf(buffer, sizeof(buffer),
                  "%s pactl set-sink-volume \"%s\" %d%% >/dev/null 2>&1",
-                 paPrefix.c_str(), pipewireSink.c_str(), volumePercent);
+                 pwPrefix.c_str(), pipewireSink.c_str(), vol);
             LogDebug(VB_MEDIAOUT, "Calling pactl to set PipeWire volume: %s \n", buffer);
             system(buffer);
         }
