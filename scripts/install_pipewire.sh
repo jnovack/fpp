@@ -37,6 +37,7 @@ dpkg -l pipewire 2>/dev/null | grep -q '^ii' || PKGS_NEEDED="${PKGS_NEEDED} pipe
 dpkg -l pipewire-pulse 2>/dev/null | grep -q '^ii' || PKGS_NEEDED="${PKGS_NEEDED} pipewire-pulse"
 dpkg -l wireplumber 2>/dev/null | grep -q '^ii' || PKGS_NEEDED="${PKGS_NEEDED} wireplumber"
 dpkg -l pulseaudio-utils 2>/dev/null | grep -q '^ii' || PKGS_NEEDED="${PKGS_NEEDED} pulseaudio-utils"
+dpkg -l linuxptp 2>/dev/null | grep -q '^ii' || PKGS_NEEDED="${PKGS_NEEDED} linuxptp"
 
 if [ -n "${PKGS_NEEDED}" ]; then
     echo "  Installing:${PKGS_NEEDED}"

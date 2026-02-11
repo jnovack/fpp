@@ -146,8 +146,19 @@
 			]
 		},
 		"pipewireAudio": {
-			"description": "PipeWire Audio",
-			"settings": []
+			"description": "PipeWire / AES67",
+			"settings": [
+				"AES67Enabled",
+				"AES67Mode",
+				"AES67Interface",
+				"AES67MulticastIP",
+				"AES67Port",
+				"AES67Channels",
+				"AES67SessionName",
+				"AES67Latency",
+				"AES67SAPEnabled",
+				"AES67PTPEnabled"
+			]
 		},
 		"generalVideo": {
 			"description": "Video",
@@ -750,6 +761,182 @@
 				"Direct ALSA (Default)": "alsa",
 				"PipeWire (Experimental)": "pipewire"
 			},
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67Enabled": {
+			"name": "AES67Enabled",
+			"description": "Enable AES67 Audio",
+			"tip": "Enable AES67 audio-over-IP streaming via PipeWire RTP modules. AES67 allows sending and/or receiving professional-quality audio over the local network using standard multicast RTP. Requires the PipeWire audio backend to be active.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": "0",
+			"type": "checkbox",
+			"children": {
+				"1": [
+					"AES67Mode",
+					"AES67Interface",
+					"AES67MulticastIP",
+					"AES67Port",
+					"AES67Channels",
+					"AES67SessionName",
+					"AES67Latency",
+					"AES67SAPEnabled",
+					"AES67PTPEnabled"
+				]
+			},
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67Mode": {
+			"name": "AES67Mode",
+			"description": "AES67 Stream Mode",
+			"tip": "Select whether this FPP instance sends audio out over the network (Send), receives AES67 streams from other devices (Receive), or does both simultaneously.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": "send",
+			"type": "select",
+			"options": {
+				"Send (Transmit)": "send",
+				"Receive": "receive",
+				"Both (Send & Receive)": "both"
+			},
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67Interface": {
+			"name": "AES67Interface",
+			"description": "Network Interface",
+			"tip": "The network interface to use for AES67 multicast traffic. Select the wired Ethernet interface for best results. If left empty, PipeWire will use the default route.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": "",
+			"type": "select",
+			"optionsURL": "api/settings/AES67Interface/options",
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67MulticastIP": {
+			"name": "AES67MulticastIP",
+			"description": "Multicast IP Address",
+			"tip": "The multicast group IP address for AES67 RTP streams. The AES67 standard uses the 239.69.x.x range. Default is 239.69.0.1.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": "239.69.0.1",
+			"type": "text",
+			"size": 15,
+			"maxlength": 15,
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67Port": {
+			"name": "AES67Port",
+			"description": "RTP Port",
+			"tip": "The UDP port for AES67 RTP traffic. The AES67 standard default is 5004.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": 5004,
+			"type": "number",
+			"min": 1024,
+			"max": 65535,
+			"step": 1,
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67Channels": {
+			"name": "AES67Channels",
+			"description": "Audio Channels",
+			"tip": "The number of audio channels in the AES67 stream. Standard AES67 supports up to 8 channels. Most use cases require 2 (stereo).",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": 2,
+			"type": "select",
+			"options": {
+				"2 (Stereo)": 2,
+				"4": 4,
+				"6 (5.1)": 6,
+				"8 (7.1)": 8
+			},
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67SessionName": {
+			"name": "AES67SessionName",
+			"description": "Session Name",
+			"tip": "A descriptive name for this AES67 stream that will be visible to other AES67 devices on the network via SAP announcements.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": "FPP AES67",
+			"type": "text",
+			"size": 40,
+			"maxlength": 64,
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67Latency": {
+			"name": "AES67Latency",
+			"description": "Network Latency",
+			"tip": "Target network latency in milliseconds for AES67 receive streams. Lower values reduce delay but may cause dropouts on congested networks. AES67 specifies a minimum of 1ms, typical values are 1-20ms.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": 10,
+			"type": "number",
+			"min": 1,
+			"max": 100,
+			"step": 1,
+			"suffix": "ms",
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67SAPEnabled": {
+			"name": "AES67SAPEnabled",
+			"description": "Enable SAP Discovery",
+			"tip": "Enable SAP (Session Announcement Protocol) for automatic discovery of AES67 streams on the network. When enabled, sent streams are announced via SAP and incoming SAP announcements are used to auto-create receive streams.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": "1",
+			"type": "checkbox",
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"AES67PTPEnabled": {
+			"name": "AES67PTPEnabled",
+			"description": "Enable PTP Clock Sync",
+			"tip": "Enable IEEE 1588 Precision Time Protocol (PTP) clock synchronization. AES67 requires PTP for sample-accurate synchronization between devices. This starts ptp4l on the selected network interface.",
+			"gatherStats": true,
+			"level": 1,
+			"restart": 0,
+			"reboot": 1,
+			"default": "1",
+			"type": "checkbox",
 			"platforms": [
 				"!MacOS"
 			]

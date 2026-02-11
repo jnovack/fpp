@@ -398,6 +398,23 @@ function GetOptions_GPIOS($list)
     return json($ret);
 }
 
+/////////////////////////////////////////////////////////////////////////////
+function GetOptions_AES67Interface()
+{
+    $interfaces = array();
+    $interfaces['(Default)'] = '';
+    exec("ip -o link show | awk -F': ' '{print \$2}' | grep -v lo", $output, $return_val);
+    if (!$return_val && !empty($output)) {
+        foreach ($output as $iface) {
+            $iface = trim($iface);
+            if (!empty($iface)) {
+                $interfaces[$iface] = $iface;
+            }
+        }
+    }
+    return json($interfaces);
+}
+
 /**
  * Get a setting's options
  *
@@ -445,6 +462,8 @@ function GetOptions()
             return GetOptions_GPIOS(false);
         case 'GPIOLIST':
             return GetOptions_GPIOS(true);
+        case 'AES67Interface':
+            return GetOptions_AES67Interface();
     }
 
     return json("{}");
