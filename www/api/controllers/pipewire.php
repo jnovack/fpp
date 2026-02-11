@@ -239,6 +239,30 @@ function GetPipeWireAudioCards()
     global $SUDO;
 
     $cards = array();
+
+    // Query running PipeWire sinks to map to actual node names
+    $pwSinkNames = array(); // substring -> full node name
+    $pwEnv = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
+    exec($SUDO . " " . $pwEnv . " pactl list sinks short 2>/dev/null", $sinkLines);
+    if (!empty($sinkLines)) {
+        foreach ($sinkLines as $sl) {
+            $sp = preg_split('/\s+/', trim($sl));
+            if (count($sp) >= 2) {
+                $sName = $sp[1];
+                // Index by identifiable substrings: e.g. alsa_output.usb-Creative_...
+                // Extract the middle portion after "alsa_output."
+                if (preg_match('/^alsa_output\.(.+?)\.[^.]+$/', $sName, $sm)) {
+                    $pwSinkNames[$sm[1]] = $sName;
+                }
+                // Also index by full name for fpp_card patterns
+                if (preg_match('/alsa_output\.(fpp_card\d+)/', $sName, $sm)) {
+                    $pwSinkNames[$sm[1]] = $sName;
+                }
+            }
+        }
+    }
+    unset($sinkLines);
+
     exec($SUDO . " aplay -l 2>/dev/null | grep '^card'", $output, $return_val);
 
     // Build by-path and by-id lookup tables for stable hardware identifiers
@@ -318,6 +342,24 @@ function GetPipeWireAudioCards()
                     $byPath = isset($byPathMap[$controlKey]) ? $byPathMap[$controlKey] : '';
                     $byId = isset($byIdMap[$controlKey]) ? $byIdMap[$controlKey] : '';
 
+                    // Resolve actual PipeWire sink node name
+                    $pwNodeName = '';
+                    if ($byId && isset($pwSinkNames[$byId])) {
+                        $pwNodeName = $pwSinkNames[$byId];
+                    } elseif ($byPath) {
+                        // Strip trailing -audio if present for matching
+                        $byPathBase = preg_replace('/-audio$/', '', $byPath);
+                        if (isset($pwSinkNames[$byPathBase])) {
+                            $pwNodeName = $pwSinkNames[$byPathBase];
+                        } elseif (isset($pwSinkNames[$byPath])) {
+                            $pwNodeName = $pwSinkNames[$byPath];
+                        }
+                    }
+                    // Fallback: try fpp_card pattern
+                    if (empty($pwNodeName) && isset($pwSinkNames['fpp_card' . $cardNum])) {
+                        $pwNodeName = $pwSinkNames['fpp_card' . $cardNum];
+                    }
+
                     $cards[] = array(
                         "cardNum" => intval($cardNum),
                         "cardId" => $cardId,
@@ -328,7 +370,8 @@ function GetPipeWireAudioCards()
                         "mixerControls" => $channelInfo,
                         "alsaPath" => "hw:" . $cardNum,
                         "byPath" => $byPath,
-                        "byId" => $byId
+                        "byId" => $byId,
+                        "pwNodeName" => $pwNodeName
                     );
                 }
             }
@@ -364,6 +407,81 @@ function SetPipeWireGroupVolume()
 
     if ($return_val) {
         return json(array("status" => "ERROR", "message" => "Failed to set volume", "output" => implode("\n", $output)));
+    }
+
+    return json(array("status" => "OK"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/eq/update
+// Real-time EQ parameter update via pw-cli set-param
+// Adjusts running filter-chain biquad controls without restarting PipeWire
+function UpdatePipeWireEQRealtime()
+{
+    global $SUDO;
+
+    $data = json_decode(file_get_contents('php://input'), true);
+    $groupId = isset($data['groupId']) ? intval($data['groupId']) : 0;
+    $cardId = isset($data['cardId']) ? $data['cardId'] : '';
+    $bands = isset($data['bands']) ? $data['bands'] : array();
+    $channels = isset($data['channels']) ? intval($data['channels']) : 2;
+
+    if (empty($cardId) || empty($bands)) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Missing cardId or bands"));
+    }
+
+    $eqNodeName = "fpp_eq_g" . $groupId . "_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
+
+    // Find the filter-chain capture node by name
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $pwOutput = array();
+    exec($SUDO . " " . $env . " pw-cli list-objects Node 2>/dev/null", $pwOutput);
+
+    $nodeId = null;
+    $currentId = null;
+    foreach ($pwOutput as $line) {
+        if (preg_match('/^\s+id (\d+),/', $line, $m)) {
+            $currentId = $m[1];
+        }
+        if (preg_match('/node\.name\s*=\s*"(.+?)"/', $line, $m)) {
+            if ($m[1] === $eqNodeName) {
+                $nodeId = $currentId;
+                break;
+            }
+        }
+    }
+
+    if ($nodeId === null) {
+        // Filter-chain not running — needs Apply first
+        return json(array("status" => "NOT_RUNNING", "message" => "EQ filter not active — Save & Apply first"));
+    }
+
+    // Build named control key-value pairs for pw-cli set-param.
+    // Filter-chain exposes params as: "eq_<ch>_<band>:Freq", "eq_<ch>_<band>:Q", "eq_<ch>_<band>:Gain"
+    $channelLabels = array("l", "r", "c", "lfe", "rl", "rr", "sl", "sr");
+    $numCh = min($channels, count($channelLabels));
+
+    $paramPairs = array();
+    for ($ch = 0; $ch < $numCh; $ch++) {
+        $chLabel = $channelLabels[$ch];
+        foreach ($bands as $bi => $band) {
+            $prefix = "eq_{$chLabel}_{$bi}";
+            $freq = floatval(isset($band['freq']) ? $band['freq'] : 1000);
+            $q = floatval(isset($band['q']) ? $band['q'] : 1.0);
+            $gain = floatval(isset($band['gain']) ? $band['gain'] : 0);
+            $paramPairs[] = "\"$prefix:Freq\" $freq";
+            $paramPairs[] = "\"$prefix:Q\" $q";
+            $paramPairs[] = "\"$prefix:Gain\" $gain";
+        }
+    }
+
+    $paramStr = implode(' ', $paramPairs);
+    $cmd = $SUDO . " " . $env . " pw-cli set-param " . intval($nodeId) . " Props '{ params = [ $paramStr ] }' 2>&1";
+    exec($cmd, $output, $ret);
+
+    if ($ret) {
+        return json(array("status" => "ERROR", "message" => "pw-cli set-param failed", "output" => implode("\n", $output)));
     }
 
     return json(array("status" => "OK"));
@@ -518,9 +636,126 @@ function GeneratePipeWireGroupsConfig($groups)
         $conf .= "# These cards will be skipped from combine groups.\n\n";
     }
 
-    // Create combine-stream modules for each group
+    // Create modules array: filter-chain EQ modules first, then combine-stream
     $conf .= "context.modules = [\n";
 
+    // ---------------------------------------------------------------
+    // Phase 1: Generate filter-chain modules for members with EQ
+    // These must load before combine-stream so their virtual sinks
+    // exist when combine-stream scans for matching nodes.
+    // ---------------------------------------------------------------
+    $eqNodeMap = array();  // "groupId_cardId" -> EQ virtual sink node name
+    $channelLabels = array("l", "r", "c", "lfe", "rl", "rr", "sl", "sr");
+
+    foreach ($groups as $group) {
+        if (!isset($group['enabled']) || !$group['enabled'])
+            continue;
+        if (!isset($group['members']) || empty($group['members']))
+            continue;
+
+        $groupId = isset($group['id']) ? intval($group['id']) : 0;
+
+        foreach ($group['members'] as $member) {
+            $cardId = isset($member['cardId']) ? $member['cardId'] : '';
+            if (empty($cardId) || !isset($cardNodeMap[$cardId]))
+                continue;
+
+            // Check if EQ is enabled with bands
+            if (!isset($member['eq']['enabled']) || !$member['eq']['enabled'])
+                continue;
+            if (!isset($member['eq']['bands']) || empty($member['eq']['bands']))
+                continue;
+
+            $bands = $member['eq']['bands'];
+            $memberChannels = isset($member['channels']) ? intval($member['channels']) : 2;
+            $numCh = min($memberChannels, count($channelLabels));
+            $positions = isset($channelPositionArrays[$memberChannels]) ? $channelPositionArrays[$memberChannels] : $channelPositionArrays[2];
+            $posStr = "[ " . implode(" ", $positions) . " ]";
+
+            $realNodeName = $cardNodeMap[$cardId];
+            $eqNodeName = "fpp_eq_g" . $groupId . "_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
+            $eqOutName = $eqNodeName . "_out";
+            $eqKey = $groupId . "_" . $cardId;
+
+            $conf .= "  # EQ filter chain for: " . (isset($member['cardName']) ? $member['cardName'] : $cardId) . " (Group $groupId)\n";
+            $conf .= "  { name = libpipewire-module-filter-chain\n";
+            $conf .= "    args = {\n";
+            $conf .= "      node.description = \"EQ: " . (isset($member['cardName']) ? $member['cardName'] : $cardId) . "\"\n";
+            $conf .= "      filter.graph = {\n";
+            $conf .= "        nodes = [\n";
+
+            // Create biquad nodes for each channel x each band
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                foreach ($bands as $bi => $band) {
+                    $type = isset($band['type']) ? $band['type'] : 'bq_peaking';
+                    $freq = floatval(isset($band['freq']) ? $band['freq'] : 1000);
+                    $gain = floatval(isset($band['gain']) ? $band['gain'] : 0);
+                    $q = floatval(isset($band['q']) ? $band['q'] : 1.0);
+                    $conf .= "          { type = builtin label = $type name = eq_{$chLabel}_{$bi} control = { \"Freq\" = $freq \"Q\" = $q \"Gain\" = $gain } }\n";
+                }
+            }
+
+            $conf .= "        ]\n";
+
+            // Links: chain bands in series for each channel
+            $conf .= "        links = [\n";
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                for ($bi = 1; $bi < count($bands); $bi++) {
+                    $prevBi = $bi - 1;
+                    $conf .= "          { output = \"eq_{$chLabel}_{$prevBi}:Out\" input = \"eq_{$chLabel}_{$bi}:In\" }\n";
+                }
+            }
+            $conf .= "        ]\n";
+
+            // Inputs: first band of each channel
+            $conf .= "        inputs = [";
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                $conf .= " \"eq_{$chLabel}_0:In\"";
+            }
+            $conf .= " ]\n";
+
+            // Outputs: last band of each channel
+            $lastBi = count($bands) - 1;
+            $conf .= "        outputs = [";
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                $conf .= " \"eq_{$chLabel}_{$lastBi}:Out\"";
+            }
+            $conf .= " ]\n";
+
+            $conf .= "      }\n"; // filter.graph
+
+            // Capture props (virtual sink that combine-stream will match)
+            $conf .= "      capture.props = {\n";
+            $conf .= "        node.name = \"$eqNodeName\"\n";
+            $conf .= "        media.class = Audio/Sink\n";
+            $conf .= "        audio.channels = $numCh\n";
+            $conf .= "        audio.position = $posStr\n";
+            $conf .= "      }\n";
+
+            // Playback props (output to real sink)
+            $conf .= "      playback.props = {\n";
+            $conf .= "        node.name = \"$eqOutName\"\n";
+            $conf .= "        node.passive = true\n";
+            $conf .= "        node.target = \"$realNodeName\"\n";
+            $conf .= "        stream.dont-remix = true\n";
+            $conf .= "        audio.channels = $numCh\n";
+            $conf .= "        audio.position = $posStr\n";
+            $conf .= "      }\n";
+
+            $conf .= "    }\n"; // args
+            $conf .= "  }\n";
+
+            $eqNodeMap[$eqKey] = $eqNodeName;
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Phase 2: Generate combine-stream modules for each group
+    // ---------------------------------------------------------------
     foreach ($groups as $group) {
         if (!isset($group['enabled']) || !$group['enabled'])
             continue;
@@ -532,6 +767,7 @@ function GeneratePipeWireGroupsConfig($groups)
         $groupChannels = isset($group['channels']) ? intval($group['channels']) : 2;
         $groupPos = isset($channelPositions[$groupChannels]) ? $channelPositions[$groupChannels] : "[ FL FR ]";
         $latencyCompensate = (isset($group['latencyCompensate']) && $group['latencyCompensate']) ? "true" : "false";
+        $groupId = isset($group['id']) ? intval($group['id']) : 0;
 
         // Check if this group has at least one resolvable member
         $hasMembers = false;
@@ -563,7 +799,14 @@ function GeneratePipeWireGroupsConfig($groups)
             $cardId = isset($member['cardId']) ? $member['cardId'] : '';
             if (empty($cardId) || !isset($cardNodeMap[$cardId]))
                 continue;
-            $memberNodeName = $cardNodeMap[$cardId];
+
+            // Use EQ virtual sink if filter-chain was generated for this member
+            $eqKey = $groupId . "_" . $cardId;
+            if (isset($eqNodeMap[$eqKey])) {
+                $memberNodeName = $eqNodeMap[$eqKey];
+            } else {
+                $memberNodeName = $cardNodeMap[$cardId];
+            }
 
             // Channel mapping for this member within the group
             $memberChannels = isset($member['channels']) ? intval($member['channels']) : 2;

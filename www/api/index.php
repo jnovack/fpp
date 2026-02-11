@@ -109,6 +109,7 @@ dispatch_post('/pipewire/audio/groups/apply', 'ApplyPipeWireAudioGroups');
 dispatch_get('/pipewire/audio/sinks', 'GetPipeWireSinks');
 dispatch_get('/pipewire/audio/cards', 'GetPipeWireAudioCards');
 dispatch_post('/pipewire/audio/group/volume', 'SetPipeWireGroupVolume');
+dispatch_post('/pipewire/audio/eq/update', 'UpdatePipeWireEQRealtime');
 
 dispatch_get('/playlists', 'playlist_list');
 dispatch_post('/playlists', 'playlist_insert');
