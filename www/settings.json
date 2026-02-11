@@ -125,12 +125,7 @@
 			"settings": [
 				"AudioOutput",
 				"AudioBackend",
-				"AudioMixerDevice",
-				"AudioFormat",
 				"AudioLayout",
-				"AudioBufferSize",
-				"AudioPeriodSize",
-				"ForceAudioId",
 				"WLEDAudioInput",
 				"WLEDAudioSyncMode",
 				"WLEDAudioSyncDest",
@@ -139,6 +134,20 @@
 				"disableAudioVolumeSlider",
 				"globalMediaOffset"
 			]
+		},
+		"alsaHardwareAudio": {
+			"description": "ALSA / Hardware Audio",
+			"settings": [
+				"AudioMixerDevice",
+				"AudioFormat",
+				"AudioBufferSize",
+				"AudioPeriodSize",
+				"ForceAudioId"
+			]
+		},
+		"pipewireAudio": {
+			"description": "PipeWire Audio",
+			"settings": []
 		},
 		"generalVideo": {
 			"description": "Video",

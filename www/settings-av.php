@@ -44,5 +44,7 @@ if (!isset($settings['AudioMixerDevice'])) {
 
 <?
 PrintSettingGroup('generalAudio');
+PrintSettingGroup('alsaHardwareAudio');
+PrintSettingGroup('pipewireAudio');
 PrintSettingGroup('generalVideo');
 ?>
