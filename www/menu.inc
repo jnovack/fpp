@@ -341,6 +341,11 @@ function list_plugin_entries($menu)
                                 ?>
                                 <a class="dropdown-item" href="multisync.php"><i class="fas fa-cogs"></i> MultiSync</a>
                                 <a class="dropdown-item" href="settings.php"><i class="fas fa-cog"></i> FPP Settings</a>
+                                <?
+                                if (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') {
+                                    echo "<a class='dropdown-item' href='pipewire-audio.php'><i class='fas fa-layer-group'></i> PipeWire Audio Groups</a>";
+                                }
+                                ?>
                                 <a class="dropdown-item" href="backup.php"><i class="fas fa-sim-card"></i> FPP
                                     Backup</a>
                                 <a class="dropdown-item" href="proxies.php"><i class="fas fa-globe"></i> Proxy

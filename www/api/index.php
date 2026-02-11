@@ -103,6 +103,13 @@ dispatch_get('/network/wifi/strength', 'network_wifi_strength');
 
 dispatch_get('/options/:SettingName', 'GetOptions');
 
+dispatch_get('/pipewire/audio/groups', 'GetPipeWireAudioGroups');
+dispatch_post('/pipewire/audio/groups', 'SavePipeWireAudioGroups');
+dispatch_post('/pipewire/audio/groups/apply', 'ApplyPipeWireAudioGroups');
+dispatch_get('/pipewire/audio/sinks', 'GetPipeWireSinks');
+dispatch_get('/pipewire/audio/cards', 'GetPipeWireAudioCards');
+dispatch_post('/pipewire/audio/group/volume', 'SetPipeWireGroupVolume');
+
 dispatch_get('/playlists', 'playlist_list');
 dispatch_post('/playlists', 'playlist_insert');
 dispatch_get('/playlists/playable', 'playlist_playable');
