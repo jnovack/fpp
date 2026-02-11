@@ -608,6 +608,14 @@ bool SDL::initSDL() {
         if (!currentDriver || toLowerCopy(currentDriver) != desiredDriver) {
             setenv("SDL_AUDIODRIVER", desiredDriver.c_str(), 1);
         }
+        
+        // For PipeWire backend, set required environment variables for PulseAudio compatibility
+        if (backend == "pipewire") {
+            setenv("PIPEWIRE_RUNTIME_DIR", "/run/pipewire-fpp", 1);
+            setenv("XDG_RUNTIME_DIR", "/run/pipewire-fpp", 1);
+            setenv("PULSE_RUNTIME_PATH", "/run/pipewire-fpp/pulse", 1);
+        }
+        
         if (SDL_Init(SDL_INIT_AUDIO)) {
             LogErr(VB_MEDIAOUT, "Could not initialize SDL - %s\n", SDL_GetError());
             return false;

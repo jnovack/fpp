@@ -1765,8 +1765,10 @@ install_fpp_services() {
 
     mkdir -p /etc/pipewire /etc/pipewire/pipewire.conf.d
     cp -a /opt/fpp/etc/pipewire/pipewire.conf.d/. /etc/pipewire/pipewire.conf.d/
-    mkdir -p /etc/wireplumber/main.lua.d
-    cp -a /opt/fpp/etc/wireplumber/main.lua.d/. /etc/wireplumber/main.lua.d/
+    mkdir -p /etc/wireplumber/wireplumber.conf.d
+    cp -a /opt/fpp/etc/wireplumber/wireplumber.conf.d/. /etc/wireplumber/wireplumber.conf.d/
+    # Clean up old WirePlumber 0.4 Lua configs if present
+    rm -rf /etc/wireplumber/main.lua.d
     if [ ! -f /etc/pipewire/pipewire.conf ] && [ -f /usr/share/pipewire/pipewire.conf ]; then
         cp /usr/share/pipewire/pipewire.conf /etc/pipewire/pipewire.conf
     fi
