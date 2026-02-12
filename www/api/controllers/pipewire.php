@@ -671,7 +671,7 @@ function UpdatePipeWireEQRealtime()
 // Helper: Generate PipeWire combine-stream config from groups
 function GeneratePipeWireGroupsConfig($groups)
 {
-    global $SUDO;
+    global $SUDO, $settings;
 
     $channelPositions = array(
         1 => "[ MONO ]",
