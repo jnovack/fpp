@@ -46,5 +46,46 @@ if (!isset($settings['AudioMixerDevice'])) {
 PrintSettingGroup('generalAudio');
 PrintSettingGroup('alsaHardwareAudio');
 PrintSettingGroup('pipewireAudio');
+
+// PipeWire Audio Groups button — only shown when PipeWire backend is active
+if (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') {
+    ?>
+    <div class="callout callout-info"
+        style="margin-top:0.5rem; padding:0.75rem 1rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
+        <div>
+            <i class="fas fa-layer-group"></i>
+            <b>Audio Output Groups</b> &mdash; Combine multiple sound cards into virtual sinks with per-card EQ and channel
+            mapping.
+        </div>
+        <button class="btn btn-success btn-sm" onclick="OpenPipeWireAudioGroups()">
+            <i class="fas fa-sliders-h"></i> Configure Audio Groups
+        </button>
+    </div>
+
+    <script>
+        function OpenPipeWireAudioGroups() {
+            DoModalDialog({
+                id: 'pipewireAudioGroupsDlg',
+                title: '<i class="fas fa-layer-group"></i> PipeWire Audio Output Groups',
+                body: '<iframe src="pipewire-audio.php?modal=1" style="width:100%;height:100%;border:none;"></iframe>',
+                open: function () {
+                    var dlg = $('#pipewireAudioGroupsDlg');
+                    dlg.find('.modal-dialog').addClass('modal-fullscreen');
+                    dlg.find('.modal-content').css({ 'background': '#fff', 'color': '#212529' });
+                    dlg.find('.modal-body').css({ 'padding': '0', 'overflow': 'hidden' });
+                    dlg.find('.modal-header').css({ 'background': '#fff', 'color': '#212529' });
+                },
+                buttons: {
+                    Close: function () {
+                        bootstrap.Modal.getInstance(document.getElementById('pipewireAudioGroupsDlg')).hide();
+                    }
+
+                }
+            });
+        }
+    </script>
+    <?
+}
+
 PrintSettingGroup('generalVideo');
 ?>

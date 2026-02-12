@@ -9,7 +9,9 @@
     include 'common/menuHead.inc';
     ?>
 
-    <title><? echo $pageTitle; ?> - PipeWire Audio Groups</title>
+    <title><? echo $pageTitle; ?> - PipeWire Audio Output Groups</title>
+
+    <?php $modalMode = isset($_GET['modal']) && $_GET['modal'] == '1'; ?>
 
     <style>
         .group-card {
@@ -41,7 +43,7 @@
             background: transparent;
             padding: 0.25rem 0.5rem;
             border-radius: 4px;
-            min-width: 250px;
+            min-width: 300px;
         }
 
         .group-header .group-name-input:focus {
@@ -286,18 +288,50 @@
             font-size: 0.8rem;
             padding: 0.15rem 0.3rem;
         }
+
+        /* Help icon sizing inside compact areas */
+        .eq-band-header .icon-help,
+        .member-table th .icon-help {
+            width: 18px;
+            height: 18px;
+            padding-left: 2px;
+            vertical-align: middle;
+            cursor: help;
+        }
+
+        .group-settings .icon-help {
+            width: 22px;
+            height: 22px;
+            vertical-align: middle;
+            cursor: help;
+        }
+
+        <?php if ($modalMode) { ?>
+            /* Ensure dialogs inside the iframe appear above the parent modal */
+            .modal {
+                z-index: 99999 !important;
+            }
+
+            .modal-backdrop {
+                z-index: 99998 !important;
+            }
+
+        <?php } ?>
     </style>
 </head>
 
-<body>
-    <div id="bodyWrapper">
-        <?php
-        $activeParentMenuItem = 'status';
-        include 'menu.inc';
-        ?>
-        <div class="mainContainer">
-            <h1 class="title">PipeWire Audio Groups</h1>
-            <div class="pageContent">
+<body<?php if ($modalMode)
+    echo ' style="margin:0;padding:1rem;background:#fff;color:#212529;"'; ?>>
+    <?php if (!$modalMode) { ?>
+        <div id="bodyWrapper">
+            <?php
+            $activeParentMenuItem = 'status';
+            include 'menu.inc';
+            ?>
+            <div class="mainContainer">
+                <h1 class="title">PipeWire Audio Output Groups</h1>
+                <div class="pageContent">
+                <?php } ?>
 
                 <?php
                 $audioBackend = isset($settings['AudioBackend']) ? $settings['AudioBackend'] : 'alsa';
@@ -359,11 +393,29 @@
 
                 <?php } ?>
 
+                <?php if (!$modalMode) { ?>
+                </div>
+            </div>
+
+            <?php include 'common/footer.inc'; ?>
+        </div>
+    <?php } else { ?>
+        <!-- Modal dialog base template needed by DialogOK/DialogError -->
+        <div class="modal fade" id="modalDialogBase" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false"
+            aria-labelledby="modalDialogLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content" style="background:#fff;color:#212529;">
+                    <div class="modal-header">
+                        <h3 class="modal-title fs-5" id="modalDialogLabel"></h3>
+                        <button id="modalCloseButton" type="button" class="btn-close" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body"></div>
+                    <div class="modal-footer"></div>
+                </div>
             </div>
         </div>
-
-        <?php include 'common/footer.inc'; ?>
-    </div>
+    <?php } ?>
 
     <script>
         // Available ALSA cards cache
@@ -372,6 +424,22 @@
         var audioGroups = { groups: [] };
         // Next group ID counter
         var nextGroupId = 1;
+
+        // Help icon tooltip builder
+        function HelpIcon(text) {
+            return ' <img src="images/redesign/help-icon.svg" class="icon-help" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="auto" title="' + EscapeAttr(text) + '">';
+        }
+
+        function InitTooltips() {
+            // Dispose old tooltips then re-init
+            $('[data-bs-toggle="tooltip"]').each(function () {
+                var existing = bootstrap.Tooltip.getInstance(this);
+                if (existing) existing.dispose();
+            });
+            $('[data-bs-toggle="tooltip"]').each(function () {
+                new bootstrap.Tooltip(this);
+            });
+        }
 
         // PipeWire channel positions
         var CHANNEL_POSITIONS = {
@@ -507,6 +575,8 @@
                     }
                 }
             }
+
+            InitTooltips();
         }
 
         /////////////////////////////////////////////////////////////////////////////
@@ -533,7 +603,7 @@
             // Group settings
             html += '<div class="group-settings">';
             html += '<div>';
-            html += '<label>Group Channels:</label>';
+            html += '<label># of Channels Group Accepts:' + HelpIcon('Total number of audio channels this group\'s virtual combine-sink will accept. Sources playing to this group must match this channel count. Common layouts: 2ch (Stereo), 6ch (5.1 Surround), 8ch (7.1 Surround).') + '</label>';
             html += '<select class="form-select form-select-sm" style="display:inline-block;width:auto;" onchange="UpdateGroupChannels(' + index + ', parseInt(this.value))">';
             var channelOptions = [2, 4, 6, 8];
             for (var c = 0; c < channelOptions.length; c++) {
@@ -544,12 +614,12 @@
             html += '</div>';
 
             html += '<div>';
-            html += '<label><input type="checkbox" class="form-check-input" onchange="UpdateGroupLatency(' + index + ', this.checked)"' + latencyChecked + '> Latency Compensation</label>';
+            html += '<label><input type="checkbox" class="form-check-input" onchange="UpdateGroupLatency(' + index + ', this.checked)"' + latencyChecked + '> Latency Compensation' + HelpIcon('When enabled, PipeWire measures the latency of each member sound card and delays the faster ones so all outputs play in sync. Recommended when combining cards with different hardware (e.g. USB + HDMI) to avoid audible timing drift between outputs.') + '</label>';
             html += '</div>';
 
             // Volume control for the group sink
             html += '<div class="volume-slider-container">';
-            html += '<label><i class="fas fa-volume-up"></i></label>';
+            html += '<label><i class="fas fa-volume-up"></i>' + HelpIcon('Master volume for the entire group combine-sink. This scales the mixed output sent to all member sound cards. Adjusts in real-time without needing to re-apply.') + '</label>';
             html += '<input type="range" class="form-range" min="0" max="100" value="' + (group.volume || 100) + '" oninput="UpdateGroupVolumeDisplay(this); ScheduleGroupVolume(' + index + ', this.value)">';
             html += '<span class="volume-value">' + (group.volume || 100) + '%</span>';
             html += '</div>';
@@ -560,10 +630,10 @@
             html += '<table class="member-table">';
             html += '<thead><tr>';
             html += '<th style="width:30px">#</th>';
-            html += '<th>Sound Card</th>';
-            html += '<th>Card Channels</th>';
-            html += '<th>Channel Mapping</th>';
-            html += '<th>Volume</th>';
+            html += '<th>Sound Card' + HelpIcon('The physical ALSA sound card to include in this group. Each card receives a copy of the group audio according to its channel mapping.') + '</th>';
+            html += '<th>Card Channels' + HelpIcon('Number of channels the physical card will receive. Set this to match the card\'s actual capability (e.g. 2 for stereo, 8 for 7.1).') + '</th>';
+            html += '<th>Channel Mapping' + HelpIcon('Maps each of this card\'s channels to a position in the group\'s channel layout. For example, you can route the group\'s Front-Left to this card\'s Front-Left, or remap surround channels to stereo outputs.') + '</th>';
+            html += '<th>Volume' + HelpIcon('Per-card volume. Adjusts this member\'s output level independently from the group master volume. Useful for balancing levels between different sound cards. Adjusts in real-time.') + '</th>';
             html += '<th style="width:60px"></th>';
             html += '</tr></thead>';
             html += '<tbody id="members-' + group.id + '">';
@@ -723,7 +793,7 @@
             html += '<label class="form-check-label">';
             html += '<input type="checkbox" class="form-check-input"' + enabledChecked;
             html += ' onchange="ToggleEQ(' + groupIndex + ',' + memberIndex + ',this.checked)">';
-            html += ' Parametric EQ</label>';
+            html += ' Parametric EQ' + HelpIcon('Enables a per-card parametric equalizer using PipeWire filter-chain biquad filters. When enabled, audio passes through the EQ processing before reaching this sound card. Add bands to shape the frequency response. Changes apply in real-time once the group config has been applied at least once.') + '</label>';
             html += '</div>';
             html += '<div>';
             html += '<button class="btn btn-sm btn-outline-success" onclick="AddEQBand(' + groupIndex + ',' + memberIndex + ')" title="Add Band">';
@@ -735,10 +805,10 @@
             if (eq.bands && eq.bands.length > 0) {
                 html += '<div class="eq-band-header">';
                 html += '<span class="eq-col-num">#</span>';
-                html += '<span class="eq-col-type">Type</span>';
-                html += '<span class="eq-col-freq">Freq (Hz)</span>';
-                html += '<span class="eq-col-gain">Gain (dB)</span>';
-                html += '<span class="eq-col-q">Q</span>';
+                html += '<span class="eq-col-type">Type' + HelpIcon('Filter type for this EQ band:<br><b>Peaking</b> &ndash; boost/cut around a center frequency<br><b>Low Shelf</b> &ndash; boost/cut everything below a frequency<br><b>High Shelf</b> &ndash; boost/cut everything above<br><b>Low/High Pass</b> &ndash; remove frequencies beyond the cutoff<br><b>Notch</b> &ndash; narrow cut at a specific frequency<br><b>Bandpass</b> &ndash; pass only a narrow band<br><b>Allpass</b> &ndash; phase shift without gain change') + '</span>';
+                html += '<span class="eq-col-freq">Freq (Hz)' + HelpIcon('Center or cutoff frequency for this band, in Hertz (20–20,000). For peaking filters this is the center of the boost/cut. For shelves it is the transition frequency.') + '</span>';
+                html += '<span class="eq-col-gain">Gain (dB)' + HelpIcon('Amount of boost (positive) or cut (negative) in decibels. Range: -24 dB to +24 dB. Has no effect on Low Pass, High Pass, Notch, Bandpass, or Allpass filter types.') + '</span>';
+                html += '<span class="eq-col-q">Q' + HelpIcon('Quality factor controlling the bandwidth of the filter. Higher Q = narrower bandwidth. Typical values: 0.5–2.0 for broad shaping, 5–30 for surgical cuts. For shelves, lower Q gives a gentler slope.') + '</span>';
                 html += '<span class="eq-col-action"></span>';
                 html += '</div>';
                 for (var b = 0; b < eq.bands.length; b++) {
@@ -893,6 +963,7 @@
             var member = audioGroups.groups[groupIndex].members[memberIndex];
             var content = BuildEQPanel(groupIndex, memberIndex, member);
             $('#eq-panel-content-' + groupIndex + '-' + memberIndex).html(content);
+            InitTooltips();
         }
 
         /////////////////////////////////////////////////////////////////////////////
@@ -1206,6 +1277,6 @@
             return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
     </script>
-</body>
+    </body>
 
 </html>
