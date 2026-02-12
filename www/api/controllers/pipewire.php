@@ -1412,7 +1412,8 @@ function SetupPTP($iface, $confPath)
         . "[global]\n"
         . "domainNumber 0\n"
         . "logging_level 6\n"
-        . "slaveOnly 1\n"
+        . "priority1 128\n"
+        . "priority2 128\n"
         . "clock_servo linreg\n"
         . "network_transport UDPv4\n"
         . "time_stamping hardware\n";
@@ -1423,8 +1424,13 @@ function SetupPTP($iface, $confPath)
     exec($SUDO . " chmod 644 " . escapeshellarg($confPath));
     unlink($tmpFile);
 
+    // Kill any existing ptp4l processes cleanly
+    exec($SUDO . " /usr/bin/killall -9 ptp4l 2>/dev/null");
+    sleep(1);
+
     // Try hardware timestamping first; fall back to software
-    exec($SUDO . " /usr/sbin/ptp4l -i " . escapeshellarg($iface) . " -f " . escapeshellarg($confPath) . " -m -q --step_threshold=1 2>&1 & sleep 2 && kill %1 2>/dev/null; wait 2>/dev/null", $testOutput);
+    $testOutput = array();
+    exec($SUDO . " timeout 3 /usr/sbin/ptp4l -i " . escapeshellarg($iface) . " -f " . escapeshellarg($confPath) . " -m -q --step_threshold=1 2>&1", $testOutput);
     $testResult = implode("\n", $testOutput);
     if (strpos($testResult, 'ioctl PTP_CLOCK_GETCAPS') !== false || strpos($testResult, 'no such device') !== false) {
         $ptpConf = str_replace('time_stamping hardware', 'time_stamping software', $ptpConf);
@@ -1435,8 +1441,10 @@ function SetupPTP($iface, $confPath)
         unlink($tmpFile);
     }
 
-    exec("/usr/bin/killall ptp4l 2>/dev/null");
-    exec($SUDO . " /usr/sbin/ptp4l -i " . escapeshellarg($iface) . " -f " . escapeshellarg($confPath) . " -m > /var/log/ptp4l-fpp.log 2>&1 &");
+    // Launch the permanent ptp4l daemon
+    exec($SUDO . " /usr/bin/killall -9 ptp4l 2>/dev/null");
+    sleep(1);
+    exec($SUDO . " bash -c 'nohup /usr/sbin/ptp4l -i " . escapeshellarg($iface) . " -f " . escapeshellarg($confPath) . " -m > /var/log/ptp4l-fpp.log 2>&1 &'");
 }
 
 /////////////////////////////////////////////////////////////////////////////
