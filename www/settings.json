@@ -145,21 +145,6 @@
 				"ForceAudioId"
 			]
 		},
-		"pipewireAudio": {
-			"description": "PipeWire / AES67",
-			"settings": [
-				"AES67Enabled",
-				"AES67Mode",
-				"AES67Interface",
-				"AES67MulticastIP",
-				"AES67Port",
-				"AES67Channels",
-				"AES67SessionName",
-				"AES67Latency",
-				"AES67SAPEnabled",
-				"AES67PTPEnabled"
-			]
-		},
 		"generalVideo": {
 			"description": "Video",
 			"settings": [

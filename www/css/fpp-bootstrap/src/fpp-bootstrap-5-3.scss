@@ -458,18 +458,31 @@ input[type='checkbox'][disabled='']:checked {
 	font-size: inherit;
 }
 .jGrowl-notification {
-	opacity: 1;
+	// Override Bootstrap .alert transparent background/border that conflicts with jGrowl
+	background-color: #000;
+	border: 1px solid #000;
+	color: #fff;
+	opacity: 0.9;
+	border-radius: 5px;
+	&.ui-state-highlight {
+		background-color: #000;
+		border-color: #000;
+		color: #fff;
+	}
 	&.ui-state-success {
 		background-color: $success;
+		border-color: $success;
 		color: #fff;
 	}
 	&.ui-state-danger,
 	&.ui-state-error {
 		background-color: $danger;
+		border-color: $danger;
 		color: #fff;
 	}
 	&.ui-state-detract {
 		background-color: $detract;
+		border-color: $detract;
 		color: #fff;
 	}
 }
@@ -477,6 +490,7 @@ input[type='checkbox'][disabled='']:checked {
 	background-color: $gray-300;
 	color: $black;
 	opacity: 1;
+	border-radius: 5px;
 }
 
 .skeleton-loader div {

@@ -1,12 +1,18 @@
 <?php
 /////////////////////////////////////////////////////////////////////////////
-// PipeWire Audio Groups API Controller
+// PipeWire Audio Groups & AES67 API Controller
 //
 // Manages audio output groups — collections of sound cards/channels that
 // form combined PipeWire sinks. Each group becomes a combine-stream module
 // instance with its own virtual sink node.
 //
-// Config file: $mediaDirectory/config/pipewire-audio-groups.json
+// Also manages multi-instance AES67 (audio-over-IP) configurations.
+// Each AES67 instance becomes a PipeWire rtp-sink or rtp-source node
+// that can be used standalone or as a member of an audio group.
+//
+// Config files:
+//   $mediaDirectory/config/pipewire-audio-groups.json
+//   $mediaDirectory/config/pipewire-aes67-instances.json
 /////////////////////////////////////////////////////////////////////////////
 
 require_once '../commandsocket.php';
@@ -236,7 +242,7 @@ function ResolveCardIdToNumber($cardId)
 // instead of card numbers which can change between reboots.
 function GetPipeWireAudioCards()
 {
-    global $SUDO;
+    global $SUDO, $settings;
 
     $cards = array();
 
@@ -374,6 +380,58 @@ function GetPipeWireAudioCards()
                         "pwNodeName" => $pwNodeName
                     );
                 }
+            }
+        }
+    }
+
+    // --- Also include AES67 virtual sinks as selectable cards ---
+    $aes67File = $settings['mediaDirectory'] . "/config/pipewire-aes67-instances.json";
+    if (file_exists($aes67File)) {
+        $aes67Data = json_decode(file_get_contents($aes67File), true);
+        if ($aes67Data && isset($aes67Data['instances']) && is_array($aes67Data['instances'])) {
+            foreach ($aes67Data['instances'] as $inst) {
+                if (!isset($inst['enabled']) || !$inst['enabled'])
+                    continue;
+                $mode = isset($inst['mode']) ? $inst['mode'] : 'send';
+                // Only sinks (send mode) can be used as group members
+                if ($mode !== 'send' && $mode !== 'both')
+                    continue;
+
+                $nodeSafeName = 'aes67_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($inst['name']));
+                $sinkNodeName = $nodeSafeName . '_send';
+                $instChannels = isset($inst['channels']) ? intval($inst['channels']) : 2;
+
+                // Try to find actual PipeWire node name from running sinks
+                $pwNodeName = '';
+                if (!empty($sinkLines)) {
+                    // sinkLines may have been unset, so re-query
+                }
+                // Search the running sinks for this node
+                $sinkSearch = array();
+                exec($SUDO . " " . $pwEnv . " pactl list sinks short 2>/dev/null | grep " . escapeshellarg($sinkNodeName), $sinkSearch);
+                if (!empty($sinkSearch)) {
+                    $sp = preg_split('/\s+/', trim($sinkSearch[0]));
+                    if (count($sp) >= 2)
+                        $pwNodeName = $sp[1];
+                }
+
+                $cards[] = array(
+                    "cardNum" => -1,
+                    "cardId" => 'aes67_' . $inst['id'],
+                    "cardName" => $inst['name'] . ' (AES67 Send)',
+                    "device" => 0,
+                    "deviceName" => "AES67 RTP Sink",
+                    "channels" => $instChannels,
+                    "mixerControls" => array(),
+                    "alsaPath" => "",
+                    "byPath" => "",
+                    "byId" => "",
+                    "pwNodeName" => !empty($pwNodeName) ? $pwNodeName : $sinkNodeName,
+                    "isAES67" => true,
+                    "aes67InstanceId" => $inst['id'],
+                    "multicastIP" => isset($inst['multicastIP']) ? $inst['multicastIP'] : '',
+                    "port" => isset($inst['port']) ? $inst['port'] : 5004
+                );
             }
         }
     }
@@ -561,6 +619,35 @@ function GeneratePipeWireGroupsConfig($groups)
             $cardId = isset($member['cardId']) ? $member['cardId'] : '';
             if (empty($cardId) || isset($cardNodeMap[$cardId]))
                 continue;
+
+            // AES67 virtual sinks: cardId starts with "aes67_"
+            if (strpos($cardId, 'aes67_') === 0) {
+                // Look up the instance from the AES67 config to get node name
+                $aes67File = $settings['mediaDirectory'] . "/config/pipewire-aes67-instances.json";
+                if (file_exists($aes67File)) {
+                    $aes67Json = json_decode(file_get_contents($aes67File), true);
+                    if ($aes67Json && isset($aes67Json['instances'])) {
+                        $aes67InstId = intval(str_replace('aes67_', '', $cardId));
+                        foreach ($aes67Json['instances'] as $ai) {
+                            if (isset($ai['id']) && intval($ai['id']) === $aes67InstId && isset($ai['enabled']) && $ai['enabled']) {
+                                $aesNodeName = 'aes67_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ai['name'])) . '_send';
+                                // Check if running in PipeWire; if so use the running name
+                                if (isset($existingSinks[$aesNodeName])) {
+                                    $cardNodeMap[$cardId] = $aesNodeName;
+                                } else {
+                                    // May not be running yet but will be after apply
+                                    $cardNodeMap[$cardId] = $aesNodeName;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!isset($cardNodeMap[$cardId])) {
+                    $unresolvedCards[] = $cardId . " (AES67 instance not found or disabled)";
+                }
+                continue;
+            }
 
             $cardNum = ResolveCardIdToNumber($cardId);
             if ($cardNum < 0) {
@@ -843,4 +930,402 @@ function GeneratePipeWireGroupsConfig($groups)
     $conf .= "]\n";
 
     return $conf;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//  AES67 MULTI-INSTANCE API
+/////////////////////////////////////////////////////////////////////////////
+
+// GET /api/pipewire/aes67/instances
+function GetAES67Instances()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-aes67-instances.json";
+    if (file_exists($configFile)) {
+        $data = json_decode(file_get_contents($configFile), true);
+        if ($data !== null) {
+            return json($data);
+        }
+    }
+    return json(array("instances" => array(), "ptpEnabled" => true, "ptpInterface" => ""));
+}
+
+// POST /api/pipewire/aes67/instances
+function SaveAES67Instances()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-aes67-instances.json";
+
+    $data = file_get_contents('php://input');
+    $parsed = json_decode($data, true);
+    if ($parsed === null) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Invalid JSON"));
+    }
+    // Validate structure
+    if (!isset($parsed['instances']) || !is_array($parsed['instances'])) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Missing instances array"));
+    }
+    // Validate each instance
+    $nextId = 1;
+    foreach ($parsed['instances'] as &$inst) {
+        if (!isset($inst['id'])) {
+            $inst['id'] = $nextId;
+        }
+        if ($inst['id'] >= $nextId)
+            $nextId = $inst['id'] + 1;
+        if (empty($inst['name']))
+            $inst['name'] = 'AES67 Instance ' . $inst['id'];
+        if (empty($inst['mode']))
+            $inst['mode'] = 'send';
+        if (empty($inst['multicastIP']))
+            $inst['multicastIP'] = '239.69.0.' . $inst['id'];
+        if (empty($inst['port']))
+            $inst['port'] = 5004;
+        if (empty($inst['channels']))
+            $inst['channels'] = 2;
+        if (empty($inst['sessionName']))
+            $inst['sessionName'] = $inst['name'];
+        if (!isset($inst['latency']))
+            $inst['latency'] = 10;
+        if (!isset($inst['sapEnabled']))
+            $inst['sapEnabled'] = true;
+        if (!isset($inst['enabled']))
+            $inst['enabled'] = true;
+    }
+    unset($inst);
+
+    file_put_contents($configFile, json_encode($parsed, JSON_PRETTY_PRINT));
+    return json(array("status" => "OK"));
+}
+
+// POST /api/pipewire/aes67/apply
+function ApplyAES67Instances()
+{
+    global $settings, $SUDO;
+
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-aes67-instances.json";
+    $rtpConfPath = "/etc/pipewire/pipewire.conf.d/96-fpp-aes67-rtp.conf";
+    $sapConfPath = "/etc/pipewire/pipewire.conf.d/96-fpp-aes67-sap.conf";
+    $ptp4lConfPath = "/etc/ptp4l-fpp.conf";
+
+    exec($SUDO . " /bin/mkdir -p /etc/pipewire/pipewire.conf.d");
+
+    if (!file_exists($configFile)) {
+        // Clean up
+        foreach (array($rtpConfPath, $sapConfPath) as $f) {
+            if (file_exists($f))
+                exec($SUDO . " rm -f " . escapeshellarg($f));
+        }
+        RestartPipeWire();
+        return json(array("status" => "OK", "message" => "No AES67 instances configured"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    if ($data === null || !isset($data['instances']) || empty($data['instances'])) {
+        foreach (array($rtpConfPath, $sapConfPath) as $f) {
+            if (file_exists($f))
+                exec($SUDO . " rm -f " . escapeshellarg($f));
+        }
+        exec("/usr/bin/killall ptp4l 2>/dev/null");
+        RestartPipeWire();
+        return json(array("status" => "OK", "message" => "AES67 instances cleared"));
+    }
+
+    $ptpEnabled = isset($data['ptpEnabled']) ? $data['ptpEnabled'] : true;
+    $ptpInterface = isset($data['ptpInterface']) ? $data['ptpInterface'] : '';
+
+    // Generate RTP module config for all enabled instances
+    $conf = GenerateAES67Config($data['instances']);
+
+    // Generate SAP config if any instance has SAP enabled
+    $sapConf = GenerateAES67SAPConfig($data['instances'], isset($data['ptpInterface']) ? $data['ptpInterface'] : '');
+
+    // Write RTP config
+    $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_aes67_');
+    file_put_contents($tmpFile, $conf);
+    exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($rtpConfPath));
+    exec($SUDO . " chmod 644 " . escapeshellarg($rtpConfPath));
+    unlink($tmpFile);
+
+    // Write or remove SAP config
+    if (!empty($sapConf)) {
+        $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_sap_');
+        file_put_contents($tmpFile, $sapConf);
+        exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($sapConfPath));
+        exec($SUDO . " chmod 644 " . escapeshellarg($sapConfPath));
+        unlink($tmpFile);
+    } else {
+        if (file_exists($sapConfPath))
+            exec($SUDO . " rm -f " . escapeshellarg($sapConfPath));
+    }
+
+    // PTP clock sync
+    if ($ptpEnabled) {
+        $ptpIface = empty($ptpInterface) ? 'eth0' : $ptpInterface;
+        SetupPTP($ptpIface, $ptp4lConfPath);
+    } else {
+        exec("/usr/bin/killall ptp4l 2>/dev/null");
+        if (file_exists($ptp4lConfPath))
+            exec($SUDO . " rm -f " . escapeshellarg($ptp4lConfPath));
+    }
+
+    // Restart PipeWire
+    RestartPipeWire();
+
+    return json(array(
+        "status" => "OK",
+        "message" => "AES67 instances applied, PipeWire restarted",
+        "restartRequired" => true
+    ));
+}
+
+// GET /api/pipewire/aes67/status
+function GetAES67Status()
+{
+    global $SUDO;
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
+
+    $sinks = array();
+    $sources = array();
+
+    exec($SUDO . " " . $env . " pactl list sinks short 2>/dev/null", $sinkOut);
+    if (!empty($sinkOut)) {
+        foreach ($sinkOut as $line) {
+            $parts = preg_split('/\s+/', trim($line));
+            if (count($parts) >= 2 && strpos($parts[1], 'aes67_') === 0) {
+                $sinks[] = $parts[1];
+            }
+        }
+    }
+
+    exec($SUDO . " " . $env . " pactl list sources short 2>/dev/null", $srcOut);
+    if (!empty($srcOut)) {
+        foreach ($srcOut as $line) {
+            $parts = preg_split('/\s+/', trim($line));
+            if (count($parts) >= 2 && strpos($parts[1], 'aes67_') === 0) {
+                $sources[] = $parts[1];
+            }
+        }
+    }
+
+    // PTP status
+    $ptpRunning = false;
+    exec("pgrep ptp4l 2>/dev/null", $ptpProc);
+    $ptpRunning = !empty($ptpProc);
+
+    return json(array(
+        "sinks" => $sinks,
+        "sources" => $sources,
+        "ptpRunning" => $ptpRunning
+    ));
+}
+
+// GET /api/pipewire/aes67/interfaces
+function GetAES67NetworkInterfaces()
+{
+    $interfaces = array();
+    exec("ip -o link show | awk -F': ' '{print \$2}' | grep -v lo", $output);
+    if (!empty($output)) {
+        foreach ($output as $iface) {
+            $iface = trim($iface);
+            if (!empty($iface))
+                $interfaces[] = $iface;
+        }
+    }
+    return json($interfaces);
+}
+
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Generate PipeWire RTP module config from AES67 instances
+function GenerateAES67Config($instances)
+{
+    $channelPositions = array(
+        1 => '[ MONO ]',
+        2 => '[ FL FR ]',
+        4 => '[ FL FR RL RR ]',
+        6 => '[ FL FR FC LFE RL RR ]',
+        8 => '[ FL FR FC LFE RL RR SL SR ]'
+    );
+
+    $conf = "# Auto-generated by FPP – AES67 multi-instance RTP configuration\n";
+    $conf .= "context.modules = [\n";
+
+    foreach ($instances as $inst) {
+        if (!isset($inst['enabled']) || !$inst['enabled'])
+            continue;
+
+        $nodeSafeName = 'aes67_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($inst['name']));
+        $mode = isset($inst['mode']) ? $inst['mode'] : 'send';
+        $ip = isset($inst['multicastIP']) ? $inst['multicastIP'] : '239.69.0.1';
+        $port = isset($inst['port']) ? intval($inst['port']) : 5004;
+        $channels = isset($inst['channels']) ? intval($inst['channels']) : 2;
+        $sessionName = isset($inst['sessionName']) ? $inst['sessionName'] : $inst['name'];
+        $latency = isset($inst['latency']) ? intval($inst['latency']) : 10;
+        $iface = isset($inst['interface']) ? $inst['interface'] : '';
+        $audioPos = isset($channelPositions[$channels]) ? $channelPositions[$channels] : '[ FL FR ]';
+
+        $wantSend = ($mode === 'send' || $mode === 'both');
+        $wantRecv = ($mode === 'receive' || $mode === 'both');
+
+        if ($wantSend) {
+            $conf .= "  { name = libpipewire-module-rtp-sink\n";
+            $conf .= "    args = {\n";
+            if (!empty($iface)) {
+                $conf .= "      local.ifname = \"$iface\"\n";
+            }
+            $conf .= "      destination.ip = \"$ip\"\n";
+            $conf .= "      destination.port = $port\n";
+            $conf .= "      net.ttl = 4\n";
+            $conf .= "      sess.name = \"$sessionName\"\n";
+            $conf .= "      sess.min-ptime = 1\n";
+            $conf .= "      sess.max-ptime = 4\n";
+            $conf .= "      audio.format = \"S24BE\"\n";
+            $conf .= "      audio.rate = 48000\n";
+            $conf .= "      audio.channels = $channels\n";
+            $conf .= "      audio.position = $audioPos\n";
+            $conf .= "      stream.props = {\n";
+            $conf .= "        node.name = \"{$nodeSafeName}_send\"\n";
+            $conf .= "        node.description = \"" . addcslashes($sessionName, '"') . " (Send)\"\n";
+            $conf .= "        media.class = \"Audio/Sink\"\n";
+            $conf .= "        sess.sap.announce = true\n";
+            $conf .= "      }\n";
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+        }
+
+        if ($wantRecv) {
+            $conf .= "  { name = libpipewire-module-rtp-source\n";
+            $conf .= "    args = {\n";
+            if (!empty($iface)) {
+                $conf .= "      local.ifname = \"$iface\"\n";
+            }
+            $conf .= "      source.ip = \"$ip\"\n";
+            $conf .= "      source.port = $port\n";
+            $conf .= "      sess.latency.msec = $latency\n";
+            $conf .= "      audio.format = \"S24BE\"\n";
+            $conf .= "      audio.rate = 48000\n";
+            $conf .= "      audio.channels = $channels\n";
+            $conf .= "      audio.position = $audioPos\n";
+            $conf .= "      stream.props = {\n";
+            $conf .= "        node.name = \"{$nodeSafeName}_recv\"\n";
+            $conf .= "        node.description = \"" . addcslashes($sessionName, '"') . " (Receive)\"\n";
+            $conf .= "        media.class = \"Audio/Source\"\n";
+            $conf .= "      }\n";
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+        }
+    }
+
+    $conf .= "]\n";
+    return $conf;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Generate SAP module config for AES67 instances
+function GenerateAES67SAPConfig($instances, $defaultIface)
+{
+    $anySAP = false;
+    $latency = 10;
+    $iface = $defaultIface;
+
+    foreach ($instances as $inst) {
+        if (!isset($inst['enabled']) || !$inst['enabled'])
+            continue;
+        if (isset($inst['sapEnabled']) && $inst['sapEnabled']) {
+            $anySAP = true;
+            if (isset($inst['latency']))
+                $latency = intval($inst['latency']);
+            if (!empty($inst['interface']))
+                $iface = $inst['interface'];
+        }
+    }
+
+    if (!$anySAP)
+        return '';
+
+    $conf = "# Auto-generated by FPP – AES67 SAP configuration\n";
+    $conf .= "context.modules = [\n";
+    $conf .= "  { name = libpipewire-module-rtp-sap\n";
+    $conf .= "    args = {\n";
+    if (!empty($iface)) {
+        $conf .= "      local.ifname = \"$iface\"\n";
+    }
+    $conf .= "      sap.ip = \"224.2.127.254\"\n";
+    $conf .= "      sap.port = 9875\n";
+    $conf .= "      net.ttl = 4\n";
+    $conf .= "      stream.rules = [\n";
+    $conf .= "        { matches = [\n";
+    $conf .= "            { sess.sap.announce = true }\n";
+    $conf .= "          ]\n";
+    $conf .= "          actions = {\n";
+    $conf .= "            announce-stream = {}\n";
+    $conf .= "          }\n";
+    $conf .= "        }\n";
+    $conf .= "        { matches = [\n";
+    $conf .= "            { rtp.session = \"~.*\" }\n";
+    $conf .= "          ]\n";
+    $conf .= "          actions = {\n";
+    $conf .= "            create-stream = {\n";
+    $conf .= "              sess.latency.msec = $latency\n";
+    $conf .= "            }\n";
+    $conf .= "          }\n";
+    $conf .= "        }\n";
+    $conf .= "      ]\n";
+    $conf .= "    }\n";
+    $conf .= "  }\n";
+    $conf .= "]\n";
+    return $conf;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Set up PTP clock sync
+function SetupPTP($iface, $confPath)
+{
+    global $SUDO;
+
+    $ptpConf = "# Auto-generated by FPP – PTP config for AES67\n"
+        . "[global]\n"
+        . "domainNumber 0\n"
+        . "logging_level 6\n"
+        . "slaveOnly 1\n"
+        . "clock_servo linreg\n"
+        . "network_transport UDPv4\n"
+        . "time_stamping hardware\n";
+
+    $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_ptp_');
+    file_put_contents($tmpFile, $ptpConf);
+    exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($confPath));
+    exec($SUDO . " chmod 644 " . escapeshellarg($confPath));
+    unlink($tmpFile);
+
+    // Try hardware timestamping first; fall back to software
+    exec($SUDO . " /usr/sbin/ptp4l -i " . escapeshellarg($iface) . " -f " . escapeshellarg($confPath) . " -m -q --step_threshold=1 2>&1 & sleep 2 && kill %1 2>/dev/null; wait 2>/dev/null", $testOutput);
+    $testResult = implode("\n", $testOutput);
+    if (strpos($testResult, 'ioctl PTP_CLOCK_GETCAPS') !== false || strpos($testResult, 'no such device') !== false) {
+        $ptpConf = str_replace('time_stamping hardware', 'time_stamping software', $ptpConf);
+        $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_ptp_');
+        file_put_contents($tmpFile, $ptpConf);
+        exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($confPath));
+        exec($SUDO . " chmod 644 " . escapeshellarg($confPath));
+        unlink($tmpFile);
+    }
+
+    exec("/usr/bin/killall ptp4l 2>/dev/null");
+    exec($SUDO . " /usr/sbin/ptp4l -i " . escapeshellarg($iface) . " -f " . escapeshellarg($confPath) . " -m > /var/log/ptp4l-fpp.log 2>&1 &");
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Restart PipeWire services
+function RestartPipeWire()
+{
+    global $SUDO;
+    exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
+    sleep(1);
+    exec($SUDO . " /usr/bin/systemctl restart fpp-wireplumber.service 2>&1");
+    sleep(1);
+    exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire-pulse.service 2>&1");
+    sleep(1);
 }

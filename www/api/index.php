@@ -111,6 +111,12 @@ dispatch_get('/pipewire/audio/cards', 'GetPipeWireAudioCards');
 dispatch_post('/pipewire/audio/group/volume', 'SetPipeWireGroupVolume');
 dispatch_post('/pipewire/audio/eq/update', 'UpdatePipeWireEQRealtime');
 
+dispatch_get('/pipewire/aes67/instances', 'GetAES67Instances');
+dispatch_post('/pipewire/aes67/instances', 'SaveAES67Instances');
+dispatch_post('/pipewire/aes67/apply', 'ApplyAES67Instances');
+dispatch_get('/pipewire/aes67/status', 'GetAES67Status');
+dispatch_get('/pipewire/aes67/interfaces', 'GetAES67NetworkInterfaces');
+
 dispatch_get('/playlists', 'playlist_list');
 dispatch_post('/playlists', 'playlist_insert');
 dispatch_get('/playlists/playable', 'playlist_playable');

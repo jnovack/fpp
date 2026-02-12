@@ -719,12 +719,34 @@
             html += 'onchange="UpdateMemberCard(' + groupIndex + ',' + memberIndex + ', this.value)">';
             html += '<option value="">-- Select Card --</option>';
 
+            var hasAlsa = false, hasAES67 = false;
+            for (var i = 0; i < availableCards.length; i++) {
+                if (availableCards[i].isAES67) hasAES67 = true;
+                else hasAlsa = true;
+            }
+
+            if (hasAlsa && hasAES67) html += '<optgroup label="Physical Sound Cards">';
             for (var i = 0; i < availableCards.length; i++) {
                 var card = availableCards[i];
+                if (card.isAES67) continue;
                 var sel = (card.cardId === selectedCardId) ? ' selected' : '';
                 var label = EscapeHtml(card.cardName) + ' [' + EscapeHtml(card.cardId) + ']';
                 if (card.byPath) label += ' (' + EscapeHtml(card.byPath) + ')';
                 html += '<option value="' + EscapeAttr(card.cardId) + '"' + sel + '>' + label + '</option>';
+            }
+            if (hasAlsa && hasAES67) html += '</optgroup>';
+
+            if (hasAES67) {
+                html += '<optgroup label="AES67 Network Sinks">';
+                for (var i = 0; i < availableCards.length; i++) {
+                    var card = availableCards[i];
+                    if (!card.isAES67) continue;
+                    var sel = (card.cardId === selectedCardId) ? ' selected' : '';
+                    var label = '\u{1F310} ' + EscapeHtml(card.cardName);
+                    if (card.multicastIP) label += ' (' + EscapeHtml(card.multicastIP) + ':' + card.port + ')';
+                    html += '<option value="' + EscapeAttr(card.cardId) + '"' + sel + '>' + label + '</option>';
+                }
+                html += '</optgroup>';
             }
 
             html += '</select>';
