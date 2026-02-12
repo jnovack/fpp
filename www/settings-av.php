@@ -38,83 +38,123 @@ if (!isset($settings['AudioMixerDevice'])) {
 
 ?>
 
-<script>
-</script>
-
-
 <?
 PrintSettingGroup('generalAudio');
-PrintSettingGroup('alsaHardwareAudio');
 
-// PipeWire Audio Groups button — only shown when PipeWire backend is active
-if (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') {
-    ?>
-    <div class="callout callout-info"
-        style="margin-top:0.5rem; padding:0.75rem 1rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
-        <div>
-            <i class="fas fa-layer-group"></i>
-            <b>Audio Output Groups</b> &mdash; Combine multiple sound cards into virtual sinks with per-card EQ and channel
-            mapping.
-        </div>
-        <button class="btn btn-success btn-sm" onclick="OpenPipeWireAudioGroups()">
-            <i class="fas fa-sliders-h"></i> Configure Audio Groups
-        </button>
-    </div>
+// PipeWire section — always rendered, visibility controlled dynamically by AudioBackend
+{
+    $cardsJson = @file_get_contents('http://127.0.0.1/api/pipewire/audio/cards');
+    $pwCards = $cardsJson ? json_decode($cardsJson, true) : array();
+    $currentSink = isset($settings['PipeWireSinkName']) ? $settings['PipeWireSinkName'] : '';
 
-    <div class="callout callout-info"
-        style="margin-top:0.5rem; padding:0.75rem 1rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
-        <div>
-            <i class="fas fa-broadcast-tower"></i>
-            <b>AES67 Audio-over-IP</b> &mdash; Send and receive professional audio streams over the network. Each instance becomes a virtual sound card.
-        </div>
-        <button class="btn btn-success btn-sm" onclick="OpenAES67Config()">
-            <i class="fas fa-broadcast-tower"></i> Configure AES67 Instances
-        </button>
-    </div>
-
-    <script>
-        function OpenPipeWireAudioGroups() {
-            DoModalDialog({
-                id: 'pipewireAudioGroupsDlg',
-                title: '<i class="fas fa-layer-group"></i> PipeWire Audio Output Groups',
-                body: '<iframe src="pipewire-audio.php?modal=1" style="width:100%;height:100%;border:none;"></iframe>',
-                open: function () {
-                    var dlg = $('#pipewireAudioGroupsDlg');
-                    dlg.find('.modal-dialog').addClass('modal-fullscreen');
-                    dlg.find('.modal-content').css({ 'background': '#fff', 'color': '#212529' });
-                    dlg.find('.modal-body').css({ 'padding': '0', 'overflow': 'hidden' });
-                    dlg.find('.modal-header').css({ 'background': '#fff', 'color': '#212529' });
-                },
-                buttons: {
-                    Close: function () {
-                        bootstrap.Modal.getInstance(document.getElementById('pipewireAudioGroupsDlg')).hide();
-                    }
-                }
-            });
+    $groupsFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+    $audioGroups = array();
+    if (file_exists($groupsFile)) {
+        $gData = json_decode(file_get_contents($groupsFile), true);
+        if ($gData && isset($gData['groups'])) {
+            $audioGroups = $gData['groups'];
         }
-
-        function OpenAES67Config() {
-            DoModalDialog({
-                id: 'aes67ConfigDlg',
-                title: '<i class="fas fa-broadcast-tower"></i> AES67 Audio-over-IP Instances',
-                body: '<iframe src="aes67-config.php?modal=1" style="width:100%;height:100%;border:none;"></iframe>',
-                open: function () {
-                    var dlg = $('#aes67ConfigDlg');
-                    dlg.find('.modal-dialog').addClass('modal-fullscreen');
-                    dlg.find('.modal-content').css({ 'background': '#fff', 'color': '#212529' });
-                    dlg.find('.modal-body').css({ 'padding': '0', 'overflow': 'hidden' });
-                    dlg.find('.modal-header').css({ 'background': '#fff', 'color': '#212529' });
-                },
-                buttons: {
-                    Close: function () {
-                        bootstrap.Modal.getInstance(document.getElementById('aes67ConfigDlg')).hide();
-                    }
-                }
-            });
+    }
+    $isPipeWire = (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire');
+?>
+<div id="pipeWireSection"<?= $isPipeWire ? '' : ' style="display:none;"' ?>>
+<h2>PipeWire Audio</h2>
+<div class="container-fluid settingsTable settingsGroupTable">
+    <div class="row" id="PipeWirePrimaryOutputRow">
+        <div class="printSettingLabelCol col-md-4 col-lg-3 col-xxxl-2">
+            <div class="description">Primary Audio Output</div>
+        </div>
+        <div class="printSettingFieldCol col-md">
+            <select id="PipeWirePrimaryOutput" class="form-select form-select-sm" style="max-width:400px; display:inline-block;"
+                    onChange="PipeWirePrimaryOutputChanged();">
+                <option value="">(System Default)</option>
+<?php
+    $hasGroups = false;
+    foreach ($audioGroups as $g) {
+        if (!empty($g['members'])) {
+            if (!$hasGroups) {
+                echo '                <optgroup label="Audio Output Groups">' . "\n";
+                $hasGroups = true;
+            }
+            $nodeName = 'fpp_group_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($g['name']));
+            $sel = ($currentSink === $nodeName) ? ' selected' : '';
+            $enabledTag = (isset($g['enabled']) && $g['enabled']) ? '' : ' (disabled)';
+            echo '                <option value="' . htmlspecialchars($nodeName) . '"' . $sel . '>'
+                . htmlspecialchars($g['name']) . $enabledTag
+                . ' (' . count($g['members']) . ' card' . (count($g['members']) !== 1 ? 's' : '') . ')'
+                . '</option>' . "\n";
         }
-    </script>
-    <?
+    }
+    if ($hasGroups) echo '                </optgroup>' . "\n";
+
+    if (!empty($pwCards)) {
+        echo '                <optgroup label="Physical Sound Cards">' . "\n";
+        foreach ($pwCards as $c) {
+            if (isset($c['isAES67']) && $c['isAES67']) continue;
+            $pwNode = isset($c['pwNodeName']) && !empty($c['pwNodeName']) ? $c['pwNodeName'] : '';
+            if (empty($pwNode)) continue;
+            $sel = ($currentSink === $pwNode) ? ' selected' : '';
+            echo '                <option value="' . htmlspecialchars($pwNode) . '"' . $sel . '>'
+                . htmlspecialchars($c['cardName'])
+                . '</option>' . "\n";
+        }
+        echo '                </optgroup>' . "\n";
+    }
+?>
+            </select>
+            <? PrintToolTip('PipeWirePrimaryOutput'); ?>
+        </div>
+    </div>
+</div>
+
+<script>
+function PipeWirePrimaryOutputChanged() {
+    var value = $('#PipeWirePrimaryOutput').val();
+    SetSetting('PipeWirePrimaryOutput', value, 2, 0, false, null, function() {
+        settings['PipeWirePrimaryOutput'] = value;
+        $.ajax({
+            url: 'api/pipewire/audio/primary-output',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ sinkName: value }),
+            dataType: 'json'
+        });
+    });
 }
+</script>
 
+<?
+    PrintSettingGroup('pipeWireAudio', '', '', 1, '', '', false);
+?>
+</div>
+
+<div id="alsaHardwareAudioSection"<?= (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') ? ' style="display:none;"' : '' ?>>
+<?
+PrintSettingGroup('alsaHardwareAudio');
+?>
+</div>
+<script>
+$(document).ready(function() {
+    var origChildFn = window.UpdateAudioBackendChildren;
+    if (typeof origChildFn === 'function') {
+        window.UpdateAudioBackendChildren = function(mode) {
+            origChildFn(mode);
+            var val = $('#AudioBackend').val();
+            if (val === 'pipewire') {
+                $('#pipeWireSection').show();
+                $('#alsaHardwareAudioSection').hide();
+            } else {
+                $('#pipeWireSection').hide();
+                $('#alsaHardwareAudioSection').show();
+            }
+        };
+    }
+});
+</script>
+<?
+}
+?>
+
+<?
 PrintSettingGroup('generalVideo');
 ?>

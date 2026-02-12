@@ -647,6 +647,49 @@ function PrintSetting($setting, $callback = '', $options = array(), $plugin = ''
 
                 PrintSettingTextSaved($setting, $restart, $reboot, $max, $min, $plugin, $default, $callback, '', 'number', $s);
                 break;
+            case 'modal':
+                // Renders a button that opens a fullscreen modal dialog with an iframe
+                // settings.json properties:
+                //   modalUrl      - URL to load in the modal iframe (required)
+                //   icon          - FontAwesome icon class (e.g. "fas fa-layer-group")
+                //   buttonText    - Text for the button (defaults to description)
+                //   buttonClass   - Bootstrap button class (defaults to "btn-success")
+                //   modalTitle    - Title for the modal dialog (defaults to description)
+                //   modalId       - HTML id for the modal (defaults to setting name + "Dlg")
+                $modalUrl = isset($s['modalUrl']) ? $s['modalUrl'] : '';
+                $icon = isset($s['icon']) ? $s['icon'] : '';
+                $buttonText = isset($s['buttonText']) ? $s['buttonText'] : $s['description'];
+                $buttonClass = isset($s['buttonClass']) ? $s['buttonClass'] : 'btn-success';
+                $modalTitle = isset($s['modalTitle']) ? $s['modalTitle'] : $s['description'];
+                $modalId = isset($s['modalId']) ? $s['modalId'] : $setting . 'Dlg';
+                $iconHtml = $icon ? "<i class='" . htmlspecialchars($icon) . "'></i> " : '';
+
+                echo "<button class='btn " . htmlspecialchars($buttonClass) . " btn-sm' onclick='OpenSettingModal_" . $setting . "()'>";
+                echo $iconHtml . htmlspecialchars($buttonText);
+                echo "</button>";
+
+                echo "<script>\n";
+                echo "function OpenSettingModal_" . $setting . "() {\n";
+                echo "    DoModalDialog({\n";
+                echo "        id: '" . $modalId . "',\n";
+                echo "        title: '" . addslashes($iconHtml . $modalTitle) . "',\n";
+                echo "        body: '<iframe src=\"" . addslashes($modalUrl) . "\" style=\"width:100%;height:100%;border:none;\"></iframe>',\n";
+                echo "        open: function () {\n";
+                echo "            var dlg = $('#" . $modalId . "');\n";
+                echo "            dlg.find('.modal-dialog').addClass('modal-fullscreen');\n";
+                echo "            dlg.find('.modal-content').css({ 'background': '#fff', 'color': '#212529' });\n";
+                echo "            dlg.find('.modal-body').css({ 'padding': '0', 'overflow': 'hidden' });\n";
+                echo "            dlg.find('.modal-header').css({ 'background': '#fff', 'color': '#212529' });\n";
+                echo "        },\n";
+                echo "        buttons: {\n";
+                echo "            Close: function () {\n";
+                echo "                bootstrap.Modal.getInstance(document.getElementById('" . $modalId . "')).hide();\n";
+                echo "            }\n";
+                echo "        }\n";
+                echo "    });\n";
+                echo "}\n";
+                echo "</script>\n";
+                break;
             default:
                 printf("FIXME, handle %s setting type for %s\n", $s['type'], $setting);
                 break;

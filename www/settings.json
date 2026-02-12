@@ -123,8 +123,9 @@
 		"generalAudio": {
 			"description": "Audio",
 			"settings": [
-				"AudioOutput",
 				"AudioBackend",
+				"AudioFormat",
+				"AudioPeriodSize",
 				"AudioLayout",
 				"WLEDAudioInput",
 				"WLEDAudioSyncMode",
@@ -136,13 +137,19 @@
 			]
 		},
 		"alsaHardwareAudio": {
-			"description": "ALSA / Hardware Audio",
+			"description": "ALSA Hardware Audio",
 			"settings": [
+				"AudioOutput",
 				"AudioMixerDevice",
-				"AudioFormat",
 				"AudioBufferSize",
-				"AudioPeriodSize",
 				"ForceAudioId"
+			]
+		},
+		"pipeWireAudio": {
+			"description": "PipeWire Audio",
+			"settings": [
+				"PipeWireAudioGroups",
+				"PipeWireAES67Config"
 			]
 		},
 		"generalVideo": {
@@ -746,6 +753,58 @@
 				"Direct ALSA (Default)": "alsa",
 				"PipeWire (Experimental)": "pipewire"
 			},
+			"children": {
+				"pipewire": [
+					"PipeWirePrimaryOutput",
+					"PipeWireAudioGroups",
+					"PipeWireAES67Config"
+				],
+				"alsa": [
+					"AudioOutput",
+					"AudioMixerDevice",
+					"AudioBufferSize",
+					"ForceAudioId"
+				]
+			},
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"PipeWirePrimaryOutput": {
+			"name": "PipeWirePrimaryOutput",
+			"description": "Primary Audio Output",
+			"tip": "Select where FPP sends its audio output when using PipeWire. Choose an Audio Output Group to route audio to multiple sound cards simultaneously, or select an individual card for direct output.",
+			"restart": 2,
+			"default": "",
+			"type": "select",
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"PipeWireAudioGroups": {
+			"name": "PipeWireAudioGroups",
+			"description": "Audio Output Groups",
+			"tip": "Combine multiple sound cards into virtual sinks with per-card EQ and channel mapping.",
+			"type": "modal",
+			"modalUrl": "pipewire-audio.php?modal=1",
+			"icon": "fas fa-layer-group",
+			"buttonText": "Configure Audio Groups",
+			"buttonClass": "btn-success",
+			"modalTitle": "PipeWire Audio Output Groups",
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"PipeWireAES67Config": {
+			"name": "PipeWireAES67Config",
+			"description": "AES67 Audio-over-IP",
+			"tip": "Send and receive professional audio streams over the network. Each instance becomes a virtual sound card.",
+			"type": "modal",
+			"modalUrl": "aes67-config.php?modal=1",
+			"icon": "fas fa-broadcast-tower",
+			"buttonText": "Configure AES67 Instances",
+			"buttonClass": "btn-success",
+			"modalTitle": "AES67 Audio-over-IP Instances",
 			"platforms": [
 				"!MacOS"
 			]

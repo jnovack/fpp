@@ -269,6 +269,55 @@ function GetPipeWireAudioCards()
     }
     unset($sinkLines);
 
+    // Build a map of PipeWire card identifier -> best output profile name
+    // This lets us derive expected sink names for cards without active sinks
+    // Card name: alsa_card.{identifier}  ->  Sink name: alsa_output.{identifier}.{profile}
+    $pwCardProfiles = array(); // identifier -> profile name (e.g. "hdmi-stereo", "analog-stereo")
+    $cardOutput = array();
+    exec($SUDO . " " . $pwEnv . " pactl list cards 2>/dev/null", $cardOutput);
+    $currentCardId = '';
+    $currentProfiles = array();
+    $currentCardBusPath = '';
+    foreach ($cardOutput as $cline) {
+        if (preg_match('/^\s+Name:\s+alsa_card\.(.+)/', $cline, $cm)) {
+            // Save previous card's profiles
+            if ($currentCardId !== '' && !empty($currentProfiles)) {
+                $pwCardProfiles[$currentCardId] = $currentProfiles;
+            }
+            $currentCardId = trim($cm[1]);
+            $currentProfiles = array();
+            $currentCardBusPath = '';
+        }
+        // Track bus path for type detection
+        if (preg_match('/device\.bus_path\s*=\s*"(.+)"/', $cline, $bm)) {
+            $currentCardBusPath = trim($bm[1]);
+        }
+        // Collect output profiles: "output:hdmi-stereo: Digital Stereo (HDMI) Output (sinks: 1, ...)"
+        if (preg_match('/^\s+output:([^\s:]+).*\(sinks:\s*(\d+)/', $cline, $pm)) {
+            if (intval($pm[2]) > 0) {
+                $currentProfiles[] = $pm[1];
+            }
+        }
+        // If card has pro-audio but no output: profiles (e.g. disconnected HDMI),
+        // infer a profile from the bus path / card identifier
+        if (preg_match('/^\s+Active Profile:\s+(.+)/', $cline, $am)) {
+            if (empty($currentProfiles) && !empty($currentCardId)) {
+                // HDMI cards: bus path contains ".hdmi" -> would be hdmi-stereo when connected
+                if (preg_match('/\.hdmi$/', $currentCardId) || preg_match('/\.hdmi$/', $currentCardBusPath)) {
+                    $currentProfiles[] = 'hdmi-stereo';
+                }
+                // USB/analog cards would typically be analog-stereo
+                elseif (preg_match('/^usb-/', $currentCardId)) {
+                    $currentProfiles[] = 'analog-stereo';
+                }
+            }
+        }
+    }
+    if ($currentCardId !== '' && !empty($currentProfiles)) {
+        $pwCardProfiles[$currentCardId] = $currentProfiles;
+    }
+    unset($cardOutput);
+
     exec($SUDO . " aplay -l 2>/dev/null | grep '^card'", $output, $return_val);
 
     // Build by-path and by-id lookup tables for stable hardware identifiers
@@ -350,20 +399,36 @@ function GetPipeWireAudioCards()
 
                     // Resolve actual PipeWire sink node name
                     $pwNodeName = '';
+                    // Determine the PipeWire card identifier for this ALSA card
+                    $pwCardIdentifier = '';
                     if ($byId && isset($pwSinkNames[$byId])) {
                         $pwNodeName = $pwSinkNames[$byId];
+                        $pwCardIdentifier = $byId;
                     } elseif ($byPath) {
                         // Strip trailing -audio if present for matching
                         $byPathBase = preg_replace('/-audio$/', '', $byPath);
                         if (isset($pwSinkNames[$byPathBase])) {
                             $pwNodeName = $pwSinkNames[$byPathBase];
+                            $pwCardIdentifier = $byPathBase;
                         } elseif (isset($pwSinkNames[$byPath])) {
                             $pwNodeName = $pwSinkNames[$byPath];
+                            $pwCardIdentifier = $byPath;
+                        } else {
+                            $pwCardIdentifier = $byPathBase;
                         }
                     }
                     // Fallback: try fpp_card pattern
                     if (empty($pwNodeName) && isset($pwSinkNames['fpp_card' . $cardNum])) {
                         $pwNodeName = $pwSinkNames['fpp_card' . $cardNum];
+                    }
+                    // If still no active sink, derive the expected sink name from PipeWire card profiles
+                    // Card: alsa_card.{id} -> Sink: alsa_output.{id}.{profile}
+                    if (empty($pwNodeName) && !empty($pwCardIdentifier) && isset($pwCardProfiles[$pwCardIdentifier])) {
+                        $profiles = $pwCardProfiles[$pwCardIdentifier];
+                        // Pick the first available output profile
+                        if (!empty($profiles)) {
+                            $pwNodeName = 'alsa_output.' . $pwCardIdentifier . '.' . $profiles[0];
+                        }
                     }
 
                     $cards[] = array(
@@ -437,6 +502,63 @@ function GetPipeWireAudioCards()
     }
 
     return json($cards);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/primary-output
+// Set the primary audio output sink for FPP (replaces ForceAudioId UI)
+function SetPipeWirePrimaryOutput()
+{
+    global $SUDO, $settings;
+
+    $data = json_decode(file_get_contents('php://input'), true);
+    if (!isset($data['sinkName'])) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Missing sinkName"));
+    }
+
+    $sinkName = trim($data['sinkName']);
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
+
+    if (empty($sinkName)) {
+        // Clear — revert to system default
+        WriteSettingToFile('ForceAudioId', '');
+        WriteSettingToFile('PipeWireSinkName', '');
+        SendCommand('setSetting,ForceAudioId,');
+        SendCommand('setSetting,PipeWireSinkName,');
+        return json(array("status" => "OK", "message" => "Cleared — using system default", "restartRequired" => true));
+    }
+
+    // Set as PipeWire default sink
+    exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($sinkName) . " 2>&1");
+
+    // Look up the description for this sink (SDL uses descriptions to identify devices)
+    $sinkDesc = '';
+    $sinkOutput = array();
+    exec($SUDO . " " . $env . " pactl list sinks 2>/dev/null", $sinkOutput);
+    $inSink = false;
+    foreach ($sinkOutput as $line) {
+        if (preg_match('/^\s+Name:\s+(.+)/', $line, $m)) {
+            $inSink = (trim($m[1]) === $sinkName);
+        }
+        if ($inSink && preg_match('/^\s+Description:\s+(.+)/', $line, $m)) {
+            $sinkDesc = trim($m[1]);
+            break;
+        }
+    }
+
+    // Write both settings
+    WriteSettingToFile('ForceAudioId', $sinkDesc);
+    WriteSettingToFile('PipeWireSinkName', $sinkName);
+    SendCommand('setSetting,ForceAudioId,' . $sinkDesc);
+    SendCommand('setSetting,PipeWireSinkName,' . $sinkName);
+
+    return json(array(
+        "status" => "OK",
+        "sinkName" => $sinkName,
+        "sinkDescription" => $sinkDesc,
+        "restartRequired" => true
+    ));
 }
 
 /////////////////////////////////////////////////////////////////////////////
