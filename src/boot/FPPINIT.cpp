@@ -1840,23 +1840,22 @@ static void setupAudio() {
         exec("/opt/fpp/scripts/apply_aes67_config --cleanup --no-restart");
     }
 
-    // Single PipeWire restart after all configs are written
+    // Single PipeWire restart after all configs are written.
+    // systemctl restart is synchronous — it waits for the service to be
+    // active before returning. fpp-pipewire-pulse has After=/Requires=
+    // on the other two, so restarting fpp-pipewire triggers a cascade.
+    // We restart all three explicitly to ensure clean state.
     if (usePipeWireBackend && !runningInDocker) {
-        exec("/usr/bin/systemctl restart fpp-pipewire.service");
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        exec("/usr/bin/systemctl restart fpp-wireplumber.service");
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        exec("/usr/bin/systemctl restart fpp-pipewire-pulse.service");
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        exec("/usr/bin/systemctl restart fpp-pipewire.service fpp-wireplumber.service fpp-pipewire-pulse.service");
     } else if (!runningInDocker) {
-        exec("/usr/bin/systemctl stop fpp-pipewire-pulse.service");
-        exec("/usr/bin/systemctl stop fpp-wireplumber.service");
-        exec("/usr/bin/systemctl stop fpp-pipewire.service");
+        exec("/usr/bin/systemctl stop fpp-pipewire-pulse.service fpp-wireplumber.service fpp-pipewire.service");
     }
 
-    // Start SAP announcer and PTP after PipeWire is running
+    // Start SAP announcer and PTP in the background after PipeWire is running.
+    // These are background daemons that don't need to be ready before FPPD starts,
+    // so we don't block the boot sequence waiting for PTP hardware detection.
     if (usePipeWireBackend && !runningInDocker && FileExists(aes67JsonPath)) {
-        exec("/opt/fpp/scripts/apply_aes67_config --post-start");
+        exec("/opt/fpp/scripts/apply_aes67_config --post-start &");
     }
 }
 void setupKiosk(bool force = false) {

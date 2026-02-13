@@ -67,12 +67,9 @@ def cleanup_configs(restart=True):
 
 def restart_pipewire():
     """Restart PipeWire services to pick up config changes."""
-    run("systemctl restart fpp-pipewire.service")
-    time.sleep(1)
-    run("systemctl restart fpp-wireplumber.service")
-    time.sleep(1)
-    run("systemctl restart fpp-pipewire-pulse.service")
-    time.sleep(1)
+    # systemctl restart is synchronous and respects After=/Requires= ordering.
+    # Restarting all three in one call lets systemd sequence them properly.
+    run("systemctl restart fpp-pipewire.service fpp-wireplumber.service fpp-pipewire-pulse.service")
 
 
 def setup_ptp(iface, conf_path):
@@ -95,7 +92,7 @@ def setup_ptp(iface, conf_path):
 
     # Kill any existing ptp4l and start fresh
     run("killall -9 ptp4l 2>/dev/null")
-    time.sleep(1)
+    time.sleep(0.2)
     run(f"nohup /usr/sbin/ptp4l -i {iface} -f {conf_path} -m > {PTP_LOG_PATH} 2>&1 &")
     print(f"  PTP clock sync started on {iface}", file=sys.stderr)
 
@@ -103,7 +100,7 @@ def setup_ptp(iface, conf_path):
 def start_sap_announcer(iface):
     """Start the FPP AES67 SAP announcer daemon."""
     run("pkill -f fpp_aes67_sap 2>/dev/null")
-    time.sleep(1)
+    time.sleep(0.2)
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fpp_aes67_sap")
     run(f"nohup {script} --interface {iface} > {SAP_LOG_PATH} 2>&1 &")
     print(f"  SAP announcer started on {iface}", file=sys.stderr)
