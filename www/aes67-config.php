@@ -479,6 +479,16 @@
                 html += '</select>';
                 html += '</div>';
 
+                // Packet Time (ptime)
+                html += '<div>';
+                html += '<label>Packet Time (ptime)' + HelpIcon('Audio packetization interval in milliseconds. AES67 supports 1ms (low latency, higher CPU) or 4ms (common, more compatible). Must match between sender and receiver. Default is 4ms.') + '</label>';
+                html += '<select class="form-select form-select-sm" onchange="UpdateField(' + index + ', \'ptime\', parseInt(this.value))">';
+                var ptimeVal = inst.ptime || 4;
+                html += '<option value="1"' + (ptimeVal === 1 ? ' selected' : '') + '>1 ms (low latency)</option>';
+                html += '<option value="4"' + (ptimeVal === 4 ? ' selected' : '') + '>4 ms (default)</option>';
+                html += '</select>';
+                html += '</div>';
+
                 // Session Name
                 html += '<div>';
                 html += '<label>Session Name' + HelpIcon('A descriptive name for this stream visible to other AES67 devices on the network via SAP announcements.') + '</label>';
@@ -522,6 +532,7 @@
                     channels: 2,
                     interface: '',
                     sessionName: 'AES67 Stream ' + id,
+                    ptime: 4,
                     latency: 10,
                     sapEnabled: true
                 });

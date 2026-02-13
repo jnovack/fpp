@@ -1897,6 +1897,8 @@ static void setupAudio() {
                 int latency = inst.get("latency", 10).asInt();
                 std::string iface = inst.get("interface", "").asString();
                 std::string audioPos = getAudioPosition(channels);
+                int ptime = inst.get("ptime", 4).asInt();
+                if (ptime != 1 && ptime != 4) ptime = 4; // AES67 only allows 1ms or 4ms
                 bool wantSend = (mode == "send" || mode == "both");
                 bool wantRecv = (mode == "receive" || mode == "both");
 
@@ -1916,8 +1918,8 @@ static void setupAudio() {
                             << "      destination.port = " << port << "\n"
                             << "      net.ttl = 4\n"
                             << "      sess.name = \"" << sessionName << "\"\n"
-                            << "      sess.min-ptime = 1\n"
-                            << "      sess.max-ptime = 4\n"
+                            << "      sess.min-ptime = " << ptime << "\n"
+                            << "      sess.max-ptime = " << ptime << "\n"
                             << "      audio.format = \"S24BE\"\n"
                             << "      audio.rate = 48000\n"
                             << "      audio.channels = " << channels << "\n"

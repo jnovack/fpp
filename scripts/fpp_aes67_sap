@@ -106,7 +106,7 @@ def build_sdp(instance, source_ip, ptp_clock_id):
     multicast_ip = instance.get("multicastIP", "239.69.0.1")
     port = instance.get("port", 5004)
     session_name = instance.get("sessionName", instance.get("name", "FPP AES67"))
-    ptime = "1"  # 1ms packet time — AES67 standard
+    ptime = str(instance.get("ptime", 4))  # packet time in ms — must match PipeWire config
 
     # Channel positions for SDP
     if channels == 1:
