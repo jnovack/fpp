@@ -1825,28 +1825,38 @@ static void setupAudio() {
         unlink(audioEnvPath.c_str());
     }
 
+    // --- AES67 Multi-Instance Configuration ---
+    // Write AES67 configs BEFORE restarting PipeWire so they are in place
+    // when PipeWire reads its config directory. Use --no-restart to avoid
+    // a double-restart race that triggers systemd's start-limit-hit.
+    const std::string aes67JsonPath = FPP_MEDIA_DIR + "/config/pipewire-aes67-instances.json";
+
+    if (usePipeWireBackend && !runningInDocker && FileExists(aes67JsonPath)) {
+        printf("FPP - Applying AES67 audio-over-IP configuration\n");
+        exec("/opt/fpp/scripts/apply_aes67_config --no-restart");
+    } else if (usePipeWireBackend && !runningInDocker) {
+        // No AES67 JSON — clean up any leftover config files (no restart needed,
+        // we'll restart below)
+        exec("/opt/fpp/scripts/apply_aes67_config --cleanup --no-restart");
+    }
+
+    // Single PipeWire restart after all configs are written
     if (usePipeWireBackend && !runningInDocker) {
         exec("/usr/bin/systemctl restart fpp-pipewire.service");
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         exec("/usr/bin/systemctl restart fpp-wireplumber.service");
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         exec("/usr/bin/systemctl restart fpp-pipewire-pulse.service");
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     } else if (!runningInDocker) {
         exec("/usr/bin/systemctl stop fpp-pipewire-pulse.service");
         exec("/usr/bin/systemctl stop fpp-wireplumber.service");
         exec("/usr/bin/systemctl stop fpp-pipewire.service");
     }
 
-    // --- AES67 Multi-Instance Configuration ---
-    // All config generation, PTP setup, PipeWire restart, and SAP announcer
-    // management is handled by a single Python script to avoid duplication
-    // with the web UI apply path. Constants live in fpp_aes67_common.py.
-    const std::string aes67JsonPath = FPP_MEDIA_DIR + "/config/pipewire-aes67-instances.json";
-
+    // Start SAP announcer and PTP after PipeWire is running
     if (usePipeWireBackend && !runningInDocker && FileExists(aes67JsonPath)) {
-        printf("FPP - Applying AES67 audio-over-IP configuration\n");
-        exec("/opt/fpp/scripts/apply_aes67_config");
-    } else {
-        // No AES67 JSON or not using PipeWire — clean up any leftover config
-        exec("/opt/fpp/scripts/apply_aes67_config --cleanup");
+        exec("/opt/fpp/scripts/apply_aes67_config --post-start");
     }
 }
 void setupKiosk(bool force = false) {

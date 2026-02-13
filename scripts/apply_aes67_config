@@ -13,8 +13,11 @@ Writes: /etc/pipewire/pipewire.conf.d/96-fpp-aes67-rtp.conf
         /etc/ptp4l-fpp.conf
 
 Usage:
-  apply_aes67_config              # Full apply: generate configs, restart services, start SAP
-  apply_aes67_config --cleanup    # Remove configs and stop services
+  apply_aes67_config                   # Full apply: generate configs, restart services, start SAP
+  apply_aes67_config --cleanup         # Remove configs and stop services
+  apply_aes67_config --no-restart      # Write configs only (FPPINIT handles the restart)
+  apply_aes67_config --cleanup --no-restart  # Remove configs, don't restart
+  apply_aes67_config --post-start      # Start SAP announcer + PTP after PipeWire is already running
 """
 
 import os
@@ -49,7 +52,7 @@ def run(cmd, check=False):
     )
 
 
-def cleanup_configs():
+def cleanup_configs(restart=True):
     """Remove AES67 config files and stop related services."""
     for path in (RTP_CONF_PATH, SAP_CONF_PATH, PTP_CONF_PATH):
         if os.path.exists(path):
@@ -57,6 +60,9 @@ def cleanup_configs():
 
     run("pkill -f fpp_aes67_sap 2>/dev/null")
     run("killall ptp4l 2>/dev/null")
+
+    if restart:
+        restart_pipewire()
 
 
 def restart_pipewire():
@@ -103,14 +109,14 @@ def start_sap_announcer(iface):
     print(f"  SAP announcer started on {iface}", file=sys.stderr)
 
 
-def apply():
+def apply(no_restart=False):
     """Main apply logic: read JSON config, generate PipeWire configs, restart services."""
     os.makedirs("/etc/pipewire/pipewire.conf.d", exist_ok=True)
 
     data = load_config()
     if data is None or "instances" not in data or not data["instances"]:
         print("No AES67 instances configured, cleaning up", file=sys.stderr)
-        cleanup_configs()
+        cleanup_configs(restart=not no_restart)
         return 0
 
     instances = data["instances"]
@@ -146,21 +152,70 @@ def apply():
         os.unlink(SAP_CONF_PATH)
 
     # ── PTP clock sync ──
-    if ptp_enabled:
+    if ptp_enabled and not no_restart:
         ptp_iface = ptp_interface if ptp_interface else "eth0"
         setup_ptp(ptp_iface, PTP_CONF_PATH)
+    elif ptp_enabled:
+        # Just write the config, don't start the daemon yet
+        ptp_conf = generate_ptp_config()
+        with open(PTP_CONF_PATH, "w") as f:
+            f.write(ptp_conf)
+        print("  PTP config written (daemon deferred to --post-start)", file=sys.stderr)
     else:
-        run("killall ptp4l 2>/dev/null")
+        if not no_restart:
+            run("killall ptp4l 2>/dev/null")
         if os.path.exists(PTP_CONF_PATH):
             os.unlink(PTP_CONF_PATH)
 
     # ── Restart PipeWire ──
-    restart_pipewire()
-    print("  PipeWire restarted", file=sys.stderr)
+    if not no_restart:
+        restart_pipewire()
+        print("  PipeWire restarted", file=sys.stderr)
+    else:
+        print("  Configs written (PipeWire restart deferred to caller)", file=sys.stderr)
 
     # ── Start SAP announcer ──
+    if not no_restart:
+        sap_iface = ptp_interface if ptp_interface else "eth0"
+        # Only start SAP announcer if any send instance has SAP enabled
+        any_sap_send = any(
+            inst.get("enabled", True) and
+            inst.get("sapEnabled", True) and
+            inst.get("mode", "send") in ("send", "both")
+            for inst in instances
+        )
+        if any_sap_send:
+            start_sap_announcer(sap_iface)
+
+    print("FPP - AES67 setup complete", file=sys.stderr)
+    return 0
+
+
+def post_start():
+    """Start SAP announcer and PTP after PipeWire is already running.
+
+    Called by FPPINIT after it restarts PipeWire, so we don't touch PipeWire
+    services here — just start the daemons that depend on it.
+    """
+    data = load_config()
+    if data is None or "instances" not in data or not data["instances"]:
+        return 0
+
+    instances = data["instances"]
+    ptp_enabled = data.get("ptpEnabled", True)
+    ptp_interface = data.get("ptpInterface", "")
+
+    any_enabled = any(inst.get("enabled", True) for inst in instances)
+    if not any_enabled:
+        return 0
+
+    # Start PTP
+    if ptp_enabled:
+        ptp_iface = ptp_interface if ptp_interface else "eth0"
+        setup_ptp(ptp_iface, PTP_CONF_PATH)
+
+    # Start SAP announcer
     sap_iface = ptp_interface if ptp_interface else "eth0"
-    # Only start SAP announcer if any send instance has SAP enabled
     any_sap_send = any(
         inst.get("enabled", True) and
         inst.get("sapEnabled", True) and
@@ -170,7 +225,7 @@ def apply():
     if any_sap_send:
         start_sap_announcer(sap_iface)
 
-    print("FPP - AES67 setup complete", file=sys.stderr)
+    print("FPP - AES67 post-start complete", file=sys.stderr)
     return 0
 
 
@@ -178,13 +233,20 @@ def main():
     parser = argparse.ArgumentParser(description="FPP AES67 Config Applier")
     parser.add_argument("--cleanup", action="store_true",
                         help="Remove configs and stop services")
+    parser.add_argument("--no-restart", action="store_true",
+                        help="Write configs only, don't restart PipeWire or start daemons")
+    parser.add_argument("--post-start", action="store_true",
+                        help="Start SAP/PTP daemons (after PipeWire is already running)")
     args = parser.parse_args()
 
+    if args.post_start:
+        return post_start()
+
     if args.cleanup:
-        cleanup_configs()
+        cleanup_configs(restart=not args.no_restart)
         return 0
 
-    return apply()
+    return apply(no_restart=args.no_restart)
 
 
 if __name__ == "__main__":
