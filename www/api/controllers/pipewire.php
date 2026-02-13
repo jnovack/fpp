@@ -101,6 +101,11 @@ function ApplyPipeWireAudioGroups()
         if (file_exists($confPath)) {
             exec($SUDO . " rm -f " . escapeshellarg($confPath));
         }
+        // Remove cached copy too
+        $cachedConf = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.conf";
+        if (file_exists($cachedConf)) {
+            unlink($cachedConf);
+        }
         // Restart PipeWire to pick up removal
         exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
         exec($SUDO . " /usr/bin/systemctl restart fpp-wireplumber.service 2>&1");
@@ -121,6 +126,10 @@ function ApplyPipeWireAudioGroups()
     exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($confPath));
     exec($SUDO . " chmod 644 " . escapeshellarg($confPath));
     unlink($tmpFile);
+
+    // Cache a copy in the media config directory so FPPINIT can restore it at boot
+    $cachedConf = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.conf";
+    file_put_contents($cachedConf, $conf);
 
     // Restart PipeWire services to apply
     exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
