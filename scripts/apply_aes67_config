@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""
+FPP AES67 Config Applier — single entry point for generating PipeWire/PTP
+configs and restarting services.
+
+Called by:
+  - FPPINIT (at boot)
+  - pipewire.php ApplyAES67Instances() (from web UI)
+
+Reads:  /home/fpp/media/config/pipewire-aes67-instances.json
+Writes: /etc/pipewire/pipewire.conf.d/96-fpp-aes67-rtp.conf
+        /etc/pipewire/pipewire.conf.d/96-fpp-aes67-sap.conf
+        /etc/ptp4l-fpp.conf
+
+Usage:
+  apply_aes67_config              # Full apply: generate configs, restart services, start SAP
+  apply_aes67_config --cleanup    # Remove configs and stop services
+"""
+
+import os
+import sys
+import time
+import subprocess
+import argparse
+
+# Add scripts directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from fpp_aes67_common import (
+    CONFIG_JSON_PATH,
+    RTP_CONF_PATH,
+    SAP_CONF_PATH,
+    PTP_CONF_PATH,
+    PTP_LOG_PATH,
+    SAP_LOG_PATH,
+    load_config,
+    generate_rtp_config,
+    generate_sap_config,
+    generate_ptp_config,
+)
+
+
+def run(cmd, check=False):
+    """Run a shell command, suppressing errors unless check=True."""
+    return subprocess.run(
+        cmd, shell=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, check=check
+    )
+
+
+def cleanup_configs():
+    """Remove AES67 config files and stop related services."""
+    for path in (RTP_CONF_PATH, SAP_CONF_PATH, PTP_CONF_PATH):
+        if os.path.exists(path):
+            os.unlink(path)
+
+    run("pkill -f fpp_aes67_sap 2>/dev/null")
+    run("killall ptp4l 2>/dev/null")
+
+
+def restart_pipewire():
+    """Restart PipeWire services to pick up config changes."""
+    run("systemctl restart fpp-pipewire.service")
+    time.sleep(1)
+    run("systemctl restart fpp-wireplumber.service")
+    time.sleep(1)
+    run("systemctl restart fpp-pipewire-pulse.service")
+    time.sleep(1)
+
+
+def setup_ptp(iface, conf_path):
+    """Configure and start PTP clock sync."""
+    ptp_conf = generate_ptp_config()
+
+    with open(conf_path, "w") as f:
+        f.write(ptp_conf)
+
+    # Try hardware timestamping first; fall back to software
+    result = run(
+        f"timeout 3 /usr/sbin/ptp4l -i {iface} -f {conf_path} -m -q --step_threshold=1 2>&1"
+    )
+    if "ioctl PTP_CLOCK_GETCAPS" in result.stdout or "no such device" in result.stdout:
+        print("  PTP hardware timestamping not available, falling back to software",
+              file=sys.stderr)
+        ptp_conf = ptp_conf.replace("time_stamping hardware", "time_stamping software")
+        with open(conf_path, "w") as f:
+            f.write(ptp_conf)
+
+    # Kill any existing ptp4l and start fresh
+    run("killall -9 ptp4l 2>/dev/null")
+    time.sleep(1)
+    run(f"nohup /usr/sbin/ptp4l -i {iface} -f {conf_path} -m > {PTP_LOG_PATH} 2>&1 &")
+    print(f"  PTP clock sync started on {iface}", file=sys.stderr)
+
+
+def start_sap_announcer(iface):
+    """Start the FPP AES67 SAP announcer daemon."""
+    run("pkill -f fpp_aes67_sap 2>/dev/null")
+    time.sleep(1)
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fpp_aes67_sap")
+    run(f"nohup {script} --interface {iface} > {SAP_LOG_PATH} 2>&1 &")
+    print(f"  SAP announcer started on {iface}", file=sys.stderr)
+
+
+def apply():
+    """Main apply logic: read JSON config, generate PipeWire configs, restart services."""
+    os.makedirs("/etc/pipewire/pipewire.conf.d", exist_ok=True)
+
+    data = load_config()
+    if data is None or "instances" not in data or not data["instances"]:
+        print("No AES67 instances configured, cleaning up", file=sys.stderr)
+        cleanup_configs()
+        return 0
+
+    instances = data["instances"]
+    ptp_enabled = data.get("ptpEnabled", True)
+    ptp_interface = data.get("ptpInterface", "")
+
+    # Check if any instances are enabled
+    any_enabled = any(inst.get("enabled", True) for inst in instances)
+    if not any_enabled:
+        print("No enabled AES67 instances, cleaning up", file=sys.stderr)
+        cleanup_configs()
+        return 0
+
+    print("FPP - Applying AES67 configuration", file=sys.stderr)
+
+    # ── Generate and write RTP config ──
+    rtp_conf = generate_rtp_config(instances)
+    with open(RTP_CONF_PATH, "w") as f:
+        f.write(rtp_conf)
+    os.chmod(RTP_CONF_PATH, 0o644)
+    enabled_count = sum(1 for i in instances if i.get("enabled", True))
+    print(f"  RTP config written ({enabled_count} instance(s))", file=sys.stderr)
+
+    # ── Generate and write SAP config ──
+    default_iface = ptp_interface if ptp_interface else ""
+    sap_conf = generate_sap_config(instances, default_iface)
+    if sap_conf:
+        with open(SAP_CONF_PATH, "w") as f:
+            f.write(sap_conf)
+        os.chmod(SAP_CONF_PATH, 0o644)
+        print("  SAP receive config written", file=sys.stderr)
+    elif os.path.exists(SAP_CONF_PATH):
+        os.unlink(SAP_CONF_PATH)
+
+    # ── PTP clock sync ──
+    if ptp_enabled:
+        ptp_iface = ptp_interface if ptp_interface else "eth0"
+        setup_ptp(ptp_iface, PTP_CONF_PATH)
+    else:
+        run("killall ptp4l 2>/dev/null")
+        if os.path.exists(PTP_CONF_PATH):
+            os.unlink(PTP_CONF_PATH)
+
+    # ── Restart PipeWire ──
+    restart_pipewire()
+    print("  PipeWire restarted", file=sys.stderr)
+
+    # ── Start SAP announcer ──
+    sap_iface = ptp_interface if ptp_interface else "eth0"
+    # Only start SAP announcer if any send instance has SAP enabled
+    any_sap_send = any(
+        inst.get("enabled", True) and
+        inst.get("sapEnabled", True) and
+        inst.get("mode", "send") in ("send", "both")
+        for inst in instances
+    )
+    if any_sap_send:
+        start_sap_announcer(sap_iface)
+
+    print("FPP - AES67 setup complete", file=sys.stderr)
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description="FPP AES67 Config Applier")
+    parser.add_argument("--cleanup", action="store_true",
+                        help="Remove configs and stop services")
+    args = parser.parse_args()
+
+    if args.cleanup:
+        cleanup_configs()
+        return 0
+
+    return apply()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

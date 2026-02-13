@@ -15,7 +15,6 @@ with SDP per AES67 / RAVENNA requirements:
 Usage: fpp_aes67_sap [--once] [--interval SECONDS]
 """
 
-import json
 import hashlib
 import socket
 import struct
@@ -27,11 +26,19 @@ import argparse
 import subprocess
 import re
 
-SAP_MCAST = "239.255.255.255"  # AES67 administratively-scoped SAP address
-SAP_PORT = 9875
-SAP_VERSION = 1  # SAPv2 (version field = 1 in the header)
-ANNOUNCE_INTERVAL = 30  # seconds between announcements
-CONFIG_PATH = "/home/fpp/media/config/pipewire-aes67-instances.json"
+# Import shared constants from common module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fpp_aes67_common import (
+    SAP_MCAST_ADDRESS,
+    SAP_PORT,
+    SAP_VERSION,
+    SAP_ANNOUNCE_INTERVAL,
+    SAP_TTL,
+    CONFIG_JSON_PATH,
+    PTP_LOG_PATH,
+    load_config,
+    build_sdp,
+)
 
 running = True
 
@@ -69,13 +76,10 @@ def get_ptp_gm_clock_id(interface="eth0"):
     local_eui64 = get_ptp_clock_id(interface)
 
     try:
-        log = open("/var/log/ptp4l-fpp.log").read()
-        # Look for "selected local clock XXXXXX.fffe.XXXXXX as best master"
-        # or "new foreign master XXXXXX.fffe.XXXXXX"
+        log = open(PTP_LOG_PATH).read()
         m = re.search(r"selected.*clock\s+([0-9a-f.]+)\s+as best master", log)
         if m:
-            raw = m.group(1).replace(".", "")  # e.g. d83addfffea6eb03
-            # Format as XX-XX-XX-XX-XX-XX-XX-XX
+            raw = m.group(1).replace(".", "")
             gm = "-".join(raw[i:i+2].upper() for i in range(0, 16, 2))
             return gm
     except Exception:
@@ -97,48 +101,6 @@ def get_source_ip(interface="eth0"):
     except Exception:
         pass
     return "0.0.0.0"
-
-
-def build_sdp(instance, source_ip, ptp_clock_id):
-    """Build an AES67-compliant SDP for a send instance."""
-    session_id = str(abs(hash(instance["name"])) % 2**31)
-    channels = instance.get("channels", 2)
-    multicast_ip = instance.get("multicastIP", "239.69.0.1")
-    port = instance.get("port", 5004)
-    session_name = instance.get("sessionName", instance.get("name", "FPP AES67"))
-    ptime = str(instance.get("ptime", 4))  # packet time in ms — must match PipeWire config
-
-    # Channel positions for SDP
-    if channels == 1:
-        ch_names = "M"
-    elif channels == 2:
-        ch_names = "FL, FR"
-    elif channels == 4:
-        ch_names = "FL, FR, RL, RR"
-    elif channels == 6:
-        ch_names = "FL, FR, FC, LFE, RL, RR"
-    elif channels == 8:
-        ch_names = "FL, FR, FC, LFE, RL, RR, SL, SR"
-    else:
-        ch_names = ", ".join(f"AUX{i+1}" for i in range(channels))
-
-    ttl = 255  # AES67 recommended TTL
-
-    sdp = (
-        f"v=0\r\n"
-        f"o=- {session_id} {session_id} IN IP4 {source_ip}\r\n"
-        f"s={session_name}\r\n"
-        f"c=IN IP4 {multicast_ip}/{ttl}\r\n"
-        f"t=0 0\r\n"
-        f"m=audio {port} RTP/AVP 96\r\n"
-        f"a=rtpmap:96 L24/48000/{channels}\r\n"
-        f"a=sendonly\r\n"
-        f"a=ptime:{ptime}\r\n"
-        f"a=ts-refclk:ptp=IEEE1588-2008:{ptp_clock_id}:0\r\n"
-        f"a=mediaclk:direct=0\r\n"
-    )
-
-    return sdp
 
 
 def build_sap_packet(source_ip, sdp, msg_id_hash, announce=True):
@@ -168,17 +130,6 @@ def build_sap_packet(source_ip, sdp, msg_id_hash, announce=True):
     return header + payload_type + sdp.encode("utf-8")
 
 
-def load_config():
-    """Load AES67 instance configuration."""
-    try:
-        with open(CONFIG_PATH, "r") as f:
-            data = json.load(f)
-        return data
-    except Exception as e:
-        print(f"Error loading config: {e}", file=sys.stderr)
-        return None
-
-
 def send_announcements(sock, config, source_ip, ptp_clock_id, announce=True):
     """Send SAP announcements for all enabled send instances."""
     if not config or "instances" not in config:
@@ -202,7 +153,7 @@ def send_announcements(sock, config, source_ip, ptp_clock_id, announce=True):
         packet = build_sap_packet(source_ip, sdp, msg_id_hash, announce=announce)
 
         try:
-            sock.sendto(packet, (SAP_MCAST, SAP_PORT))
+            sock.sendto(packet, (SAP_MCAST_ADDRESS, SAP_PORT))
             count += 1
             action = "Announced" if announce else "Deleted"
             if "--once" in sys.argv or not announce:
@@ -217,7 +168,7 @@ def main():
     parser = argparse.ArgumentParser(description="FPP AES67 SAP Announcer")
     parser.add_argument("--once", action="store_true", help="Send one round then exit")
     parser.add_argument("--delete", action="store_true", help="Send deletion then exit")
-    parser.add_argument("--interval", type=int, default=ANNOUNCE_INTERVAL, help="Seconds between announcements")
+    parser.add_argument("--interval", type=int, default=SAP_ANNOUNCE_INTERVAL, help="Seconds between announcements")
     parser.add_argument("--interface", default="eth0", help="Network interface")
     args = parser.parse_args()
 
@@ -244,7 +195,7 @@ def main():
 
     # Create UDP socket for SAP multicast
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, SAP_TTL)
 
     # Bind to source interface
     try:
