@@ -110,6 +110,9 @@ dispatch_get('/pipewire/audio/sinks', 'GetPipeWireSinks');
 dispatch_get('/pipewire/audio/cards', 'GetPipeWireAudioCards');
 dispatch_post('/pipewire/audio/group/volume', 'SetPipeWireGroupVolume');
 dispatch_post('/pipewire/audio/eq/update', 'UpdatePipeWireEQRealtime');
+dispatch_post('/pipewire/audio/delay/update', 'UpdatePipeWireDelayRealtime');
+dispatch_post('/pipewire/audio/sync/start', 'StartSyncCalibration');
+dispatch_post('/pipewire/audio/sync/stop', 'StopSyncCalibration');
 dispatch_post('/pipewire/audio/primary-output', 'SetPipeWirePrimaryOutput');
 
 dispatch_get('/pipewire/aes67/instances', 'GetAES67Instances');

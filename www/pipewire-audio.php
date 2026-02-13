@@ -306,6 +306,43 @@
             cursor: help;
         }
 
+        /* Sync calibration panel */
+        .sync-cal-panel {
+            background: var(--bs-warning-bg-subtle, #fff3cd);
+            border: 1px solid var(--bs-warning-border-subtle, #ffecb5);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            margin-top: 0.75rem;
+        }
+
+        .sync-cal-header {
+            margin-bottom: 0.5rem;
+        }
+
+        .sync-cal-desc {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--bs-secondary-color, #6c757d);
+            margin-top: 0.25rem;
+        }
+
+        .sync-cal-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        /* Delay control */
+        .delay-control {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .delay-control input[type="number"] {
+            font-size: 0.85rem;
+        }
+
         <?php if ($modalMode) { ?>
             /* Ensure dialogs inside the iframe appear above the parent modal */
             .modal {
@@ -634,6 +671,7 @@
             html += '<th>Card Channels' + HelpIcon('Number of channels the physical card will receive. Set this to match the card\'s actual capability (e.g. 2 for stereo, 8 for 7.1).') + '</th>';
             html += '<th>Channel Mapping' + HelpIcon('Maps each of this card\'s channels to a position in the group\'s channel layout. For example, you can route the group\'s Front-Left to this card\'s Front-Left, or remap surround channels to stereo outputs.') + '</th>';
             html += '<th>Volume' + HelpIcon('Per-card volume. Adjusts this member\'s output level independently from the group master volume. Useful for balancing levels between different sound cards. Adjusts in real-time.') + '</th>';
+            html += '<th>Delay (ms)' + HelpIcon('Per-card delay compensation in milliseconds. Use this to synchronize outputs that have different inherent latencies (e.g. AES67 network audio vs local USB). Delay the faster outputs so they match the slowest one. Adjustable in real-time. Use the Sync Calibration tool to dial in the exact values.') + '</th>';
             html += '<th style="width:60px"></th>';
             html += '</tr></thead>';
             html += '<tbody id="members-' + group.id + '">';
@@ -643,7 +681,7 @@
                     html += RenderMemberRow(group, index, m);
                 }
             } else {
-                html += '<tr class="no-members-row"><td colspan="6" style="text-align:center;color:var(--bs-secondary-color,#6c757d);padding:1.5rem;">';
+                html += '<tr class="no-members-row"><td colspan="7" style="text-align:center;color:var(--bs-secondary-color,#6c757d);padding:1.5rem;">';
                 html += '<i class="fas fa-info-circle"></i> No sound cards added to this group yet';
                 html += '</td></tr>';
             }
@@ -651,9 +689,32 @@
             html += '</tbody>';
             html += '</table>';
 
-            html += '<div style="margin-top:0.75rem;">';
+            html += '<div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center;">';
             html += '<button class="buttons btn-outline-success btn-group-action" onclick="AddMember(' + index + ')">';
             html += '<i class="fas fa-plus"></i> Add Sound Card</button>';
+            html += '<button class="buttons btn-outline-warning btn-group-action" id="sync-cal-btn-' + index + '" onclick="ToggleSyncCalibration(' + index + ')">';
+            html += '<i class="fas fa-stopwatch"></i> Sync Calibration</button>';
+            html += '</div>';
+
+            // Sync calibration panel (hidden by default)
+            html += '<div id="sync-cal-panel-' + index + '" class="sync-cal-panel" style="display:none;">';
+            html += '<div class="sync-cal-header">';
+            html += '<strong><i class="fas fa-stopwatch"></i> Sync Calibration Mode</strong>';
+            html += '<span class="sync-cal-desc">A metronome click track plays through the group. Adjust each member\'s delay until all outputs sound simultaneous. ' +
+                'Set the slowest output (usually AES67/network) to 0ms and add delay to the faster outputs.</span>';
+            html += '</div>';
+            html += '<div class="sync-cal-controls">';
+            html += '<button class="buttons btn-outline-success btn-sm" id="sync-play-btn-' + index + '" onclick="StartCalibrationPlayback(' + index + ')">';
+            html += '<i class="fas fa-play"></i> Play Click Track</button>';
+            html += '<span style="margin: 0 10px; color: #999;">or</span>';
+            html += '<select id="sync-media-select-' + index + '" class="form-control form-control-sm" style="display:inline-block; width:auto; max-width:300px; vertical-align:middle;">';
+            html += '<option value="">— Select from library —</option>';
+            html += '</select> ';
+            html += '<button class="buttons btn-outline-info btn-sm" id="sync-media-btn-' + index + '" onclick="PlayCalibrationMedia(' + index + ')">';
+            html += '<i class="fas fa-music"></i> Play</button>';
+            html += '<button class="buttons btn-outline-danger btn-sm" onclick="StopCalibrationPlayback(' + index + ')">';
+            html += '<i class="fas fa-stop"></i> Stop</button>';
+            html += '</div>';
             html += '</div>';
 
             html += '</div>'; // group-body
@@ -669,6 +730,8 @@
             var cardSelect = BuildCardSelect(groupIndex, memberIndex, member.cardId);
             var channelMapping = BuildChannelMapping(group, groupIndex, memberIndex, member);
             var eqEnabled = member.eq && member.eq.enabled;
+
+            var delayMs = member.delayMs || 0;
 
             var html = '<tr data-member="' + memberIndex + '">';
             html += '<td>' + (memberIndex + 1) + '</td>';
@@ -697,13 +760,21 @@
             html += '</div>';
             html += '</td>';
             html += '<td>';
+            html += '<div class="delay-control">';
+            html += '<input type="number" class="form-control form-control-sm" min="0" max="2000" step="1" value="' + delayMs + '" ';
+            html += 'style="width:75px;display:inline-block;" ';
+            html += 'onchange="UpdateMemberDelay(' + groupIndex + ',' + memberIndex + ', parseFloat(this.value))" ';
+            html += 'oninput="ScheduleDelayUpdate(' + groupIndex + ',' + memberIndex + ', parseFloat(this.value))">';
+            html += '</div>';
+            html += '</td>';
+            html += '<td>';
             html += '<button class="buttons btn-outline-danger btn-group-action" onclick="RemoveMember(' + groupIndex + ',' + memberIndex + ')" title="Remove"><i class="fas fa-times"></i></button>';
             html += '</td>';
             html += '</tr>';
 
             // EQ panel row (expandable)
             html += '<tr id="eq-panel-row-' + groupIndex + '-' + memberIndex + '" style="display:none;">';
-            html += '<td colspan="6">';
+            html += '<td colspan="7">';
             html += '<div id="eq-panel-content-' + groupIndex + '-' + memberIndex + '">';
             html += BuildEQPanel(groupIndex, memberIndex, member);
             html += '</div>';
@@ -1049,6 +1120,7 @@
                 cardName: "",
                 channels: 2,
                 volume: 100,
+                delayMs: 0,
                 channelMapping: null,
                 eq: { enabled: false, bands: DefaultEQBands() }
             };
@@ -1180,6 +1252,146 @@
                     console.warn('Volume command failed for ' + sinkName);
                 }
             });
+        }
+
+        /////////////////////////////////////////////////////////////////////////////
+        // Per-member delay compensation — debounced for real-time adjustment
+        var delayTimers = {};
+
+        function UpdateMemberDelay(groupIndex, memberIndex, delayMs) {
+            delayMs = Math.max(0, Math.min(2000, parseInt(delayMs) || 0));
+            audioGroups.groups[groupIndex].members[memberIndex].delayMs = delayMs;
+        }
+
+        function ScheduleDelayUpdate(groupIndex, memberIndex, delayMs) {
+            delayMs = Math.max(0, Math.min(2000, parseInt(delayMs) || 0));
+            audioGroups.groups[groupIndex].members[memberIndex].delayMs = delayMs;
+            var key = 'd_' + groupIndex + '_' + memberIndex;
+            if (delayTimers[key]) clearTimeout(delayTimers[key]);
+            delayTimers[key] = setTimeout(function () {
+                SendDelayUpdate(groupIndex, memberIndex, delayMs);
+            }, 80);
+        }
+
+        function SendDelayUpdate(groupIndex, memberIndex, delayMs) {
+            var group = audioGroups.groups[groupIndex];
+            var member = group.members[memberIndex];
+            if (!member.cardId) return;
+
+            $.ajax({
+                url: 'api/pipewire/audio/delay/update',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    groupId: group.id,
+                    cardId: member.cardId,
+                    delayMs: delayMs,
+                    channels: member.channels || 2
+                }),
+                success: function (resp) {
+                    if (resp && resp.status === 'NOT_RUNNING') {
+                        // Filter not active yet — silent, user needs to Apply
+                    }
+                },
+                error: function () {
+                    // Silent — best-effort real-time preview
+                }
+            });
+        }
+
+        /////////////////////////////////////////////////////////////////////////////
+        // Sync Calibration Mode
+        var syncCalActive = {};
+
+        function ToggleSyncCalibration(groupIndex) {
+            var panel = $('#sync-cal-panel-' + groupIndex);
+            var btn = $('#sync-cal-btn-' + groupIndex);
+            if (panel.is(':visible')) {
+                // Closing — stop playback
+                StopCalibrationPlayback(groupIndex);
+                panel.slideUp(200);
+                btn.removeClass('btn-warning').addClass('btn-outline-warning');
+            } else {
+                // Populate media selector if not already done
+                var sel = $('#sync-media-select-' + groupIndex);
+                if (sel.find('option').length <= 1) {
+                    $.getJSON('api/media', function (files) {
+                        files.forEach(function (f) {
+                            if (/\.(mp3|wav|ogg|flac|m4a|aac|wma)$/i.test(f)) {
+                                sel.append($('<option>').val(f).text(f));
+                            }
+                        });
+                    });
+                }
+                panel.slideDown(200);
+                btn.removeClass('btn-outline-warning').addClass('btn-warning');
+            }
+        }
+
+        function StartCalibrationPlayback(groupIndex) {
+            var playBtn = $('#sync-play-btn-' + groupIndex);
+            playBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Starting...');
+
+            $.ajax({
+                url: 'api/pipewire/audio/sync/start',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ groupIndex: groupIndex }),
+                success: function (resp) {
+                    syncCalActive[groupIndex] = true;
+                    playBtn.prop('disabled', false).html('<i class="fas fa-play"></i> Playing...');
+                    $.jGrowl('Click track playing — adjust delay sliders until all outputs are in sync', { themeState: 'highlight' });
+                },
+                error: function (xhr) {
+                    playBtn.prop('disabled', false).html('<i class="fas fa-play"></i> Play Click Track');
+                    DialogError('Calibration Error', 'Failed to start click track: ' + (xhr.responseText || 'Unknown error'));
+                }
+            });
+        }
+
+        function PlayCalibrationMedia(groupIndex) {
+            var sel = $('#sync-media-select-' + groupIndex);
+            var file = sel.val();
+            if (!file) {
+                $.jGrowl('Select a media file first', { themeState: 'highlight' });
+                return;
+            }
+            // Stop anything currently playing
+            StopCalibrationPlaybackSilent(groupIndex);
+
+            var mediaBtn = $('#sync-media-btn-' + groupIndex);
+            mediaBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            syncCalActive[groupIndex] = file;
+
+            $.get('api/command/Play%20Media/' + encodeURIComponent(file) + '/99', function () {
+                mediaBtn.prop('disabled', false).html('<i class="fas fa-music"></i> Playing...');
+                $.jGrowl('Playing: ' + file, { themeState: 'highlight' });
+            }).fail(function () {
+                mediaBtn.prop('disabled', false).html('<i class="fas fa-music"></i> Play');
+                DialogError('Playback Error', 'Failed to play: ' + file);
+            });
+        }
+
+        function StopCalibrationPlayback(groupIndex) {
+            StopCalibrationPlaybackSilent(groupIndex);
+            $.jGrowl('Calibration playback stopped', { themeState: 'highlight' });
+        }
+
+        function StopCalibrationPlaybackSilent(groupIndex) {
+            // Stop click track via our API
+            $.ajax({
+                url: 'api/pipewire/audio/sync/stop',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({})
+            });
+            // Stop media file if one was playing
+            if (syncCalActive[groupIndex] && syncCalActive[groupIndex] !== true) {
+                $.get('api/command/Stop%20Media/' + encodeURIComponent(syncCalActive[groupIndex]));
+            }
+            syncCalActive[groupIndex] = false;
+            $('#sync-play-btn-' + groupIndex).html('<i class="fas fa-play"></i> Play Click Track');
+            $('#sync-media-btn-' + groupIndex).html('<i class="fas fa-music"></i> Play');
         }
 
         /////////////////////////////////////////////////////////////////////////////

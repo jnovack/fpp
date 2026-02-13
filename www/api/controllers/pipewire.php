@@ -106,9 +106,11 @@ function ApplyPipeWireAudioGroups()
         if (file_exists($cachedConf)) {
             unlink($cachedConf);
         }
-        // Restart PipeWire to pick up removal
+        // Restart PipeWire to pick up removal (order matters — pulse depends on pipewire socket)
         exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
+        usleep(500000);
         exec($SUDO . " /usr/bin/systemctl restart fpp-wireplumber.service 2>&1");
+        usleep(500000);
         exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire-pulse.service 2>&1");
         return json(array("status" => "OK", "message" => "Audio groups cleared, PipeWire restarted"));
     }
@@ -131,13 +133,24 @@ function ApplyPipeWireAudioGroups()
     $cachedConf = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.conf";
     file_put_contents($cachedConf, $conf);
 
-    // Restart PipeWire services to apply
+    // Restart PipeWire services to apply (order matters — pulse depends on pipewire socket)
     exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
+    usleep(500000);
     exec($SUDO . " /usr/bin/systemctl restart fpp-wireplumber.service 2>&1");
+    // Wait for PipeWire core socket to be ready before starting pulse
+    for ($i = 0; $i < 10; $i++) {
+        if (file_exists('/run/pipewire-fpp/pipewire-0'))
+            break;
+        usleep(250000);
+    }
     exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire-pulse.service 2>&1");
 
-    // Wait for PipeWire to be ready
-    sleep(2);
+    // Wait for PulseAudio compat socket to be ready
+    for ($i = 0; $i < 10; $i++) {
+        if (file_exists('/run/pipewire-fpp/pulse/native'))
+            break;
+        usleep(250000);
+    }
 
     // Find the first enabled group with members and set it as the default
     // PipeWire sink so FPPD's SDL audio and volume control target it.
@@ -620,26 +633,7 @@ function UpdatePipeWireEQRealtime()
         return json(array("status" => "ERROR", "message" => "Missing cardId or bands"));
     }
 
-    $eqNodeName = "fpp_eq_g" . $groupId . "_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
-
-    // Find the filter-chain capture node by name
-    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
-    $pwOutput = array();
-    exec($SUDO . " " . $env . " pw-cli list-objects Node 2>/dev/null", $pwOutput);
-
-    $nodeId = null;
-    $currentId = null;
-    foreach ($pwOutput as $line) {
-        if (preg_match('/^\s+id (\d+),/', $line, $m)) {
-            $currentId = $m[1];
-        }
-        if (preg_match('/node\.name\s*=\s*"(.+?)"/', $line, $m)) {
-            if ($m[1] === $eqNodeName) {
-                $nodeId = $currentId;
-                break;
-            }
-        }
-    }
+    $nodeId = FindFXFilterChainNodeId($groupId, $cardId);
 
     if ($nodeId === null) {
         // Filter-chain not running — needs Apply first
@@ -666,6 +660,7 @@ function UpdatePipeWireEQRealtime()
     }
 
     $paramStr = implode(' ', $paramPairs);
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
     $cmd = $SUDO . " " . $env . " pw-cli set-param " . intval($nodeId) . " Props '{ params = [ $paramStr ] }' 2>&1";
     exec($cmd, $output, $ret);
 
@@ -674,6 +669,145 @@ function UpdatePipeWireEQRealtime()
     }
 
     return json(array("status" => "OK"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/delay/update
+// Real-time delay adjustment via pw-cli set-param
+// Adjusts running filter-chain delay controls without restarting PipeWire
+function UpdatePipeWireDelayRealtime()
+{
+    global $SUDO;
+
+    $data = json_decode(file_get_contents('php://input'), true);
+    $groupId = isset($data['groupId']) ? intval($data['groupId']) : 0;
+    $cardId = isset($data['cardId']) ? $data['cardId'] : '';
+    $delayMs = isset($data['delayMs']) ? floatval($data['delayMs']) : 0;
+    $channels = isset($data['channels']) ? intval($data['channels']) : 2;
+
+    if (empty($cardId)) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Missing cardId"));
+    }
+
+    $nodeId = FindFXFilterChainNodeId($groupId, $cardId);
+
+    if ($nodeId === null) {
+        return json(array("status" => "NOT_RUNNING", "message" => "Filter chain not active — Save & Apply first"));
+    }
+
+    $delaySec = max(0, $delayMs / 1000.0);
+    $channelLabels = array("l", "r", "c", "lfe", "rl", "rr", "sl", "sr");
+    $numCh = min($channels, count($channelLabels));
+
+    $paramPairs = array();
+    for ($ch = 0; $ch < $numCh; $ch++) {
+        $chLabel = $channelLabels[$ch];
+        $paramPairs[] = "\"delay_{$chLabel}:Delay (s)\" $delaySec";
+    }
+
+    $paramStr = implode(' ', $paramPairs);
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $cmd = $SUDO . " " . $env . " pw-cli set-param " . intval($nodeId) . " Props '{ params = [ $paramStr ] }' 2>&1";
+    exec($cmd, $output, $ret);
+
+    if ($ret) {
+        return json(array("status" => "ERROR", "message" => "pw-cli set-param failed", "output" => implode("\n", $output)));
+    }
+
+    return json(array("status" => "OK"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/sync/start
+// Start sync calibration mode: generate a click track and play it on loop
+function StartSyncCalibration()
+{
+    global $SUDO, $settings;
+
+    $data = json_decode(file_get_contents('php://input'), true);
+    $groupIndex = isset($data['groupIndex']) ? intval($data['groupIndex']) : 0;
+
+    // Generate click track in the music directory (where "Play Media" can find it)
+    $clickFile = $settings['mediaDirectory'] . "/music/fpp_sync_click.wav";
+    if (!file_exists($clickFile)) {
+        // Generate a 60-second WAV with alternating high/low clicks for easier sync matching
+        // 1000Hz beep (20ms) + 980ms silence, then 600Hz beep (20ms) + 980ms silence, looped 30x = 60s
+        $cmd = "ffmpeg -y -f lavfi -i \"sine=frequency=1000:duration=0.02,apad=pad_dur=0.98\""
+            . " -f lavfi -i \"sine=frequency=600:duration=0.02,apad=pad_dur=0.98\""
+            . " -filter_complex \"[0][1]concat=n=2:v=0:a=1,aloop=loop=29:size=88200\""
+            . " -t 60 " . escapeshellarg($clickFile) . " 2>&1";
+        exec($cmd, $genOutput, $genRet);
+        if ($genRet !== 0) {
+            // Try sox as fallback
+            $cmd = "sox -n " . escapeshellarg($clickFile) . " synth 60 sine 1000 pad 0 0.98 repeat 59 2>&1";
+            exec($cmd, $genOutput2, $genRet2);
+            if ($genRet2 !== 0) {
+                return json(array("status" => "ERROR", "message" => "Failed to generate click track (tried ffmpeg and sox)"));
+            }
+        }
+    }
+
+    // Stop any existing calibration playback first
+    StopSyncCalibrationInternal();
+
+    // Play the click track on loop via the "Play Media" command API (VLC-based)
+    // Loop count 99 = ~99 minutes — more than enough for calibration
+    $url = 'http://localhost/api/command/Play%20Media/fpp_sync_click.wav/99';
+    $ctx = stream_context_create(array('http' => array('method' => 'GET', 'timeout' => 5)));
+    $result = @file_get_contents($url, false, $ctx);
+
+    return json(array("status" => "OK", "message" => "Sync calibration started — click track playing on loop"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/sync/stop
+// Stop sync calibration playback
+function StopSyncCalibration()
+{
+    StopSyncCalibrationInternal();
+    return json(array("status" => "OK", "message" => "Sync calibration stopped"));
+}
+
+function StopSyncCalibrationInternal()
+{
+    // Stop the click track via the "Stop Media" command API
+    $url = 'http://localhost/api/command/Stop%20Media/fpp_sync_click.wav';
+    $ctx = stream_context_create(array('http' => array('method' => 'GET', 'timeout' => 5)));
+    @file_get_contents($url, false, $ctx);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Find the PipeWire node ID for a member's filter-chain
+// Looks for "fpp_fx_g<groupId>_<cardId>" first, falls back to legacy "fpp_eq_g<groupId>_<cardId>"
+function FindFXFilterChainNodeId($groupId, $cardId)
+{
+    global $SUDO;
+
+    $cardIdNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
+    $fxNodeName = "fpp_fx_g" . intval($groupId) . "_" . $cardIdNorm;
+    // Legacy name for backward compatibility
+    $eqNodeName = "fpp_eq_g" . intval($groupId) . "_" . $cardIdNorm;
+
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $pwOutput = array();
+    exec($SUDO . " " . $env . " pw-cli list-objects Node 2>/dev/null", $pwOutput);
+
+    $nodeId = null;
+    $currentId = null;
+    foreach ($pwOutput as $line) {
+        if (preg_match('/^\s+id (\d+),/', $line, $m)) {
+            $currentId = $m[1];
+        }
+        if (preg_match('/node\.name\s*=\s*"(.+?)"/', $line, $m)) {
+            if ($m[1] === $fxNodeName || $m[1] === $eqNodeName) {
+                $nodeId = $currentId;
+                break;
+            }
+        }
+    }
+
+    return $nodeId;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -854,15 +988,21 @@ function GeneratePipeWireGroupsConfig($groups)
         $conf .= "# These cards will be skipped from combine groups.\n\n";
     }
 
-    // Create modules array: filter-chain EQ modules first, then combine-stream
+    // Create modules array: filter-chain modules first, then combine-stream
     $conf .= "context.modules = [\n";
 
     // ---------------------------------------------------------------
-    // Phase 1: Generate filter-chain modules for members with EQ
+    // Phase 1: Generate filter-chain modules for members that need
+    // EQ processing and/or delay compensation.
     // These must load before combine-stream so their virtual sinks
     // exist when combine-stream scans for matching nodes.
+    //
+    // Three cases per member:
+    //   a) EQ only         → filter-chain with biquad nodes
+    //   b) Delay only      → filter-chain with delay nodes
+    //   c) EQ + Delay      → single filter-chain: delay → EQ chain
     // ---------------------------------------------------------------
-    $eqNodeMap = array();  // "groupId_cardId" -> EQ virtual sink node name
+    $filterNodeMap = array();  // "groupId_cardId" -> filter virtual sink node name
     $channelLabels = array("l", "r", "c", "lfe", "rl", "rr", "sl", "sr");
 
     foreach ($groups as $group) {
@@ -878,69 +1018,110 @@ function GeneratePipeWireGroupsConfig($groups)
             if (empty($cardId) || !isset($cardNodeMap[$cardId]))
                 continue;
 
-            // Check if EQ is enabled with bands
-            if (!isset($member['eq']['enabled']) || !$member['eq']['enabled'])
-                continue;
-            if (!isset($member['eq']['bands']) || empty($member['eq']['bands']))
-                continue;
+            $hasEQ = isset($member['eq']['enabled']) && $member['eq']['enabled']
+                && isset($member['eq']['bands']) && !empty($member['eq']['bands']);
+            $delayMs = isset($member['delayMs']) ? floatval($member['delayMs']) : 0;
+            // Always create delay nodes so real-time adjustment is possible during calibration
+            $hasDelay = true;
 
-            $bands = $member['eq']['bands'];
             $memberChannels = isset($member['channels']) ? intval($member['channels']) : 2;
             $numCh = min($memberChannels, count($channelLabels));
             $positions = isset($channelPositionArrays[$memberChannels]) ? $channelPositionArrays[$memberChannels] : $channelPositionArrays[2];
             $posStr = "[ " . implode(" ", $positions) . " ]";
 
             $realNodeName = $cardNodeMap[$cardId];
-            $eqNodeName = "fpp_eq_g" . $groupId . "_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
-            $eqOutName = $eqNodeName . "_out";
-            $eqKey = $groupId . "_" . $cardId;
+            $cardIdNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
+            // Use "fpp_fx_" prefix for the unified filter-chain node name
+            $fxNodeName = "fpp_fx_g" . $groupId . "_" . $cardIdNorm;
+            $fxOutName = $fxNodeName . "_out";
+            $fxKey = $groupId . "_" . $cardId;
 
-            $conf .= "  # EQ filter chain for: " . (isset($member['cardName']) ? $member['cardName'] : $cardId) . " (Group $groupId)\n";
+            // Build description
+            $cardLabel = isset($member['cardName']) ? $member['cardName'] : $cardId;
+            $fxParts = array();
+            if ($hasDelay)
+                $fxParts[] = "Delay";
+            if ($hasEQ)
+                $fxParts[] = "EQ";
+            $fxDesc = implode("+", $fxParts) . ": " . $cardLabel;
+
+            $conf .= "  # Filter chain (" . implode("+", $fxParts) . ") for: $cardLabel (Group $groupId)\n";
             $conf .= "  { name = libpipewire-module-filter-chain\n";
             $conf .= "    args = {\n";
-            $conf .= "      node.description = \"EQ: " . (isset($member['cardName']) ? $member['cardName'] : $cardId) . "\"\n";
+            $conf .= "      node.description = \"$fxDesc\"\n";
             $conf .= "      filter.graph = {\n";
             $conf .= "        nodes = [\n";
 
-            // Create biquad nodes for each channel x each band
-            for ($ch = 0; $ch < $numCh; $ch++) {
-                $chLabel = $channelLabels[$ch];
-                foreach ($bands as $bi => $band) {
-                    $type = isset($band['type']) ? $band['type'] : 'bq_peaking';
-                    $freq = floatval(isset($band['freq']) ? $band['freq'] : 1000);
-                    $gain = floatval(isset($band['gain']) ? $band['gain'] : 0);
-                    $q = floatval(isset($band['q']) ? $band['q'] : 1.0);
-                    $conf .= "          { type = builtin label = $type name = eq_{$chLabel}_{$bi} control = { \"Freq\" = $freq \"Q\" = $q \"Gain\" = $gain } }\n";
+            // --- Delay nodes (one per channel) ---
+            if ($hasDelay) {
+                $delaySec = $delayMs / 1000.0;
+                $maxDelay = max(2.0, $delaySec * 2);
+                for ($ch = 0; $ch < $numCh; $ch++) {
+                    $chLabel = $channelLabels[$ch];
+                    $conf .= "          { type = builtin label = delay name = delay_{$chLabel} config = { \"max-delay\" = $maxDelay } control = { \"Delay (s)\" = $delaySec } }\n";
+                }
+            }
+
+            // --- EQ nodes (one per channel x band) ---
+            if ($hasEQ) {
+                $bands = $member['eq']['bands'];
+                for ($ch = 0; $ch < $numCh; $ch++) {
+                    $chLabel = $channelLabels[$ch];
+                    foreach ($bands as $bi => $band) {
+                        $type = isset($band['type']) ? $band['type'] : 'bq_peaking';
+                        $freq = floatval(isset($band['freq']) ? $band['freq'] : 1000);
+                        $gain = floatval(isset($band['gain']) ? $band['gain'] : 0);
+                        $q = floatval(isset($band['q']) ? $band['q'] : 1.0);
+                        $conf .= "          { type = builtin label = $type name = eq_{$chLabel}_{$bi} control = { \"Freq\" = $freq \"Q\" = $q \"Gain\" = $gain } }\n";
+                    }
                 }
             }
 
             $conf .= "        ]\n";
 
-            // Links: chain bands in series for each channel
+            // --- Links: chain delay → EQ in series for each channel ---
             $conf .= "        links = [\n";
             for ($ch = 0; $ch < $numCh; $ch++) {
                 $chLabel = $channelLabels[$ch];
-                for ($bi = 1; $bi < count($bands); $bi++) {
-                    $prevBi = $bi - 1;
-                    $conf .= "          { output = \"eq_{$chLabel}_{$prevBi}:Out\" input = \"eq_{$chLabel}_{$bi}:In\" }\n";
+
+                if ($hasDelay && $hasEQ) {
+                    // Link delay output → first EQ band input
+                    $conf .= "          { output = \"delay_{$chLabel}:Out\" input = \"eq_{$chLabel}_0:In\" }\n";
+                }
+
+                if ($hasEQ) {
+                    $bands = $member['eq']['bands'];
+                    // Chain EQ bands in series
+                    for ($bi = 1; $bi < count($bands); $bi++) {
+                        $prevBi = $bi - 1;
+                        $conf .= "          { output = \"eq_{$chLabel}_{$prevBi}:Out\" input = \"eq_{$chLabel}_{$bi}:In\" }\n";
+                    }
                 }
             }
             $conf .= "        ]\n";
 
-            // Inputs: first band of each channel
+            // --- Inputs: first node of each channel's chain ---
             $conf .= "        inputs = [";
             for ($ch = 0; $ch < $numCh; $ch++) {
                 $chLabel = $channelLabels[$ch];
-                $conf .= " \"eq_{$chLabel}_0:In\"";
+                if ($hasDelay) {
+                    $conf .= " \"delay_{$chLabel}:In\"";
+                } else {
+                    $conf .= " \"eq_{$chLabel}_0:In\"";
+                }
             }
             $conf .= " ]\n";
 
-            // Outputs: last band of each channel
-            $lastBi = count($bands) - 1;
+            // --- Outputs: last node of each channel's chain ---
             $conf .= "        outputs = [";
             for ($ch = 0; $ch < $numCh; $ch++) {
                 $chLabel = $channelLabels[$ch];
-                $conf .= " \"eq_{$chLabel}_{$lastBi}:Out\"";
+                if ($hasEQ) {
+                    $lastBi = count($member['eq']['bands']) - 1;
+                    $conf .= " \"eq_{$chLabel}_{$lastBi}:Out\"";
+                } else {
+                    $conf .= " \"delay_{$chLabel}:Out\"";
+                }
             }
             $conf .= " ]\n";
 
@@ -948,7 +1129,7 @@ function GeneratePipeWireGroupsConfig($groups)
 
             // Capture props (virtual sink that combine-stream will match)
             $conf .= "      capture.props = {\n";
-            $conf .= "        node.name = \"$eqNodeName\"\n";
+            $conf .= "        node.name = \"$fxNodeName\"\n";
             $conf .= "        media.class = Audio/Sink\n";
             $conf .= "        audio.channels = $numCh\n";
             $conf .= "        audio.position = $posStr\n";
@@ -956,7 +1137,7 @@ function GeneratePipeWireGroupsConfig($groups)
 
             // Playback props (output to real sink)
             $conf .= "      playback.props = {\n";
-            $conf .= "        node.name = \"$eqOutName\"\n";
+            $conf .= "        node.name = \"$fxOutName\"\n";
             $conf .= "        node.passive = true\n";
             $conf .= "        node.target = \"$realNodeName\"\n";
             $conf .= "        stream.dont-remix = true\n";
@@ -967,9 +1148,12 @@ function GeneratePipeWireGroupsConfig($groups)
             $conf .= "    }\n"; // args
             $conf .= "  }\n";
 
-            $eqNodeMap[$eqKey] = $eqNodeName;
+            $filterNodeMap[$fxKey] = $fxNodeName;
         }
     }
+
+    // Backward compat: $eqNodeMap is now $filterNodeMap
+    $eqNodeMap = $filterNodeMap;
 
     // ---------------------------------------------------------------
     // Phase 2: Generate combine-stream modules for each group
