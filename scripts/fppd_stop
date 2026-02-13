@@ -28,6 +28,7 @@ COUNT=$(pgrep -x -c fppd)
 if [ ${COUNT} -ne 0 ]
 then
     killall -7 fppd
+    sleep 0.5
 fi
 COUNT=$(pgrep -x -c fppd)
 if [ ${COUNT} -ne 0 ]
