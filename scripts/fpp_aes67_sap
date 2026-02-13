@@ -27,7 +27,7 @@ import argparse
 import subprocess
 import re
 
-SAP_MCAST = "224.2.127.254"
+SAP_MCAST = "239.255.255.255"  # AES67 administratively-scoped SAP address
 SAP_PORT = 9875
 SAP_VERSION = 1  # SAPv2 (version field = 1 in the header)
 ANNOUNCE_INTERVAL = 30  # seconds between announcements
@@ -122,7 +122,7 @@ def build_sdp(instance, source_ip, ptp_clock_id):
     else:
         ch_names = ", ".join(f"AUX{i+1}" for i in range(channels))
 
-    ttl = 32
+    ttl = 255  # AES67 recommended TTL
 
     sdp = (
         f"v=0\r\n"
@@ -131,13 +131,11 @@ def build_sdp(instance, source_ip, ptp_clock_id):
         f"c=IN IP4 {multicast_ip}/{ttl}\r\n"
         f"t=0 0\r\n"
         f"m=audio {port} RTP/AVP 96\r\n"
-        f"i={channels} channels: {ch_names}\r\n"
         f"a=rtpmap:96 L24/48000/{channels}\r\n"
         f"a=sendonly\r\n"
         f"a=ptime:{ptime}\r\n"
         f"a=ts-refclk:ptp=IEEE1588-2008:{ptp_clock_id}:0\r\n"
         f"a=mediaclk:direct=0\r\n"
-        f"a=source-filter: incl IN IP4 {multicast_ip} {source_ip}\r\n"
     )
 
     return sdp
@@ -246,7 +244,7 @@ def main():
 
     # Create UDP socket for SAP multicast
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 4)
+    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
 
     # Bind to source interface
     try:
