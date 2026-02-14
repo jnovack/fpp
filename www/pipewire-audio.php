@@ -1438,7 +1438,7 @@
                 id: 'applyConfirmDialog',
                 title: 'Save & Apply Audio Configuration',
                 body: 'This will save the current configuration, restart PipeWire audio services, and restart FPPD.<br><br>' +
-                      'Any currently playing audio will be interrupted briefly.',
+                    'Any currently playing audio will be interrupted briefly.',
                 class: 'modal-sm',
                 keyboard: true,
                 backdrop: true,
