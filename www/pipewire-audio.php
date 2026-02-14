@@ -1226,23 +1226,32 @@
 
         function SetMemberVolume(groupIndex, memberIndex, volume) {
             audioGroups.groups[groupIndex].members[memberIndex].volume = parseInt(volume);
-            var member = audioGroups.groups[groupIndex].members[memberIndex];
+            var group = audioGroups.groups[groupIndex];
+            var member = group.members[memberIndex];
             if (member.cardId) {
-                // Find the actual PipeWire node name for this card
-                var sinkName = null;
-                for (var i = 0; i < availableCards.length; i++) {
-                    if (availableCards[i].cardId === member.cardId) {
-                        sinkName = availableCards[i].pwNodeName || null;
-                        break;
+                // Target the filter-chain node (fpp_fx_g<groupId>_<cardId>) which sits
+                // in the actual audio chain.  This avoids touching the WirePlumber
+                // auto-detected ALSA sink whose volume propagates to the hardware
+                // mixer and can zero it out.
+                var fxNodeName = 'fpp_fx_g' + group.id + '_' + EscapeNodeName(member.cardId);
+                SendVolumeCommand(fxNodeName, volume, function () {
+                    // Filter-chain not running yet (pre-Apply) — fall back to
+                    // the raw PipeWire sink (ALSA mode / legacy behaviour)
+                    var sinkName = null;
+                    for (var i = 0; i < availableCards.length; i++) {
+                        if (availableCards[i].cardId === member.cardId) {
+                            sinkName = availableCards[i].pwNodeName || null;
+                            break;
+                        }
                     }
-                }
-                if (sinkName) {
-                    SendVolumeCommand(sinkName, volume);
-                }
+                    if (sinkName) {
+                        SendVolumeCommand(sinkName, volume);
+                    }
+                });
             }
         }
 
-        function SendVolumeCommand(sinkName, volume) {
+        function SendVolumeCommand(sinkName, volume, fallback) {
             $.ajax({
                 url: 'api/pipewire/audio/group/volume',
                 method: 'POST',
@@ -1250,6 +1259,7 @@
                 data: JSON.stringify({ sink: sinkName, volume: parseInt(volume) }),
                 error: function (xhr) {
                     console.warn('Volume command failed for ' + sinkName);
+                    if (typeof fallback === 'function') fallback();
                 }
             });
         }

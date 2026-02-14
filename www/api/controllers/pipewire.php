@@ -152,6 +152,40 @@ function ApplyPipeWireAudioGroups()
         usleep(250000);
     }
 
+    // Restore ALSA hardware mixer levels to 100% for every member card.
+    // WirePlumber auto-detects ALSA devices and may restore saved volume
+    // state that zeros the hardware mixer, even though our audio chain uses
+    // the custom fpp_card sinks.  Setting the mixer to full here prevents
+    // silent outputs after Apply / restart.
+    foreach ($data['groups'] as $grp) {
+        if (!isset($grp['enabled']) || !$grp['enabled'] || empty($grp['members']))
+            continue;
+        foreach ($grp['members'] as $mbr) {
+            $cId = isset($mbr['cardId']) ? $mbr['cardId'] : '';
+            if (empty($cId))
+                continue;
+            // Resolve ALSA card number and mixer controls from /proc/asound
+            $cardLinks = glob('/proc/asound/card[0-9]*');
+            foreach ($cardLinks as $cl) {
+                $cNum = basename($cl);
+                $cNum = preg_replace('/^card/', '', $cNum);
+                $idLine = @file_get_contents("/proc/asound/card$cNum/id");
+                if ($idLine !== false && trim($idLine) === $cId) {
+                    // Set every playback mixer on this card to 100%
+                    $mixers = array();
+                    exec($SUDO . " amixer -c $cNum scontrols 2>/dev/null | cut -f2 -d\"'\"", $mixers);
+                    foreach ($mixers as $mx) {
+                        $mx = trim($mx);
+                        if (!empty($mx) && stripos($mx, 'Mic') === false && stripos($mx, 'Capture') === false) {
+                            exec($SUDO . " amixer -c $cNum sset " . escapeshellarg($mx) . " 100% 2>/dev/null");
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     // Find the first enabled group with members and set it as the default
     // PipeWire sink so FPPD's SDL audio and volume control target it.
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
