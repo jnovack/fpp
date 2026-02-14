@@ -761,7 +761,7 @@
             html += '</td>';
             html += '<td>';
             html += '<div class="delay-control">';
-            html += '<input type="number" class="form-control form-control-sm" min="0" max="2000" step="1" value="' + delayMs + '" ';
+            html += '<input type="number" class="form-control form-control-sm" min="0" max="5000" step="1" value="' + delayMs + '" ';
             html += 'style="width:75px;display:inline-block;" ';
             html += 'onchange="UpdateMemberDelay(' + groupIndex + ',' + memberIndex + ', parseFloat(this.value))" ';
             html += 'oninput="ScheduleDelayUpdate(' + groupIndex + ',' + memberIndex + ', parseFloat(this.value))">';
@@ -1269,12 +1269,12 @@
         var delayTimers = {};
 
         function UpdateMemberDelay(groupIndex, memberIndex, delayMs) {
-            delayMs = Math.max(0, Math.min(2000, parseInt(delayMs) || 0));
+            delayMs = Math.max(0, Math.min(5000, parseInt(delayMs) || 0));
             audioGroups.groups[groupIndex].members[memberIndex].delayMs = delayMs;
         }
 
         function ScheduleDelayUpdate(groupIndex, memberIndex, delayMs) {
-            delayMs = Math.max(0, Math.min(2000, parseInt(delayMs) || 0));
+            delayMs = Math.max(0, Math.min(5000, parseInt(delayMs) || 0));
             audioGroups.groups[groupIndex].members[memberIndex].delayMs = delayMs;
             var key = 'd_' + groupIndex + '_' + memberIndex;
             if (delayTimers[key]) clearTimeout(delayTimers[key]);
@@ -1434,7 +1434,38 @@
         }
 
         function ApplyGroups() {
-            // Save first, then apply
+            DoModalDialog({
+                id: 'applyConfirmDialog',
+                title: 'Save & Apply Audio Configuration',
+                body: 'This will save the current configuration, restart PipeWire audio services, and restart FPPD.<br><br>' +
+                      'Any currently playing audio will be interrupted briefly.',
+                class: 'modal-sm',
+                keyboard: true,
+                backdrop: true,
+                buttons: {
+                    'Cancel': {
+                        click: function () { CloseModalDialog('applyConfirmDialog'); },
+                        class: 'btn-outline-secondary'
+                    },
+                    'Save & Apply': {
+                        click: function () {
+                            CloseModalDialog('applyConfirmDialog');
+                            DoApplyGroups();
+                        },
+                        class: 'btn-success'
+                    }
+                }
+            });
+        }
+
+        function DoApplyGroups() {
+            // 1. Stop all calibration playback and close panels
+            StopAllCalibration();
+
+            // 2. Show progress overlay
+            ShowApplyProgress('Saving configuration...');
+
+            // 3. Save
             $.ajax({
                 url: 'api/pipewire/audio/groups',
                 method: 'POST',
@@ -1444,37 +1475,108 @@
                     if (data && data.data) {
                         audioGroups = data.data;
                     }
-                    $.jGrowl('Audio groups saved, applying...', { themeState: 'highlight' });
+                    ShowApplyProgress('Applying PipeWire configuration...');
 
-                    // Now apply (generates PipeWire configs and restarts)
+                    // 4. Apply (generates PipeWire configs and restarts services)
                     $.ajax({
                         url: 'api/pipewire/audio/groups/apply',
                         method: 'POST',
                         success: function (applyData) {
-                            var msg = 'PipeWire configuration applied successfully.';
-                            if (applyData && applyData.activeGroup) {
-                                msg += ' Active output: ' + applyData.activeGroup;
-                            }
-                            if (applyData && applyData.restartRequired) {
-                                msg += '<br><br><b>FPPD must be restarted</b> for the audio output change to take effect.';
-                                DialogOK('Configuration Applied', msg +
-                                    '<br><br><button class="buttons btn-outline-primary" onclick="RestartFPPD()">' +
-                                    '<i class="fas fa-redo"></i> Restart FPPD Now</button>');
-                            } else {
-                                $.jGrowl(msg, { themeState: 'highlight' });
-                            }
-                            // Refresh PipeWire status after a brief delay
-                            setTimeout(function () {
-                                CheckPipeWireStatus();
-                            }, 3000);
+                            ShowApplyProgress('Restarting FPPD...');
+
+                            // 5. Auto-restart FPPD
+                            $.ajax({
+                                url: 'api/system/fppd/restart',
+                                method: 'GET',
+                                success: function () {
+                                    ShowApplyProgress('Waiting for FPPD to come back online...');
+                                    WaitForFPPD(function () {
+                                        HideApplyProgress();
+                                        $.jGrowl('Audio configuration applied and FPPD restarted successfully', { themeState: 'highlight' });
+                                        setTimeout(function () { CheckPipeWireStatus(); }, 1000);
+                                    });
+                                },
+                                error: function () {
+                                    // Restart request may "fail" because fppd is shutting down
+                                    ShowApplyProgress('Waiting for FPPD to come back online...');
+                                    WaitForFPPD(function () {
+                                        HideApplyProgress();
+                                        $.jGrowl('Audio configuration applied and FPPD restarted', { themeState: 'highlight' });
+                                        setTimeout(function () { CheckPipeWireStatus(); }, 1000);
+                                    });
+                                }
+                            });
                         },
                         error: function (xhr) {
+                            HideApplyProgress();
                             DialogError('Apply Error', 'Failed to apply PipeWire configuration: ' + (xhr.responseText || 'Unknown error'));
                         }
                     });
                 },
                 error: function (xhr) {
+                    HideApplyProgress();
                     DialogError('Save Error', 'Failed to save audio groups: ' + (xhr.responseText || 'Unknown error'));
+                }
+            });
+        }
+
+        function StopAllCalibration() {
+            // Stop any active calibration playback across all groups
+            for (var i = 0; i < audioGroups.groups.length; i++) {
+                if (syncCalActive[i]) {
+                    StopCalibrationPlaybackSilent(i);
+                }
+                // Close calibration panels
+                var panel = $('#sync-cal-panel-' + i);
+                if (panel.is(':visible')) {
+                    panel.hide();
+                    $('#sync-cal-btn-' + i).removeClass('btn-warning').addClass('btn-outline-warning');
+                }
+            }
+        }
+
+        function ShowApplyProgress(message) {
+            var overlay = $('#apply-progress-overlay');
+            if (overlay.length === 0) {
+                overlay = $('<div id="apply-progress-overlay" style="' +
+                    'position:fixed;top:0;left:0;right:0;bottom:0;' +
+                    'background:rgba(0,0,0,0.6);z-index:9999;' +
+                    'display:flex;align-items:center;justify-content:center;">' +
+                    '<div style="background:#fff;border-radius:8px;padding:2rem 2.5rem;text-align:center;max-width:400px;">' +
+                    '<div><i class="fas fa-spinner fa-spin fa-2x" style="color:#0d6efd;"></i></div>' +
+                    '<div id="apply-progress-msg" style="margin-top:1rem;font-size:1.1rem;color:#333;"></div>' +
+                    '</div></div>');
+                $('body').append(overlay);
+            }
+            $('#apply-progress-msg').text(message);
+            overlay.show();
+        }
+
+        function HideApplyProgress() {
+            $('#apply-progress-overlay').remove();
+        }
+
+        function WaitForFPPD(callback, attempts) {
+            attempts = attempts || 0;
+            if (attempts > 30) { // 30 seconds max wait
+                HideApplyProgress();
+                $.jGrowl('FPPD restart is taking longer than expected — check status manually', { themeState: 'highlight' });
+                return;
+            }
+            $.ajax({
+                url: 'api/fppd/status',
+                method: 'GET',
+                timeout: 2000,
+                success: function (data) {
+                    if (data && data.status_name && data.status_name !== '') {
+                        // FPPD is responding
+                        callback();
+                    } else {
+                        setTimeout(function () { WaitForFPPD(callback, attempts + 1); }, 1000);
+                    }
+                },
+                error: function () {
+                    setTimeout(function () { WaitForFPPD(callback, attempts + 1); }, 1000);
                 }
             });
         }

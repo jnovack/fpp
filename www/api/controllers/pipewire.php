@@ -1089,7 +1089,7 @@ function GeneratePipeWireGroupsConfig($groups)
             // --- Delay nodes (one per channel) ---
             if ($hasDelay) {
                 $delaySec = $delayMs / 1000.0;
-                $maxDelay = max(2.0, $delaySec * 2);
+                $maxDelay = max(5.0, $delaySec * 1.5);
                 for ($ch = 0; $ch < $numCh; $ch++) {
                     $chLabel = $channelLabels[$ch];
                     $conf .= "          { type = builtin label = delay name = delay_{$chLabel} config = { \"max-delay\" = $maxDelay } control = { \"Delay (s)\" = $delaySec } }\n";

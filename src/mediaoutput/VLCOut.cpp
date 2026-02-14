@@ -258,6 +258,13 @@ public:
 #ifndef PLATFORM_OSX
             args.push_back("-A");
             std::string audioBackend = toLowerCopy(getSetting("AudioBackend"));
+            if (audioBackend == "pipewire") {
+                // Set PipeWire/Pulse runtime directories so VLC can find the
+                // FPP PipeWire socket.  SDL does the same in SDLOut.cpp.
+                setenv("PIPEWIRE_RUNTIME_DIR", "/run/pipewire-fpp", 1);
+                setenv("XDG_RUNTIME_DIR", "/run/pipewire-fpp", 1);
+                setenv("PULSE_RUNTIME_PATH", "/run/pipewire-fpp/pulse", 1);
+            }
             const char* audioModule = (audioBackend == "pipewire") ? "pipewire" : "alsa";
             args.push_back(audioModule);
 
