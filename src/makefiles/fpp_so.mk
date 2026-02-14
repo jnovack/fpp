@@ -64,6 +64,7 @@ OBJECTS_fpp_so += \
 	mediadetails.o \
 	mediaoutput/MediaOutputBase.o \
 	mediaoutput/mediaoutput.o \
+	mediaoutput/GStreamerOut.o \
 	mediaoutput/SDLOut.o \
 	mediaoutput/VLCOut.o \
 	mqtt.o \
@@ -162,6 +163,12 @@ else
 ifneq ($(wildcard /usr/include/vlc/vlc.h),)
 LIBS_fpp_so += -lvlc
 endif
+endif
+
+# GStreamer support
+ifneq ($(wildcard /usr/include/gstreamer-1.0/gst/gst.h),)
+CFLAGS += $(shell pkg-config --cflags gstreamer-1.0 gstreamer-app-1.0)
+LIBS_fpp_so += $(shell pkg-config --libs gstreamer-1.0 gstreamer-app-1.0)
 endif
 
 ifneq ($(wildcard /usr/include/xf86drm.h),)

@@ -20,8 +20,10 @@
 
 #include "../Timers.h"
 #include "../log.h"
+#include "../settings.h"
 
 #include "MediaCommands.h"
+#include "../mediaoutput/GStreamerOut.h"
 
 SetVolumeCommand::SetVolumeCommand() :
     Command("Volume Set", "Sets the volume to the specific value. (0 - 100)") {
@@ -212,6 +214,48 @@ std::unique_ptr<Command::Result> URLCommand::run(const std::vector<std::string>&
     return std::make_unique<CURLResult>(args);
 }
 
+#if defined(HAS_VLC) || defined(HAS_GSTREAMER)
+
+// Common data for tracking running command media
+// MediaOutputBase is the common base class for both VLC and GStreamer outputs
+std::mutex runningMediaLock;
+std::map<std::string, MediaOutputBase*> runningCommandMedia;
+
+static void RemoveRunningMedia(const std::string& filename, MediaOutputBase* self) {
+    intptr_t i = (intptr_t)self;
+    MediaOutputBase* dt = self;
+    std::string fn = filename;
+
+    // Trigger MEDIA_STOPPED event
+    std::map<std::string, std::string> keywords;
+    keywords["MEDIA_NAME"] = fn;
+    if (CommandManager::INSTANCE.HasPreset("MEDIA_STOPPED")) {
+        CommandManager::INSTANCE.TriggerPreset("MEDIA_STOPPED", keywords);
+    }
+
+    Timers::INSTANCE.addTimer(std::to_string(i), GetTimeMS() + 1, [dt, fn]() {
+        runningMediaLock.lock();
+        auto it = runningCommandMedia.find(fn);
+        if (it != runningCommandMedia.end() && it->second == dt) {
+            runningCommandMedia.erase(it);
+            LogDebug(VB_COMMAND, "Removed cached PlayData for file: \"%s\"\n", fn.c_str());
+        }
+        runningMediaLock.unlock();
+        delete dt;
+    });
+}
+
+static std::string RegisterRunningMedia(const std::string& file, MediaOutputBase* media) {
+    std::string filename = file;
+    runningMediaLock.lock();
+    while (runningCommandMedia.find(filename) != runningCommandMedia.end()) {
+        filename += "_";
+    }
+    runningCommandMedia[filename] = media;
+    runningMediaLock.unlock();
+    return filename;
+}
+
 #ifdef HAS_VLC
 class VLCPlayData : public VLCOutput {
 public:
@@ -222,20 +266,13 @@ public:
     int volumeAdjust = 0;
     MediaOutputStatus status;
 };
-std::mutex runningMediaLock;
-std::map<std::string, VLCPlayData*> runningCommandMedia;
 
 VLCPlayData::VLCPlayData(const std::string& file, int l, int vol) :
     VLCOutput(file, &status, "--hdmi--", l),
     filename(file),
     volumeAdjust(vol) {
     SetVolumeAdjustment(vol);
-    runningMediaLock.lock();
-    while (runningCommandMedia.find(filename) != runningCommandMedia.end()) {
-        filename += "_";
-    }
-    runningCommandMedia[filename] = this;
-    runningMediaLock.unlock();
+    filename = RegisterRunningMedia(file, this);
 }
 
 VLCPlayData::~VLCPlayData() {
@@ -243,25 +280,51 @@ VLCPlayData::~VLCPlayData() {
 
 void VLCPlayData::Stopped() {
     VLCOutput::Stopped();
-    VLCPlayData* dt = this;
-    intptr_t i = (intptr_t)this;
+    RemoveRunningMedia(filename, this);
+}
+#endif
 
-    // Trigger MEDIA_STOPPED event
-    std::map<std::string, std::string> keywords;
-    keywords["MEDIA_NAME"] = dt->filename;
-    if (CommandManager::INSTANCE.HasPreset("MEDIA_STOPPED")) {
-        CommandManager::INSTANCE.TriggerPreset("MEDIA_STOPPED", keywords);
+#ifdef HAS_GSTREAMER
+class GStreamerPlayData : public GStreamerOutput {
+public:
+    GStreamerPlayData(const std::string& file, int l, int vol);
+    virtual ~GStreamerPlayData();
+    virtual void Stopped() override;
+    std::string filename;
+    int volumeAdjust = 0;
+    MediaOutputStatus status;
+};
+
+GStreamerPlayData::GStreamerPlayData(const std::string& file, int l, int vol) :
+    GStreamerOutput(file, &status, ""),
+    filename(file),
+    volumeAdjust(vol) {
+    SetLoopCount(l > 0 ? l - 1 : 0);
+    SetVolumeAdjustment(vol);
+    filename = RegisterRunningMedia(file, this);
+}
+
+GStreamerPlayData::~GStreamerPlayData() {
+}
+
+void GStreamerPlayData::Stopped() {
+    GStreamerOutput::Stopped();
+    RemoveRunningMedia(filename, this);
+}
+#endif
+
+// Runtime backend selection for "Play Media" command
+static bool UseGStreamerForPlayMedia() {
+#ifdef HAS_GSTREAMER
+    std::string backend = getSetting("MediaBackend");
+    if (backend == "gstreamer") return true;
+    // Default to GStreamer when PipeWire audio backend is active (unified clock)
+    if (backend.empty()) {
+        std::string audioBackend = getSetting("AudioBackend");
+        return (audioBackend == "pipewire");
     }
-
-    Timers::INSTANCE.addTimer(std::to_string(i), GetTimeMS() + 1, [dt]() {
-        runningMediaLock.lock();
-        if (runningCommandMedia[dt->filename] == dt) {
-            runningCommandMedia.erase(dt->filename);
-            LogDebug(VB_COMMAND, "Removed cached VLCPlayData for file: \"%s\"\n", dt->filename.c_str());
-        }
-        runningMediaLock.unlock();
-        delete dt;
-    });
+#endif
+    return false;
 }
 
 PlayMediaCommand::PlayMediaCommand() :
@@ -279,7 +342,24 @@ std::unique_ptr<Command::Result> PlayMediaCommand::run(const std::vector<std::st
     if (loop < 1) {
         loop = 1;
     }
-    VLCOutput* out = new VLCPlayData(args[0], loop, volAdjust);
+
+    MediaOutputBase* out = nullptr;
+#ifdef HAS_GSTREAMER
+    if (UseGStreamerForPlayMedia()) {
+        out = new GStreamerPlayData(args[0], loop, volAdjust);
+        LogInfo(VB_COMMAND, "Play Media using GStreamer backend for: %s\n", args[0].c_str());
+    }
+#endif
+#ifdef HAS_VLC
+    if (!out) {
+        out = new VLCPlayData(args[0], loop, volAdjust);
+        LogInfo(VB_COMMAND, "Play Media using VLC backend for: %s\n", args[0].c_str());
+    }
+#endif
+    if (!out) {
+        return std::make_unique<Command::ErrorResult>("No media backend available");
+    }
+
     if (out->Start()) {
         std::map<std::string, std::string> keywords;
         keywords["MEDIA_NAME"] = args[0];
@@ -301,7 +381,7 @@ std::unique_ptr<Command::Result> StopMediaCommand::run(const std::vector<std::st
     }
     std::string rc = "Media Not Running";
     runningMediaLock.lock();
-    VLCPlayData* media_ptr = nullptr;
+    MediaOutputBase* media_ptr = nullptr;
     try {
         media_ptr = runningCommandMedia.at(args[0]);
     } catch (const std::out_of_range& oor) {

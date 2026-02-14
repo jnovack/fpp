@@ -101,7 +101,7 @@ void CommandManager::Init() {
     addCommand(new InsertPlaylistCommand());
     addCommand(new InsertPlaylistImmediate());
     addCommand(new InsertRandomItemFromPlaylistCommand());
-#ifdef HAS_VLC
+#if defined(HAS_VLC) || defined(HAS_GSTREAMER)
     addCommand(new PlayMediaCommand());
     addCommand(new StopMediaCommand());
     addCommand(new StopAllMediaCommand());
