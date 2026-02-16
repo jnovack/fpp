@@ -44,6 +44,7 @@
 #include "channeloutput/channeloutputthread.h"
 #include "channeltester/ChannelTester.h"
 #include "commands/Commands.h"
+#include "mediaoutput/GStreamerOut.h"
 #include "mediaoutput/SDLOut.h"
 #include "overlays/PixelOverlay.h"
 #include "playlist/Playlist.h"
@@ -736,7 +737,14 @@ void Sequence::ProcessSequenceData(int ms) {
     if (IsEffectRunning())
         OverlayEffects(m_seqData);
 
-    if (SDLOutput::IsOverlayingVideo()) {
+    if (
+#ifdef HAS_GSTREAMER
+        GStreamerOutput::IsOverlayingVideo() ||
+#endif
+        SDLOutput::IsOverlayingVideo()) {
+#ifdef HAS_GSTREAMER
+        GStreamerOutput::ProcessVideoOverlay(ms);
+#endif
         SDLOutput::ProcessVideoOverlay(ms);
     }
     if (PixelOverlayManager::INSTANCE.hasActiveOverlays()) {

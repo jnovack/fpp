@@ -79,7 +79,7 @@ Benefit: Single clock tree, consistent latency, one buffer path
 | **0** | Install GStreamer, build integration, proof of concept                   | Low         | **COMPLETE** |
 | **1** | GStreamerOutput for "Play Media" command (replaces VLC in MediaCommands) | Low-Medium  | **COMPLETE** |
 | **2** | GStreamerOutput for playlist/sequence audio (replaces SDL audio path)    | Medium      | **Complete** |
-| **3** | Video-to-PixelOverlay via GStreamer appsink (replaces SDL+FFmpeg video)  | Medium-High | Not started  |
+| **3** | Video-to-PixelOverlay via GStreamer appsink (replaces SDL+FFmpeg video)  | Medium-High | **Complete** |
 | **4** | HDMI/DRM video output via GStreamer kmssink (replaces VLC video)         | High        | Not started  |
 | **5** | MultiSync rate adjustment via GStreamer (replaces VLC AdjustSpeed)       | Medium-High | Not started  |
 | **6** | Remove SDL and VLC dependencies entirely                                 | Low         | Not started  |
@@ -325,26 +325,57 @@ class GStreamerPlayData {
 
 ### Tasks
 
-- [ ] **3.1** Add video branch to GStreamer pipeline:
-  - `decodebin` auto-links to `videoconvert ! videoscale ! appsink`
-  - Configure appsink for RGB format at overlay model resolution
-  - Handle `new-sample` signal or pull-sample in `ProcessVideoOverlay()`
+- [x] **3.1** Add video branch to GStreamer pipeline:
+  - Dynamic pad linking via `decodebin` `pad-added` and `no-more-pads` signals
+  - When `videoOut` is not `--Disabled--` or `--HDMI--`, creates video+audio pipeline:
+    `filesrc ! decodebin name=decoder` with manually constructed audio and video sub-chains
+  - Audio chain: `audioconvert ! audioresample ! tee name=t`
+    - `t. ! queue ! volume ! pipewiresink` (playback)
+    - `t. ! queue ! audioconvert ! capsfilter(F32LE,mono) ! appsink` (WLED sample tap)
+  - Video chain: `queue ! videoconvert ! videoscale ! capsfilter(RGB,WxH) ! appsink(sync=true)`
+  - `OnPadAdded()` matches decoded pads by media type (audio/video) and links them
+  - `OnNoMorePads()` logs final audio/video link status
+  - Video appsink sync=true ensures frames are paced to media clock
+  - Appsink configured for RGB format at PixelOverlayModel resolution (e.g., 169x162)
+  - `OnNewVideoSample()` callback handles stride padding (GStreamer pads RGB rows to 4-byte alignment: 169×3=507→508 bytes/row) — row-by-row copy strips padding
 
-- [ ] **3.2** Implement static `IsOverlayingVideo()` and `ProcessVideoOverlay()`:
+- [x] **3.2** Implement static `IsOverlayingVideo()` and `ProcessVideoOverlay()`:
   - Same API as SDLOutput versions
-  - Frame timing matched to sequence ms position
+  - `IsOverlayingVideo()`: checks `m_currentInstance` has `m_videoOverlayModel` set
+  - `ProcessVideoOverlay()`: copies latest video frame from `m_videoFrameData` buffer to `PixelOverlayModel::setData()`
+  - Frame delivered via double buffering: `OnNewVideoSample` writes to `m_videoFrameData` under mutex, `ProcessVideoOverlay` reads+clears under same mutex
+  - Overlay model disabled on first video frame, re-enabled on close (matches SDLOutput behavior)
+  - `StartChannelOutputThread()` called when video overlay model is set (ensures `ProcessVideoOverlay` gets called from the channel output loop)
+  - Diagnostic counters (`m_videoFramesReceived` / `m_videoFramesDelivered`) logged at frame 1, every 100 frames, and at close
 
-- [ ] **3.3** Update external callers:
-  - `Sequence.cpp` line 739: `SDLOutput::IsOverlayingVideo()` → `GStreamerOutput::IsOverlayingVideo()`
-  - `channeloutputthread.cpp` line 101: Same change
+- [x] **3.3** Update external callers:
+  - `Sequence.cpp`: Added `GStreamerOutput::IsOverlayingVideo()` alongside SDLOutput check, calls both `ProcessVideoOverlay()` methods
+  - `channeloutputthread.cpp`: Added `GStreamerOutput::IsOverlayingVideo()` to `forceOutput()` to keep channel output thread alive during video overlay
+  - Both guarded with `#ifdef HAS_GSTREAMER`
+
+- [x] **3.4** Update factory in `mediaoutput.cpp`:
+  - Added: `if (useGStreamer && IsExtensionVideo(ext) && !IsHDMIOut(vo))` creates `GStreamerOutput` with overlay videoOut
+  - HDMI output still routes to VLC/SDL (Phase 4)
+
+- [x] **3.5** Fix PlayMediaCommand args safety:
+  - `MediaCommands.cpp`: Changed `int loop = std::atoi(args[1].c_str())` to safely check `args.size() > 1` with default 1
+
+### Validation
+- [x] Video-only (Matrix-1.mp4, 45s): 3005 frames received, 900 delivered, EOS at 45s, clean shutdown
+- [x] Audio+video (Carol of the Bells, 2:42): Both pads linked, video frames received/delivered, audio heard through Sound Blaster
+- [x] Stride padding: 508-byte rows (padded) → 507-byte rows (tightly packed) → 82134 bytes per frame
+- [x] Channel output thread: `StartChannelOutputThread()` ensures ProcessVideoOverlay is called
+- [x] PixelOverlayModel disable/re-enable lifecycle matches SDLOutput behavior
 
 ### Files Modified
-| File                                        | Change                     |
-| ------------------------------------------- | -------------------------- |
-| `src/mediaoutput/GStreamerOut.cpp`          | Add video appsink branch   |
-| `src/mediaoutput/GStreamerOut.h`            | Add static video methods   |
-| `src/Sequence.cpp`                          | Update static method calls |
-| `src/channeloutput/channeloutputthread.cpp` | Update static method calls |
+| File                                        | Change                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| `src/mediaoutput/GStreamerOut.cpp`          | Video appsink branch, pad linking, stride fix, diagnostic logging   |
+| `src/mediaoutput/GStreamerOut.h`            | Video members, PixelOverlayModel, pad linking, frame counters       |
+| `src/mediaoutput/mediaoutput.cpp`           | Factory: Video+overlay → GStreamerOutput                            |
+| `src/Sequence.cpp`                          | Add GStreamerOutput::IsOverlayingVideo/ProcessVideoOverlay calls    |
+| `src/channeloutput/channeloutputthread.cpp` | Add GStreamerOutput::IsOverlayingVideo to forceOutput()             |
+| `src/commands/MediaCommands.cpp`            | Args bounds check fix                                               |
 
 ---
 

@@ -24,6 +24,9 @@
 #include "common.h"
 #include "log.h"
 #include "settings.h"
+#include "channeloutput/channeloutputthread.h"
+#include "overlays/PixelOverlay.h"
+#include "overlays/PixelOverlayModel.h"
 
 // Static instance pointer for callbacks
 GStreamerOutput* GStreamerOutput::m_currentInstance = nullptr;
@@ -44,6 +47,9 @@ static void EnsureGStreamerInit() {
             setenv("PIPEWIRE_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("XDG_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("PULSE_RUNTIME_PATH", "/run/pipewire-fpp/pulse", 1);
+            LogInfo(VB_MEDIAOUT, "GStreamer: Set PipeWire env (PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp)\n");
+        } else {
+            LogInfo(VB_MEDIAOUT, "GStreamer: AudioBackend='%s', not setting PipeWire env\n", audioBackend.c_str());
         }
         gst_init(nullptr, nullptr);
         gst_initialized = true;
@@ -56,7 +62,8 @@ GStreamerOutput::GStreamerOutput(const std::string& mediaFilename, MediaOutputSt
     m_mediaFilename = mediaFilename;
     m_mediaOutputStatus = status;
     EnsureGStreamerInit();
-    LogDebug(VB_MEDIAOUT, "GStreamerOutput::GStreamerOutput(%s)\n", mediaFilename.c_str());
+    LogDebug(VB_MEDIAOUT, "GStreamerOutput::GStreamerOutput(%s, videoOut=%s)\n",
+             mediaFilename.c_str(), videoOut.c_str());
 }
 
 GStreamerOutput::~GStreamerOutput() {
@@ -66,17 +73,55 @@ GStreamerOutput::~GStreamerOutput() {
 int GStreamerOutput::Start(int msTime) {
     LogDebug(VB_MEDIAOUT, "GStreamerOutput::Start(%d) - %s\n", msTime, m_mediaFilename.c_str());
 
-    // Build full path if not absolute
+    // Build full path — check music dir, then video dir (mirrors SDLOutput)
     std::string fullPath = m_mediaFilename;
-    if (fullPath[0] != '/') {
+    if (!FileExists(fullPath)) {
         fullPath = FPP_DIR_MUSIC("/" + m_mediaFilename);
     }
+    if (!FileExists(fullPath)) {
+        fullPath = FPP_DIR_VIDEO("/" + m_mediaFilename);
+    }
+    if (!FileExists(fullPath)) {
+        LogErr(VB_MEDIAOUT, "GStreamer: media file not found: %s\n", m_mediaFilename.c_str());
+        return 0;
+    }
 
-    // Build the pipeline with tee for audio sample extraction
-    // Main branch: audio output via PipeWire or autoaudiosink
-    // Tap branch: appsink for WLED audio-reactive effects
+    // Determine if we need a video overlay branch
+    bool wantVideo = (m_videoOut != "--Disabled--" && m_videoOut != "" &&
+                      m_videoOut != "--HDMI--" && m_videoOut != "HDMI");
+
+    if (wantVideo) {
+        // Register listener and get model
+        PixelOverlayManager::INSTANCE.addModelListener(m_videoOut, "GStreamerOut",
+            [this](PixelOverlayModel* m) {
+                std::lock_guard<std::mutex> lock(m_videoOverlayModelLock);
+                m_videoOverlayModel = m;
+            });
+        m_videoOverlayModel = PixelOverlayManager::INSTANCE.getModel(m_videoOut);
+        if (m_videoOverlayModel) {
+            m_videoOverlayModel->getSize(m_videoOverlayWidth, m_videoOverlayHeight);
+            LogInfo(VB_MEDIAOUT, "GStreamer video overlay: model=%s size=%dx%d\n",
+                    m_videoOut.c_str(), m_videoOverlayWidth, m_videoOverlayHeight);
+        } else {
+            LogWarn(VB_MEDIAOUT, "GStreamer: PixelOverlay model '%s' not found, skipping video\n",
+                    m_videoOut.c_str());
+            wantVideo = false;
+        }
+    }
+
+    // Build the pipeline
+    // Audio: filesrc ! decodebin ! audioconvert ! audioresample ! tee name=t
+    //   t. ! queue ! volume ! pipewiresink
+    //   t. ! queue ! audioconvert ! F32LE,1ch ! appsink (WLED tap)
+    // Video (when overlay model available):
+    //   decodebin pad-added -> videoconvert ! videoscale ! capsfilter(RGB,WxH) ! appsink
+    //
+    // When video is needed, we must use decodebin's pad-added signal for dynamic linking,
+    // since decodebin creates pads on-the-fly for each stream type.
+    // We still use gst_parse_launch for the audio chain and manually add the video chain.
+
     std::string pipelineSinkName = getSetting("PipeWireSinkName");
-    
+
     std::string sinkStr;
     if (!pipelineSinkName.empty()) {
         sinkStr = "pipewiresink name=pwsink target-object=" + pipelineSinkName;
@@ -84,22 +129,158 @@ int GStreamerOutput::Start(int msTime) {
         sinkStr = "autoaudiosink";
     }
 
-    std::string pipelineStr =
-        "filesrc location=\"" + fullPath + "\" ! decodebin ! audioconvert ! audioresample ! "
-        "tee name=t "
-        "t. ! queue ! volume name=vol ! " + sinkStr + " "
-        "t. ! queue max-size-buffers=3 leaky=downstream ! "
-        "audioconvert ! audio/x-raw,format=F32LE,channels=1 ! "
-        "appsink name=sampletap emit-signals=true sync=false max-buffers=3 drop=true";
-    
-    LogDebug(VB_MEDIAOUT, "GStreamer pipeline: %s\n", pipelineStr.c_str());
-
     GError* error = nullptr;
-    m_pipeline = gst_parse_launch(pipelineStr.c_str(), &error);
-    if (error) {
-        LogErr(VB_MEDIAOUT, "GStreamer pipeline error: %s\n", error->message);
-        g_error_free(error);
-        return 0;
+
+    if (wantVideo) {
+        // Build pipeline with decodebin pad-added for dynamic audio+video linking
+        std::string pipelineStr =
+            "filesrc location=\"" + fullPath + "\" ! decodebin name=decoder";
+
+        LogDebug(VB_MEDIAOUT, "GStreamer pipeline (video): %s\n", pipelineStr.c_str());
+        m_pipeline = gst_parse_launch(pipelineStr.c_str(), &error);
+        if (error) {
+            LogErr(VB_MEDIAOUT, "GStreamer pipeline error: %s\n", error->message);
+            g_error_free(error);
+            return 0;
+        }
+
+        // Build audio sub-chain: audioconvert ! audioresample ! tee ! ...
+        GstElement* audioconvert = gst_element_factory_make("audioconvert", "aconv");
+        GstElement* audioresample = gst_element_factory_make("audioresample", "aresample");
+        GstElement* tee = gst_element_factory_make("tee", "t");
+        GstElement* queue1 = gst_element_factory_make("queue", "q1");
+        m_volume = gst_element_factory_make("volume", "vol");
+        GstElement* sink = nullptr;
+        if (!pipelineSinkName.empty()) {
+            sink = gst_element_factory_make("pipewiresink", "pwsink");
+            g_object_set(sink, "target-object", pipelineSinkName.c_str(), NULL);
+        } else {
+            sink = gst_element_factory_make("autoaudiosink", "audiosink");
+        }
+        GstElement* queue2 = gst_element_factory_make("queue", "q2");
+        GstElement* audioconvert2 = gst_element_factory_make("audioconvert", "aconv2");
+        GstElement* capsfilterAudio = gst_element_factory_make("capsfilter", "acapsf");
+        m_appsink = gst_element_factory_make("appsink", "sampletap");
+
+        // Set audio tap caps: F32LE mono
+        GstCaps* audioCaps = gst_caps_new_simple("audio/x-raw",
+            "format", G_TYPE_STRING, "F32LE",
+            "channels", G_TYPE_INT, 1, NULL);
+        g_object_set(capsfilterAudio, "caps", audioCaps, NULL);
+        gst_caps_unref(audioCaps);
+
+        // Configure queues
+        g_object_set(queue2, "max-size-buffers", 3, "leaky", 2 /* downstream */, NULL);
+
+        // Configure audio appsink
+        g_object_set(m_appsink, "emit-signals", TRUE, "sync", FALSE,
+                     "max-buffers", 3, "drop", TRUE, NULL);
+
+        // Add audio elements to pipeline
+        gst_bin_add_many(GST_BIN(m_pipeline), audioconvert, audioresample, tee,
+                         queue1, m_volume, sink,
+                         queue2, audioconvert2, capsfilterAudio, m_appsink, NULL);
+
+        // Take our own refs on elements we keep pointers to.
+        // gst_bin_add sinks the floating ref; we need our own ref so Close() can safely unref.
+        gst_object_ref(m_volume);
+        gst_object_ref(m_appsink);
+
+        // Link audio chain
+        if (!gst_element_link_many(audioconvert, audioresample, tee, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer: Failed to link audioconvert->audioresample->tee\n");
+        }
+        if (!gst_element_link_many(queue1, m_volume, sink, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer: Failed to link queue1->volume->sink\n");
+        }
+        if (!gst_element_link_many(queue2, audioconvert2, capsfilterAudio, m_appsink, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer: Failed to link queue2->audioconvert2->capsfilter->appsink\n");
+        }
+
+        // Link tee to both queues
+        GstPad* teeSrc1 = gst_element_request_pad_simple(tee, "src_%u");
+        GstPad* q1Sink = gst_element_get_static_pad(queue1, "sink");
+        gst_pad_link(teeSrc1, q1Sink);
+        gst_object_unref(teeSrc1);
+        gst_object_unref(q1Sink);
+
+        GstPad* teeSrc2 = gst_element_request_pad_simple(tee, "src_%u");
+        GstPad* q2Sink = gst_element_get_static_pad(queue2, "sink");
+        gst_pad_link(teeSrc2, q2Sink);
+        gst_object_unref(teeSrc2);
+        gst_object_unref(q2Sink);
+
+        // Remember the audio chain entry point for pad-added linkage
+        m_audioChain = audioconvert;
+
+        // Build video sub-chain: videoconvert ! videoscale ! capsfilter(RGB,WxH) ! appsink
+        GstElement* videoconvert = gst_element_factory_make("videoconvert", "vconv");
+        GstElement* videoscale = gst_element_factory_make("videoscale", "vscale");
+        GstElement* capsfilterVideo = gst_element_factory_make("capsfilter", "vcapsf");
+        GstElement* videoQueue = gst_element_factory_make("queue", "vq");
+        m_videoAppsink = gst_element_factory_make("appsink", "videosink");
+
+        // Set video caps: RGB at overlay model dimensions
+        GstCaps* videoCaps = gst_caps_new_simple("video/x-raw",
+            "format", G_TYPE_STRING, "RGB",
+            "width", G_TYPE_INT, m_videoOverlayWidth,
+            "height", G_TYPE_INT, m_videoOverlayHeight, NULL);
+        g_object_set(capsfilterVideo, "caps", videoCaps, NULL);
+        gst_caps_unref(videoCaps);
+
+        // Configure video appsink: emit signals, sync=TRUE to pace delivery at real-time speed.
+        // Without sync=TRUE, all frames are consumed immediately and position jumps to EOF,
+        // falsely triggering stall detection (especially for video-only files).
+        // drop=TRUE ensures old frames are discarded if ProcessVideoOverlay can't keep up.
+        g_object_set(m_videoAppsink, "emit-signals", TRUE, "sync", TRUE,
+                     "max-buffers", 2, "drop", TRUE, NULL);
+
+        // Add video elements to pipeline
+        gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
+                         capsfilterVideo, m_videoAppsink, NULL);
+
+        // Take our own ref on the video appsink pointer
+        gst_object_ref(m_videoAppsink);
+
+        // Link video chain
+        if (!gst_element_link_many(videoQueue, videoconvert, videoscale, capsfilterVideo,
+                              m_videoAppsink, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer: Failed to link video chain\n");
+        }
+
+        // Remember the video chain entry point for pad-added linkage
+        m_videoChain = videoQueue;
+
+        // Connect decodebin pad-added signal for dynamic linking
+        GstElement* decoder = gst_bin_get_by_name(GST_BIN(m_pipeline), "decoder");
+        g_signal_connect(decoder, "pad-added", G_CALLBACK(OnPadAdded), this);
+        g_signal_connect(decoder, "no-more-pads", G_CALLBACK(OnNoMorePads), this);
+        gst_object_unref(decoder);
+
+    } else {
+        // Audio-only pipeline (original gst_parse_launch approach)
+        std::string pipelineStr =
+            "filesrc location=\"" + fullPath + "\" ! decodebin ! audioconvert ! audioresample ! "
+            "tee name=t "
+            "t. ! queue ! volume name=vol ! " + sinkStr + " "
+            "t. ! queue max-size-buffers=3 leaky=downstream ! "
+            "audioconvert ! audio/x-raw,format=F32LE,channels=1 ! "
+            "appsink name=sampletap emit-signals=true sync=false max-buffers=3 drop=true";
+
+        LogDebug(VB_MEDIAOUT, "GStreamer pipeline: %s\n", pipelineStr.c_str());
+
+        m_pipeline = gst_parse_launch(pipelineStr.c_str(), &error);
+        if (error) {
+            LogErr(VB_MEDIAOUT, "GStreamer pipeline error: %s\n", error->message);
+            g_error_free(error);
+            return 0;
+        }
+
+        // Get the volume element for later control
+        m_volume = gst_bin_get_by_name(GST_BIN(m_pipeline), "vol");
+
+        // Get the appsink
+        m_appsink = gst_bin_get_by_name(GST_BIN(m_pipeline), "sampletap");
     }
 
     if (!m_pipeline) {
@@ -107,11 +288,7 @@ int GStreamerOutput::Start(int msTime) {
         return 0;
     }
 
-    // Get the volume element for later control
-    m_volume = gst_bin_get_by_name(GST_BIN(m_pipeline), "vol");
-
-    // Get the appsink and connect the new-sample callback
-    m_appsink = gst_bin_get_by_name(GST_BIN(m_pipeline), "sampletap");
+    // Connect audio appsink callback
     m_shutdownFlag.store(false);
     if (m_appsink) {
         m_appsinkSignalId = g_signal_connect(m_appsink, "new-sample", G_CALLBACK(OnNewSample), this);
@@ -119,6 +296,16 @@ int GStreamerOutput::Start(int msTime) {
     } else {
         m_appsinkSignalId = 0;
         LogWarn(VB_MEDIAOUT, "GStreamer: could not find sampletap appsink element\n");
+    }
+
+    // Connect video appsink callback
+    if (m_videoAppsink) {
+        m_videoAppsinkSignalId = g_signal_connect(m_videoAppsink, "new-sample",
+                                                   G_CALLBACK(OnNewVideoSample), this);
+        m_hasVideoStream = true;
+        LogDebug(VB_MEDIAOUT, "GStreamer video appsink connected\n");
+    } else {
+        m_videoAppsinkSignalId = 0;
     }
 
     // Clear the sample buffer for fresh playback
@@ -165,6 +352,12 @@ int GStreamerOutput::Start(int msTime) {
         m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_PLAYING;
     }
 
+    // Ensure channel output thread is running so ProcessVideoOverlay gets called
+    // (same as SDLOutput behavior)
+    if (m_videoOverlayModel) {
+        StartChannelOutputThread();
+    }
+
     Starting();
     LogInfo(VB_MEDIAOUT, "GStreamer started playing: %s\n", m_mediaFilename.c_str());
     return 1;
@@ -204,20 +397,44 @@ int GStreamerOutput::Process(void) {
                 int totalSecs = (int)(dur / GST_SECOND);
                 m_mediaOutputStatus->minutesTotal = totalSecs / 60;
                 m_mediaOutputStatus->secondsTotal = totalSecs % 60;
-                LogDebug(VB_MEDIAOUT, "GStreamer duration: %d:%02d\n",
-                         m_mediaOutputStatus->minutesTotal, m_mediaOutputStatus->secondsTotal);
+                if (totalSecs > 0) {
+                    LogInfo(VB_MEDIAOUT, "GStreamer duration: %d:%02d\n",
+                            m_mediaOutputStatus->minutesTotal, m_mediaOutputStatus->secondsTotal);
+                }
             }
 
             // Stall watchdog: detect when PipeWire stops consuming data
             // (e.g. HDMI sink unplugged causing combine-stream to block)
+            // Skip watchdog near end of media — position naturally stops advancing
+            bool nearEnd = (dur > 0 && (dur - pos) < GST_SECOND);
+
             if (pos != m_lastPosition) {
                 m_lastPosition = pos;
                 m_stallStartMs = 0; // position advancing, clear stall timer
+            } else if (nearEnd) {
+                // Position at/near end of media — this is natural completion, not a stall.
+                // Wait for EOS from the pipeline, or handle it ourselves after a grace period.
+                uint64_t now = GetTimeMS();
+                if (m_stallStartMs == 0) {
+                    m_stallStartMs = now;
+                } else if ((now - m_stallStartMs) > (STALL_TIMEOUT_MS * 2)) {
+                    // EOS should have arrived by now but didn't — force end
+                    LogInfo(VB_MEDIAOUT, "GStreamer: media reached end (%.1fs/%.1fs), forcing stop\n",
+                            elapsed, (float)dur / GST_SECOND);
+                    m_playing = false;
+                    if (m_mediaOutputStatus) {
+                        m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;
+                    }
+                    Stopping();
+                    Stopped();
+                    return 0;
+                }
             } else {
                 // Position unchanged — start or continue stall timer
                 uint64_t now = GetTimeMS();
                 if (m_stallStartMs == 0) {
                     m_stallStartMs = now;
+                    LogDebug(VB_MEDIAOUT, "GStreamer: position stalled at %.1fs, starting watchdog\n", elapsed);
                 } else if ((now - m_stallStartMs) > STALL_TIMEOUT_MS) {
                     LogWarn(VB_MEDIAOUT, "GStreamer pipeline stalled for %dms at position %.1fs — "
                             "audio sink may be blocked (HDMI unplugged?). Stopping playback.\n",
@@ -311,7 +528,7 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
 
     switch (GST_MESSAGE_TYPE(msg)) {
     case GST_MESSAGE_EOS:
-        LogDebug(VB_MEDIAOUT, "GStreamer sync: End of stream\n");
+        LogInfo(VB_MEDIAOUT, "GStreamer sync: End of stream\n");
         if (self->m_loopCount > 0 || self->m_loopCount == -1) {
             if (self->m_loopCount > 0)
                 self->m_loopCount--;
@@ -371,11 +588,11 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
 int GStreamerOutput::Close(void) {
     LogDebug(VB_MEDIAOUT, "GStreamerOutput::Close()\n");
     if (m_pipeline) {
-        // Set shutdown flag FIRST — this prevents OnNewSample from doing any work
+        // Set shutdown flag FIRST — this prevents OnNewSample/OnNewVideoSample from doing any work
         m_shutdownFlag.store(true);
 
-        // Disconnect the appsink signal and disable emission BEFORE pipeline state change.
-        // This prevents the streaming thread from calling OnNewSample during teardown,
+        // Disconnect appsink signals and disable emission BEFORE pipeline state change.
+        // This prevents streaming threads from calling callbacks during teardown,
         // which can deadlock with gst_element_set_state(NULL) due to malloc arena locks.
         if (m_appsink) {
             if (m_appsinkSignalId > 0) {
@@ -384,15 +601,36 @@ int GStreamerOutput::Close(void) {
             }
             g_object_set(m_appsink, "emit-signals", FALSE, NULL);
         }
+        if (m_videoAppsink) {
+            if (m_videoAppsinkSignalId > 0) {
+                g_signal_handler_disconnect(m_videoAppsink, m_videoAppsinkSignalId);
+                m_videoAppsinkSignalId = 0;
+            }
+            g_object_set(m_videoAppsink, "emit-signals", FALSE, NULL);
+        }
 
         // Remove bus sync handler before state change
         if (m_bus) {
             gst_bus_set_sync_handler(m_bus, nullptr, nullptr, nullptr);
         }
         Stop();
+
+        // Restore overlay model state if we enabled it
+        if (m_wasOverlayDisabled) {
+            std::lock_guard<std::mutex> lock(m_videoOverlayModelLock);
+            if (m_videoOverlayModel) {
+                m_videoOverlayModel->setState(PixelOverlayState(PixelOverlayState::Disabled));
+            }
+            m_wasOverlayDisabled = false;
+        }
+
         if (m_appsink) {
             gst_object_unref(m_appsink);
             m_appsink = nullptr;
+        }
+        if (m_videoAppsink) {
+            gst_object_unref(m_videoAppsink);
+            m_videoAppsink = nullptr;
         }
         if (m_volume) {
             gst_object_unref(m_volume);
@@ -405,6 +643,28 @@ int GStreamerOutput::Close(void) {
         gst_object_unref(m_pipeline);
         m_pipeline = nullptr;
     }
+
+    // Clean up video overlay state
+    if (m_videoFramesReceived > 0 || m_videoFramesDelivered > 0) {
+        LogInfo(VB_MEDIAOUT, "GStreamer video overlay stats: %lu frames received, %lu delivered\n",
+                (unsigned long)m_videoFramesReceived, (unsigned long)m_videoFramesDelivered);
+    }
+    m_hasVideoStream = false;
+    m_videoFrameReady = false;
+    m_videoFramesReceived = 0;
+    m_videoFramesDelivered = 0;
+    m_audioChain = nullptr;
+    m_videoChain = nullptr;
+
+    // Remove model listener
+    if (!m_videoOut.empty() && m_videoOut != "--Disabled--") {
+        PixelOverlayManager::INSTANCE.removeModelListener(m_videoOut, "GStreamerOut");
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_videoOverlayModelLock);
+        m_videoOverlayModel = nullptr;
+    }
+
     if (m_currentInstance == this) {
         m_currentInstance = nullptr;
     }
@@ -438,15 +698,211 @@ void GStreamerOutput::SetVolumeAdjustment(int volAdj) {
     }
 }
 
-// Static methods — stubs for later phases
+// Static video overlay methods — called from Sequence.cpp and channeloutputthread.cpp
 bool GStreamerOutput::IsOverlayingVideo() {
-    // Phase 3
-    return false;
+    return m_currentInstance && m_currentInstance->m_hasVideoStream &&
+           m_currentInstance->m_playing && m_currentInstance->m_videoOverlayModel;
 }
 
 bool GStreamerOutput::ProcessVideoOverlay(unsigned int msTimestamp) {
-    // Phase 3
+    if (!m_currentInstance || !m_currentInstance->m_playing || !m_currentInstance->m_hasVideoStream)
+        return false;
+
+    GStreamerOutput* self = m_currentInstance;
+
+    // Copy the latest video frame data under lock
+    std::vector<uint8_t> frameData;
+    {
+        std::lock_guard<std::mutex> lock(self->m_videoFrameMutex);
+        if (!self->m_videoFrameReady)
+            return false;
+        frameData = self->m_videoFrameData;
+        self->m_videoFrameReady = false;
+    }
+
+    // Push RGB data to the PixelOverlayModel
+    std::lock_guard<std::mutex> lock(self->m_videoOverlayModelLock);
+    if (self->m_videoOverlayModel && !frameData.empty()) {
+        self->m_videoOverlayModel->setData(frameData.data());
+        self->m_videoFramesDelivered++;
+
+        if (self->m_videoFramesDelivered == 1 || (self->m_videoFramesDelivered % 100) == 0) {
+            LogInfo(VB_MEDIAOUT, "GStreamer: video frame %lu delivered to overlay (%zu bytes)\n",
+                    (unsigned long)self->m_videoFramesDelivered, frameData.size());
+        }
+
+        // Auto-enable model if it was disabled (same as SDLOutput behavior)
+        if (self->m_videoOverlayModel->getState() == PixelOverlayState::Disabled) {
+            self->m_wasOverlayDisabled = true;
+            self->m_videoOverlayModel->setState(PixelOverlayState(PixelOverlayState::Enabled));
+        }
+    }
     return false;
+}
+
+GstFlowReturn GStreamerOutput::OnNewVideoSample(GstAppSink* appsink, gpointer userData) {
+    GStreamerOutput* self = static_cast<GStreamerOutput*>(userData);
+    if (!self || self->m_shutdownFlag.load(std::memory_order_acquire))
+        return GST_FLOW_EOS;
+
+    GstSample* sample = gst_app_sink_pull_sample(appsink);
+    if (!sample)
+        return GST_FLOW_OK;
+
+    GstBuffer* buffer = gst_sample_get_buffer(sample);
+    GstMapInfo map;
+    if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        int width = self->m_videoOverlayWidth;
+        int height = self->m_videoOverlayHeight;
+        int rowBytes = width * 3;  // RGB = 3 bytes/pixel, tightly packed
+        int expectedSize = rowBytes * height;
+        int stride = (height > 0) ? (int)(map.size / height) : rowBytes;
+
+        std::lock_guard<std::mutex> lock(self->m_videoFrameMutex);
+        if (stride == rowBytes) {
+            // No padding — direct copy
+            self->m_videoFrameData.assign(map.data, map.data + expectedSize);
+        } else {
+            // GStreamer pads rows to 4-byte alignment — strip padding
+            self->m_videoFrameData.resize(expectedSize);
+            for (int y = 0; y < height; y++) {
+                memcpy(&self->m_videoFrameData[y * rowBytes], map.data + y * stride, rowBytes);
+            }
+        }
+        self->m_videoFrameReady = true;
+        self->m_videoFramesReceived++;
+        if (self->m_videoFramesReceived == 1 || (self->m_videoFramesReceived % 100) == 0) {
+            LogInfo(VB_MEDIAOUT, "GStreamer: video frame %lu received (%zu bytes, stride=%d, rowBytes=%d)\n",
+                    (unsigned long)self->m_videoFramesReceived, map.size, stride, rowBytes);
+        }
+        gst_buffer_unmap(buffer, &map);
+    }
+
+    gst_sample_unref(sample);
+    return GST_FLOW_OK;
+}
+
+void GStreamerOutput::OnPadAdded(GstElement* element, GstPad* pad, gpointer userData) {
+    GStreamerOutput* self = static_cast<GStreamerOutput*>(userData);
+    if (!self)
+        return;
+
+    GstCaps* caps = gst_pad_get_current_caps(pad);
+    if (!caps)
+        caps = gst_pad_query_caps(pad, nullptr);
+
+    if (!caps)
+        return;
+
+    // Log all structures in the caps for debugging
+    for (guint i = 0; i < gst_caps_get_size(caps); i++) {
+        const gchar* sname = gst_structure_get_name(gst_caps_get_structure(caps, i));
+        LogDebug(VB_MEDIAOUT, "GStreamer decodebin pad-added caps[%u]: %s\n", i, sname);
+    }
+
+    const gchar* name = gst_structure_get_name(gst_caps_get_structure(caps, 0));
+    LogInfo(VB_MEDIAOUT, "GStreamer decodebin pad-added: %s\n", name);
+
+    if (g_str_has_prefix(name, "audio/") && self->m_audioChain) {
+        GstPad* sinkPad = gst_element_get_static_pad(self->m_audioChain, "sink");
+        if (sinkPad && !gst_pad_is_linked(sinkPad)) {
+            GstPadLinkReturn ret = gst_pad_link(pad, sinkPad);
+            if (GST_PAD_LINK_FAILED(ret)) {
+                LogErr(VB_MEDIAOUT, "GStreamer: Failed to link audio pad: %d\n", ret);
+            } else {
+                LogInfo(VB_MEDIAOUT, "GStreamer: Linked audio pad successfully\n");
+                self->m_audioLinked = true;
+            }
+        } else {
+            LogWarn(VB_MEDIAOUT, "GStreamer: Audio pad already linked or sink pad unavailable\n");
+        }
+        if (sinkPad)
+            gst_object_unref(sinkPad);
+    } else if (g_str_has_prefix(name, "video/") && self->m_videoChain) {
+        GstPad* sinkPad = gst_element_get_static_pad(self->m_videoChain, "sink");
+        if (sinkPad && !gst_pad_is_linked(sinkPad)) {
+            GstPadLinkReturn ret = gst_pad_link(pad, sinkPad);
+            if (GST_PAD_LINK_FAILED(ret)) {
+                LogErr(VB_MEDIAOUT, "GStreamer: Failed to link video pad: %d\n", ret);
+            } else {
+                LogInfo(VB_MEDIAOUT, "GStreamer: Linked video pad successfully\n");
+                self->m_videoLinked = true;
+            }
+        } else {
+            LogWarn(VB_MEDIAOUT, "GStreamer: Video pad already linked or sink pad unavailable\n");
+        }
+        if (sinkPad)
+            gst_object_unref(sinkPad);
+    } else {
+        LogDebug(VB_MEDIAOUT, "GStreamer: Ignoring pad with caps: %s\n", name);
+    }
+
+    gst_caps_unref(caps);
+}
+
+void GStreamerOutput::OnNoMorePads(GstElement* element, gpointer userData) {
+    GStreamerOutput* self = static_cast<GStreamerOutput*>(userData);
+    if (!self)
+        return;
+
+    LogInfo(VB_MEDIAOUT, "GStreamer: no-more-pads (audio=%s, video=%s)\n",
+            self->m_audioLinked ? "linked" : "not linked",
+            self->m_videoLinked ? "linked" : "not linked");
+
+    // If audio chain was never connected, remove orphaned audio elements from the bin.
+    // Without this, the pipeline will never reach EOS because the audio sinks
+    // never receive data and never post their individual EOS events.
+    if (!self->m_audioLinked && self->m_audioChain && self->m_pipeline) {
+        LogInfo(VB_MEDIAOUT, "GStreamer: Removing unconnected audio chain (video-only media)\n");
+
+        // Get all audio elements by name and remove them
+        const char* audioNames[] = {"aconv", "aresample", "t", "q1", "vol", "pwsink", "audiosink",
+                                    "q2", "aconv2", "acapsf", "sampletap", nullptr};
+        for (int i = 0; audioNames[i]; i++) {
+            GstElement* el = gst_bin_get_by_name(GST_BIN(self->m_pipeline), audioNames[i]);
+            if (el) {
+                gst_element_set_state(el, GST_STATE_NULL);
+                gst_bin_remove(GST_BIN(self->m_pipeline), el);
+                gst_object_unref(el);
+            }
+        }
+
+        // Release our refs and clear audio pointers
+        if (self->m_appsink) {
+            gst_object_unref(self->m_appsink);
+            self->m_appsink = nullptr;
+        }
+        if (self->m_volume) {
+            gst_object_unref(self->m_volume);
+            self->m_volume = nullptr;
+        }
+        self->m_audioChain = nullptr;
+        self->m_appsinkSignalId = 0;
+    }
+
+    // If video chain was never connected, remove orphaned video elements.
+    if (!self->m_videoLinked && self->m_videoChain && self->m_pipeline) {
+        LogInfo(VB_MEDIAOUT, "GStreamer: Removing unconnected video chain (audio-only media)\n");
+
+        const char* videoNames[] = {"vq", "vconv", "vscale", "vcapsf", "videosink", nullptr};
+        for (int i = 0; videoNames[i]; i++) {
+            GstElement* el = gst_bin_get_by_name(GST_BIN(self->m_pipeline), videoNames[i]);
+            if (el) {
+                gst_element_set_state(el, GST_STATE_NULL);
+                gst_bin_remove(GST_BIN(self->m_pipeline), el);
+                gst_object_unref(el);
+            }
+        }
+
+        // Release our ref and clear video pointers
+        if (self->m_videoAppsink) {
+            gst_object_unref(self->m_videoAppsink);
+            self->m_videoAppsink = nullptr;
+        }
+        self->m_videoChain = nullptr;
+        self->m_videoAppsinkSignalId = 0;
+        self->m_hasVideoStream = false;
+    }
 }
 
 GstFlowReturn GStreamerOutput::OnNewSample(GstAppSink* appsink, gpointer userData) {

@@ -330,6 +330,12 @@ MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::
         LogInfo(VB_MEDIAOUT, "Using GStreamer for audio playback: %s\n", mediaFilename.c_str());
         return new GStreamerOutput(mediaFilename, &mediaOutputStatus, "--Disabled--");
     }
+    if (useGStreamer && IsExtensionVideo(ext) && !IsHDMIOut(vo)) {
+        // Video with PixelOverlay output — use GStreamer for both audio and video
+        LogInfo(VB_MEDIAOUT, "Using GStreamer for video+overlay playback: %s (overlay=%s)\n",
+                mediaFilename.c_str(), vo.c_str());
+        return new GStreamerOutput(mediaFilename, &mediaOutputStatus, vo);
+    }
 #endif
 
 #ifdef HAS_VLC

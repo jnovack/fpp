@@ -29,6 +29,7 @@
 #include "../common.h"
 #include "../effects.h"
 #include "../log.h"
+#include "../mediaoutput/GStreamerOut.h"
 #include "../mediaoutput/SDLOut.h"
 #include "../overlays/PixelOverlay.h"
 #include "../settings.h"
@@ -98,6 +99,9 @@ void ForceChannelOutputNow(void) {
 static inline bool forceOutput() {
     return IsEffectRunning() ||
            PixelOverlayManager::INSTANCE.hasActiveOverlays() ||
+#ifdef HAS_GSTREAMER
+           GStreamerOutput::IsOverlayingVideo() ||
+#endif
            SDLOutput::IsOverlayingVideo() ||
            ChannelTester::INSTANCE.Testing() ||
            alwaysTransmit ||

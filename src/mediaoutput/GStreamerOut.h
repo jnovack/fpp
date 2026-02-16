@@ -21,6 +21,9 @@
 #include <array>
 #include <atomic>
 #include <mutex>
+#include <vector>
+
+class PixelOverlayModel;
 
 class GStreamerOutput : public MediaOutputBase {
 public:
@@ -35,7 +38,7 @@ public:
     virtual int AdjustSpeed(float masterPos) override;
     virtual void SetVolume(int volume) override;
 
-    // Static methods matching SDLOutput interface — for later phases
+    // Static methods matching SDLOutput interface
     static bool IsOverlayingVideo();
     static bool ProcessVideoOverlay(unsigned int msTimestamp);
     static bool GetAudioSamples(float* samples, int numSamples, int& sampleRate);
@@ -53,14 +56,16 @@ public:
 private:
     GstElement* m_pipeline = nullptr;
     GstElement* m_volume = nullptr;
-    GstElement* m_appsink = nullptr;
+    GstElement* m_appsink = nullptr;       // audio sample tap
+    GstElement* m_videoAppsink = nullptr;   // video frame sink for PixelOverlay
     GstBus* m_bus = nullptr;
     std::string m_videoOut;
     int m_loopCount = 0;
     int m_volumeAdjust = 0;
-    bool m_playing = false;
-    std::atomic<bool> m_shutdownFlag{false};  // guards OnNewSample during teardown
-    gulong m_appsinkSignalId = 0;            // signal handler ID for disconnection
+    std::atomic<bool> m_playing{false};     // written from GStreamer thread (BusSyncHandler), read from main loop
+    std::atomic<bool> m_shutdownFlag{false};  // guards callbacks during teardown
+    gulong m_appsinkSignalId = 0;            // audio appsink signal handler ID
+    gulong m_videoAppsinkSignalId = 0;       // video appsink signal handler ID
 
     // Stall watchdog — detects when PipeWire sink stops consuming data
     gint64 m_lastPosition = -1;
@@ -77,6 +82,31 @@ private:
     static int s_sampleRate;
     static std::mutex s_sampleMutex;
     static GstFlowReturn OnNewSample(GstAppSink* appsink, gpointer userData);
+
+    // Video overlay for PixelOverlayModel (Phase 3)
+    PixelOverlayModel* m_videoOverlayModel = nullptr;
+    std::mutex m_videoOverlayModelLock;
+    int m_videoOverlayWidth = 0;
+    int m_videoOverlayHeight = 0;
+    bool m_hasVideoStream = false;
+    bool m_wasOverlayDisabled = false;
+
+    // Latest video frame buffer — written by OnNewVideoSample, read by ProcessVideoOverlay
+    std::vector<uint8_t> m_videoFrameData;
+    std::mutex m_videoFrameMutex;
+    bool m_videoFrameReady = false;
+    uint64_t m_videoFramesReceived = 0;    // diagnostic counter
+    uint64_t m_videoFramesDelivered = 0;   // diagnostic counter
+
+    static GstFlowReturn OnNewVideoSample(GstAppSink* appsink, gpointer userData);
+
+    // Dynamic pad linking for decodebin (video requires pad-added signal)
+    static void OnPadAdded(GstElement* element, GstPad* pad, gpointer userData);
+    static void OnNoMorePads(GstElement* element, gpointer userData);
+    GstElement* m_audioChain = nullptr;    // audio sub-bin for pad linking
+    GstElement* m_videoChain = nullptr;    // video sub-bin for pad linking
+    bool m_audioLinked = false;            // true when audio pad was connected
+    bool m_videoLinked = false;            // true when video pad was connected
 
     static GStreamerOutput* m_currentInstance;
 };

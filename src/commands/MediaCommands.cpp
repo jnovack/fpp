@@ -334,7 +334,7 @@ PlayMediaCommand::PlayMediaCommand() :
     args.push_back(CommandArg("volume", "int", "Volume Adjust").setDefaultValue(std::string("0")).setRange(-100, 100));
 }
 std::unique_ptr<Command::Result> PlayMediaCommand::run(const std::vector<std::string>& args) {
-    int loop = std::atoi(args[1].c_str());
+    int loop = args.size() > 1 ? std::atoi(args[1].c_str()) : 1;
     int volAdjust = 0;
     if (args.size() > 2) {
         volAdjust = std::atoi(args[2].c_str());
