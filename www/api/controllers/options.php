@@ -119,6 +119,31 @@ function GetOptions_AudioOutputDevice($fulllist = false)
             error_log("Error getting alsa cards for output!");
         } else {
             $foundOurCard = 0;
+            // First pass: collect all card names to detect duplicates
+            $cardNameCounts = array();
+            foreach ($output as $card) {
+                $values = explode(':', $card);
+                if (count($values) >= 2) {
+                    $name = $values[1];
+                    if (!isset($cardNameCounts[$name])) {
+                        $cardNameCounts[$name] = 0;
+                    }
+                    $cardNameCounts[$name]++;
+                }
+            }
+
+            // Build the ALSA card ID map from /proc/asound/cards
+            // Format: " 0 [S3             ]: USB-Audio - ..."
+            $cardIdMap = array(); // card number -> ALSA card ID
+            $cardsFile = @file_get_contents('/proc/asound/cards');
+            if ($cardsFile) {
+                if (preg_match_all('/^\s*(\d+)\s*\[([^\]]+)\]/m', $cardsFile, $cmatches, PREG_SET_ORDER)) {
+                    foreach ($cmatches as $cm) {
+                        $cardIdMap[$cm[1]] = trim($cm[2]);
+                    }
+                }
+            }
+
             foreach ($output as $card) {
                 $values = explode(':', $card);
 
@@ -129,14 +154,20 @@ function GetOptions_AudioOutputDevice($fulllist = false)
                 if ($fulllist) {
                     $AlsaCards[] = $card;
                 } else {
-                    if ($values[1] == "bcm2835 ALSA") {
-                        $AlsaCards[$values[1] . " (Pi Onboard Audio)"] = $values[0];
-                    } else if ($values[1] == "CD002") {
-                        $AlsaCards[$values[1] . " (FM Transmitter)"] = $values[0];
-                    } else {
-                        $AlsaCards[$values[1]] = $values[0];
+                    $cardNum = $values[0];
+                    $cardName = $values[1];
+                    // Disambiguate duplicate names by appending ALSA card ID
+                    $displayName = $cardName;
+                    if (isset($cardNameCounts[$cardName]) && $cardNameCounts[$cardName] > 1) {
+                        $cardId = isset($cardIdMap[$cardNum]) ? $cardIdMap[$cardNum] : $cardNum;
+                        $displayName = $cardName . ' [' . $cardId . ']';
                     }
-
+                    if ($cardName == "bcm2835 ALSA") {
+                        $displayName = $cardName . " (Pi Onboard Audio)";
+                    } else if ($cardName == "CD002") {
+                        $displayName = $cardName . " (FM Transmitter)";
+                    }
+                    $AlsaCards[$displayName] = $cardNum;
                 }
             }
 

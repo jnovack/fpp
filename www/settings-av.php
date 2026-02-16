@@ -88,14 +88,28 @@ PrintSettingGroup('generalAudio');
     if ($hasGroups) echo '                </optgroup>' . "\n";
 
     if (!empty($pwCards)) {
+        // Detect duplicate card names for disambiguation
+        $pwCardNameCounts = array();
+        foreach ($pwCards as $c) {
+            if (isset($c['isAES67']) && $c['isAES67']) continue;
+            $name = $c['cardName'];
+            if (!isset($pwCardNameCounts[$name])) $pwCardNameCounts[$name] = 0;
+            $pwCardNameCounts[$name]++;
+        }
+
         echo '                <optgroup label="Physical Sound Cards">' . "\n";
         foreach ($pwCards as $c) {
             if (isset($c['isAES67']) && $c['isAES67']) continue;
             $pwNode = isset($c['pwNodeName']) && !empty($c['pwNodeName']) ? $c['pwNodeName'] : '';
             if (empty($pwNode)) continue;
             $sel = ($currentSink === $pwNode) ? ' selected' : '';
+            $displayName = $c['cardName'];
+            // Disambiguate duplicate card names by appending ALSA card ID
+            if (isset($pwCardNameCounts[$c['cardName']]) && $pwCardNameCounts[$c['cardName']] > 1 && !empty($c['cardId'])) {
+                $displayName .= ' [' . $c['cardId'] . ']';
+            }
             echo '                <option value="' . htmlspecialchars($pwNode) . '"' . $sel . '>'
-                . htmlspecialchars($c['cardName'])
+                . htmlspecialchars($displayName)
                 . '</option>' . "\n";
         }
         echo '                </optgroup>' . "\n";

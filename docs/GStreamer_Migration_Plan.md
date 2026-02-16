@@ -379,6 +379,27 @@ class GStreamerPlayData {
 
 ---
 
+## PipeWire Audio Routing Stability Fixes
+
+**Status: COMPLETE** ✅
+
+**Problem:** ALSA card numbers are unstable — adding/removing USB audio devices reassigns card numbers, breaking PipeWire configs that reference cards by number (`hw:0`). Also, duplicate device names (e.g., two identical USB cards) caused UI display collisions and incorrect card addressing.
+
+### Tasks Completed
+1. **FPPINIT stable ALSA card IDs:** Changed `setupAudio()` to use stable ALSA card IDs (e.g., `hw:S3`) instead of card numbers (`hw:0`) in `95-fpp-alsa-sink.conf`. Added `getAlsaCardId()` helper that resolves card number → stable ID via `/proc/asound/cards`.
+2. **Audio groups card→sink resolution:** Replaced fragile three-strategy card resolution in `ApplyPipeWireAudioGroups()` with `pw-dump` JSON parsing. Now uses `alsa.card` property (WirePlumber sinks) and `api.alsa.path` resolution (FPP-created sinks) for definitive card-to-PipeWire-sink mapping.
+3. **Duplicate card name disambiguation in UI:** Both the AudioOutput options dropdown (`options.php`) and PipeWire Primary Output dropdown (`settings-av.php`) now detect duplicate card names and append `[ALSA_ID]` suffix for disambiguation (e.g., "ICUSBAUDIO7D [ICUSBAUDIO7D_1]").
+
+### Files Modified
+| File                                         | Change                                                              |
+| -------------------------------------------- | ------------------------------------------------------------------- |
+| `src/boot/FPPINIT.cpp`                      | `getAlsaCardId()` helper; `hw:N` → `hw:ID` in sink config          |
+| `www/api/controllers/pipewire.php`           | pw-dump card resolution replacing by-path/fpp_card/pattern matching |
+| `www/api/controllers/options.php`            | Duplicate card name detection + `[cardId]` disambiguation           |
+| `www/settings-av.php`                        | Duplicate card name detection for PipeWire dropdown                 |
+
+---
+
 ## Phase 4: HDMI/DRM Video via GStreamer
 
 **Objective:** Replace VLC's DRM/KMS video output with GStreamer's `kmssink` for direct HDMI playback.

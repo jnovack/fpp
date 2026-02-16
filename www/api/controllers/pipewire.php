@@ -874,36 +874,60 @@ function GeneratePipeWireGroupsConfig($groups)
     // combine-stream rules against nodes that already exist
     // (created by WirePlumber or the 95-fpp-alsa-sink config).
     // -----------------------------------------------------------
+    // Use pw-dump (JSON) to get full node properties including
+    // alsa.card and api.alsa.path for reliable card→sink mapping.
+    // -----------------------------------------------------------
     $existingSinks = array(); // node.name => true
+    $sinkCardNumMap = array(); // ALSA card number (int) => node.name
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
-    exec($SUDO . " " . $env . " pw-cli list-objects Node 2>/dev/null", $pwOutput);
-    $currentNodeName = null;
-    $currentMediaClass = null;
-    foreach ($pwOutput as $line) {
-        if (preg_match('/node\.name\s*=\s*"(.+?)"/', $line, $m)) {
-            $currentNodeName = $m[1];
-        }
-        if (preg_match('/media\.class\s*=\s*"(.+?)"/', $line, $m)) {
-            $currentMediaClass = $m[1];
-        }
-        // When we hit a new object boundary, store previous
-        if (preg_match('/^\s+id \d+,/', $line)) {
-            if ($currentNodeName && $currentMediaClass === 'Audio/Sink') {
-                $existingSinks[$currentNodeName] = true;
+    $pwDumpJson = '';
+    exec($SUDO . " " . $env . " pw-dump 2>/dev/null", $pwDumpLines);
+    $pwDumpJson = implode("\n", $pwDumpLines);
+    unset($pwDumpLines);
+    $pwDumpData = json_decode($pwDumpJson, true);
+    unset($pwDumpJson);
+    if (is_array($pwDumpData)) {
+        foreach ($pwDumpData as $obj) {
+            if (!isset($obj['type']) || $obj['type'] !== 'PipeWire:Interface:Node')
+                continue;
+            $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+            $nodeName = isset($props['node.name']) ? $props['node.name'] : '';
+            $mediaClass = isset($props['media.class']) ? $props['media.class'] : '';
+            if ($nodeName && $mediaClass === 'Audio/Sink') {
+                $existingSinks[$nodeName] = true;
+                // Map ALSA card number to this sink node name.
+                // WirePlumber-managed sinks have alsa.card set directly.
+                if (isset($props['alsa.card'])) {
+                    $cn = intval($props['alsa.card']);
+                    if (!isset($sinkCardNumMap[$cn])) {
+                        $sinkCardNumMap[$cn] = $nodeName;
+                    }
+                }
+                // FPP-created sinks have api.alsa.path (e.g. "hw:0" or "hw:S3")
+                // but no alsa.card.  Resolve the path to a card number.
+                elseif (isset($props['api.alsa.path'])) {
+                    $alsaPath = $props['api.alsa.path'];
+                    // Extract device specifier after "hw:"
+                    if (preg_match('/^hw:(.+)$/', $alsaPath, $hm)) {
+                        $dev = $hm[1];
+                        if (ctype_digit($dev)) {
+                            $cn = intval($dev);
+                        } else {
+                            // Stable card ID — resolve via /proc/asound
+                            $cn = ResolveCardIdToNumber($dev);
+                        }
+                        if ($cn >= 0 && !isset($sinkCardNumMap[$cn])) {
+                            $sinkCardNumMap[$cn] = $nodeName;
+                        }
+                    }
+                }
             }
-            $currentNodeName = null;
-            $currentMediaClass = null;
         }
     }
-    // Don't forget the last one
-    if ($currentNodeName && $currentMediaClass === 'Audio/Sink') {
-        $existingSinks[$currentNodeName] = true;
-    }
+    unset($pwDumpData);
 
-    // Resolve card IDs and map to existing PipeWire node names.
-    // We look for existing sinks that correspond to each card:
-    //   1) by-path based name (WirePlumber style): alsa_output.<by-path>.*
-    //   2) FPP card0 style name: alsa_output.fpp_card<N>
+    // Resolve card IDs to existing PipeWire node names using the
+    // alsa.card / api.alsa.path map built from pw-dump above.
     // If no existing sink is found, we'll skip the card (can't safely
     // create raw ALSA adapters for cards like HDMI that need special formats).
     $cardNodeMap = array();   // cardId -> PipeWire node name
@@ -954,63 +978,11 @@ function GeneratePipeWireGroupsConfig($groups)
                 continue;
             }
 
-            // Look up which by-path this card has
-            $byPath = '';
-            $byPathDir = '/dev/snd/by-path';
-            if (is_dir($byPathDir)) {
-                $entries = scandir($byPathDir);
-                foreach ($entries as $entry) {
-                    if ($entry === '.' || $entry === '..')
-                        continue;
-                    $target = readlink("$byPathDir/$entry");
-                    if ($target !== false && preg_match('/controlC' . $cardNum . '$/', $target)) {
-                        $byPath = preg_replace('/-audio$/', '', $entry);
-                        break;
-                    }
-                }
-            }
-
-            // Try to find an existing sink for this card
-            $foundNode = null;
-
-            // Strategy 1: Match by-path based WirePlumber name
-            if ($byPath) {
-                $byPathNormalized = str_replace(array(':', '.'), array('-', '-'), $byPath);
-                foreach ($existingSinks as $nodeName => $v) {
-                    if (
-                        strpos($nodeName, $byPathNormalized) !== false ||
-                        strpos($nodeName, $byPath) !== false
-                    ) {
-                        $foundNode = $nodeName;
-                        break;
-                    }
-                }
-            }
-
-            // Strategy 2: Match FPP-style name (alsa_output.fpp_cardN)
-            if (!$foundNode) {
-                $fppName = "alsa_output.fpp_card" . $cardNum;
-                if (isset($existingSinks[$fppName])) {
-                    $foundNode = $fppName;
-                }
-            }
-
-            // Strategy 3: Match any sink containing the card number pattern
-            if (!$foundNode) {
-                foreach ($existingSinks as $nodeName => $v) {
-                    // Match patterns like alsa_output.*hw_<cardNum>* or similar
-                    if (
-                        preg_match('/alsa_output.*[_.]' . preg_quote($cardNum) . '[_.\-]/', $nodeName) ||
-                        preg_match('/alsa_output.*card' . preg_quote($cardNum) . '/', $nodeName)
-                    ) {
-                        $foundNode = $nodeName;
-                        break;
-                    }
-                }
-            }
-
-            if ($foundNode) {
-                $cardNodeMap[$cardId] = $foundNode;
+            // Look up PipeWire sink via the alsa.card / api.alsa.path
+            // map built from pw-dump above.  This is reliable regardless
+            // of how WirePlumber chose to name the node.
+            if (isset($sinkCardNumMap[$cardNum])) {
+                $cardNodeMap[$cardId] = $sinkCardNumMap[$cardNum];
             } else {
                 $unresolvedCards[] = $cardId . " (card $cardNum — no PipeWire sink found)";
             }

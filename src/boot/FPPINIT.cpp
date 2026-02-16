@@ -1555,6 +1555,37 @@ void removeDummyInterface() {
     exec("ip link delete dummy0 > /dev/null 2>&1");
 }
 
+// Resolve ALSA card number to stable card ID (e.g., 3 -> "S3", 0 -> "ICUSBAUDIO7D")
+// Reads /proc/asound/cards: " 3 [S3             ]: USB-Audio - ..."
+// Falls back to the card number as string if not found.
+static std::string getAlsaCardId(int cardNum) {
+    std::string cardsContent = GetFileContents("/proc/asound/cards");
+    if (!cardsContent.empty()) {
+        std::istringstream iss(cardsContent);
+        std::string line;
+        while (std::getline(iss, line)) {
+            // Match: " 3 [S3             ]: ..."
+            auto bracket = line.find('[');
+            auto closeBracket = line.find(']');
+            if (bracket != std::string::npos && closeBracket != std::string::npos && closeBracket > bracket) {
+                std::string numStr = line.substr(0, bracket);
+                TrimWhiteSpace(numStr);
+                try {
+                    int num = std::stoi(numStr);
+                    if (num == cardNum) {
+                        std::string cardId = line.substr(bracket + 1, closeBracket - bracket - 1);
+                        TrimWhiteSpace(cardId);
+                        if (!cardId.empty()) {
+                            return cardId;
+                        }
+                    }
+                } catch (...) {}
+            }
+        }
+    }
+    return std::to_string(cardNum);
+}
+
 static void setupAudio() {
     if (!FileExists("/root/.libao")) {
         PutFileContents("/root/.libao", "dev=default");
@@ -1764,6 +1795,10 @@ static void setupAudio() {
     const std::string pipewireSinkConfPath = "/etc/pipewire/pipewire.conf.d/95-fpp-alsa-sink.conf";
     if (usePipeWireBackend) {
         exec("/bin/mkdir -p /etc/pipewire/pipewire.conf.d");
+        // Use stable ALSA card ID (e.g., "S3") instead of card number
+        // so the config survives USB enumeration order changes across reboots
+        std::string cardId = getAlsaCardId(card);
+        printf("FPP - PipeWire sink using ALSA card ID: %s (card %d)\n", cardId.c_str(), card);
         std::ostringstream pipewireSink;
         pipewireSink << "context.objects = [\n"
                      << "  { factory = adapter\n"
@@ -1772,7 +1807,7 @@ static void setupAudio() {
                      << "      node.name = \"alsa_output.fpp_card" << card << "\"\n"
                      << "      node.description = \"FPP Hardware Output (" << cardType << ")\"\n"
                      << "      media.class = \"Audio/Sink\"\n"
-                     << "      api.alsa.path = \"hw:" << card << "\"\n"
+                     << "      api.alsa.path = \"hw:" << cardId << "\"\n"
                      << "      api.alsa.period-size = " << perSize << "\n"
                      << "      api.alsa.headroom = 0\n"
                      << "      audio.format = \"S16LE\"\n"
