@@ -30,6 +30,7 @@
 #include "kiss_fftr.h"
 #include "../../Warnings.h"
 #include "../../mediaoutput/SDLOut.h"
+#include "../../mediaoutput/GStreamerOut.h"
 #include "../../WLEDAudioSync.h"
 
 uint8_t blendingStyle = 0; // effect blending/transitionig style
@@ -232,8 +233,13 @@ public:
         }
         bool retValue = false;
         if (sourceType == 0) {
-            // Playing Media
-            retValue = SDLOutput::GetAudioSamples(&samples[0], NUM_SAMPLES, sampleRate);
+            // Playing Media — try GStreamer first, then fall back to SDL
+#ifdef HAS_GSTREAMER
+            retValue = GStreamerOutput::GetAudioSamples(&samples[0], NUM_SAMPLES, sampleRate);
+#endif
+            if (!retValue) {
+                retValue = SDLOutput::GetAudioSamples(&samples[0], NUM_SAMPLES, sampleRate);
+            }
         } else if (sourceType == 1) {
             // Audio Input
             if (audioDev > 0) {

@@ -17,6 +17,10 @@
 #define HAS_GSTREAMER
 
 #include <gst/gst.h>
+#include <gst/app/gstappsink.h>
+#include <array>
+#include <atomic>
+#include <mutex>
 
 class GStreamerOutput : public MediaOutputBase {
 public:
@@ -49,14 +53,30 @@ public:
 private:
     GstElement* m_pipeline = nullptr;
     GstElement* m_volume = nullptr;
+    GstElement* m_appsink = nullptr;
     GstBus* m_bus = nullptr;
     std::string m_videoOut;
     int m_loopCount = 0;
     int m_volumeAdjust = 0;
     bool m_playing = false;
+    std::atomic<bool> m_shutdownFlag{false};  // guards OnNewSample during teardown
+    gulong m_appsinkSignalId = 0;            // signal handler ID for disconnection
+
+    // Stall watchdog — detects when PipeWire sink stops consuming data
+    gint64 m_lastPosition = -1;
+    uint64_t m_stallStartMs = 0;
+    static constexpr int STALL_TIMEOUT_MS = 5000; // 5 seconds before declaring stall
 
     void ProcessMessages();
     static GstBusSyncReply BusSyncHandler(GstBus* bus, GstMessage* msg, gpointer userData);
+
+    // Audio sample tap for WLED audio-reactive effects
+    static constexpr int SAMPLE_BUFFER_SIZE = 4096; // circular buffer size
+    static std::array<float, SAMPLE_BUFFER_SIZE> s_sampleBuffer;
+    static int s_sampleWritePos;
+    static int s_sampleRate;
+    static std::mutex s_sampleMutex;
+    static GstFlowReturn OnNewSample(GstAppSink* appsink, gpointer userData);
 
     static GStreamerOutput* m_currentInstance;
 };

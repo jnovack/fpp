@@ -29,6 +29,7 @@
 #include "SDLOut.h"
 #include "Sequence.h"
 #include "VLCOut.h"
+#include "GStreamerOut.h"
 #include "mediadetails.h"
 #include "settings.h"
 #include "../config.h"
@@ -311,6 +312,26 @@ MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::
     std::string ext = toLowerCopy(mediaFilename.substr(found + 1));
     std::string vo = vOut;
     mediaOutputStatus.output = "";
+
+#ifdef HAS_GSTREAMER
+    // Use GStreamer for audio when PipeWire audio backend is active (unified clock)
+    bool useGStreamer = false;
+    {
+        std::string backend = getSetting("MediaBackend");
+        if (backend == "gstreamer") {
+            useGStreamer = true;
+        } else if (backend.empty()) {
+            std::string audioBackend = getSetting("AudioBackend");
+            useGStreamer = (audioBackend == "pipewire");
+        }
+    }
+
+    if (useGStreamer && IsExtensionAudio(ext)) {
+        LogInfo(VB_MEDIAOUT, "Using GStreamer for audio playback: %s\n", mediaFilename.c_str());
+        return new GStreamerOutput(mediaFilename, &mediaOutputStatus, "--Disabled--");
+    }
+#endif
+
 #ifdef HAS_VLC
     if (IsExtensionAudio(ext)) {
         if (getFPPmode() == REMOTE_MODE) {

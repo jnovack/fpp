@@ -74,15 +74,16 @@ Benefit: Single clock tree, consistent latency, one buffer path
 
 ## Phase Overview
 
-| Phase | Scope | Risk | Status |
-|-------|-------|------|--------|
-| **0** | Install GStreamer, build integration, proof of concept | Low | **COMPLETE** |
-| **1** | GStreamerOutput for "Play Media" command (replaces VLC in MediaCommands) | Low-Medium | **COMPLETE** |
-| **2** | GStreamerOutput for playlist/sequence audio (replaces SDL audio path) | Medium | Not started |
-| **3** | Video-to-PixelOverlay via GStreamer appsink (replaces SDL+FFmpeg video) | Medium-High | Not started |
-| **4** | HDMI/DRM video output via GStreamer kmssink (replaces VLC video) | High | Not started |
-| **5** | MultiSync rate adjustment via GStreamer (replaces VLC AdjustSpeed) | Medium-High | Not started |
-| **6** | Remove SDL and VLC dependencies entirely | Low | Not started |
+| Phase | Scope                                                                    | Risk        | Status       |
+| ----- | ------------------------------------------------------------------------ | ----------- | ------------ |
+| **0** | Install GStreamer, build integration, proof of concept                   | Low         | **COMPLETE** |
+| **1** | GStreamerOutput for "Play Media" command (replaces VLC in MediaCommands) | Low-Medium  | **COMPLETE** |
+| **2** | GStreamerOutput for playlist/sequence audio (replaces SDL audio path)    | Medium      | **Complete** |
+| **3** | Video-to-PixelOverlay via GStreamer appsink (replaces SDL+FFmpeg video)  | Medium-High | Not started  |
+| **4** | HDMI/DRM video output via GStreamer kmssink (replaces VLC video)         | High        | Not started  |
+| **5** | MultiSync rate adjustment via GStreamer (replaces VLC AdjustSpeed)       | Medium-High | Not started  |
+| **6** | Remove SDL and VLC dependencies entirely                                 | Low         | Not started  |
+| **7** | AES67 via GStreamer (replaces PipeWire RTP modules)                      | Medium-High | Not started  |
 
 ### Migration Strategy (per dkulp)
 > "We could always use gstreamer on master (no playback speed adjustments) and keep vlc for remotes if needed."
@@ -140,14 +141,14 @@ Benefit: Single clock tree, consistent latency, one buffer path
   - **Successfully compiled and linked** — all symbols verified in `libfpp.so`
 
 ### Files Created
-| File | Purpose |
-|------|---------|
-| `src/mediaoutput/GStreamerOut.h` | Class declaration |
-| `src/mediaoutput/GStreamerOut.cpp` | Implementation |
+| File                               | Purpose           |
+| ---------------------------------- | ----------------- |
+| `src/mediaoutput/GStreamerOut.h`   | Class declaration |
+| `src/mediaoutput/GStreamerOut.cpp` | Implementation    |
 
 ### Files Modified
-| File | Change |
-|------|--------|
+| File                      | Change                           |
+| ------------------------- | -------------------------------- |
 | `src/makefiles/fpp_so.mk` | Add GStreamer libs + object file |
 
 ---
@@ -226,13 +227,13 @@ class GStreamerPlayData {
   - No latency difference between outputs (shared PipeWire clock)
 
 ### Files Modified
-| File | Change |
-|------|--------|
-| `src/mediaoutput/GStreamerOut.cpp` | Full audio playback implementation + BusSyncHandler |
-| `src/mediaoutput/GStreamerOut.h` | BusSyncHandler declaration |
-| `src/commands/MediaCommands.cpp` | `GStreamerPlayData` + unified runtime backend selection |
-| `src/commands/MediaCommands.h` | `#if defined(HAS_VLC) || defined(HAS_GSTREAMER)` guards + GStreamerOut include |
-| `src/commands/Commands.cpp` | Command registration under both HAS_VLC and HAS_GSTREAMER |
+| File                               | Change                                                    |
+| ---------------------------------- | --------------------------------------------------------- |
+| `src/mediaoutput/GStreamerOut.cpp` | Full audio playback implementation + BusSyncHandler       |
+| `src/mediaoutput/GStreamerOut.h`   | BusSyncHandler declaration                                |
+| `src/commands/MediaCommands.cpp`   | `GStreamerPlayData` + unified runtime backend selection   |
+| `src/commands/MediaCommands.h`     | `#if defined(HAS_VLC)                                     |  | defined(HAS_GSTREAMER)` guards + GStreamerOut include |
+| `src/commands/Commands.cpp`        | Command registration under both HAS_VLC and HAS_GSTREAMER |
 
 ### Validation
 - [x] `amixer -c 0 sget Speaker` stays at 100% through playback
@@ -266,39 +267,41 @@ class GStreamerPlayData {
 
 ### Tasks
 
-- [ ] **2.1** Extend `GStreamerOutput` for sequence audio mode:
+- [x] **2.1** Extend `GStreamerOutput` for sequence audio mode:
   - Accept FSEQ-paired audio file
   - Support `Start(int msTime)` for seeking to arbitrary position
   - Accurate position reporting via `gst_element_query_position()`
 
-- [ ] **2.2** Implement audio sample extraction for WLED:
-  - Add `tee` + `appsink` branch to pipeline
+- [x] **2.2** Implement audio sample extraction for WLED:
+  - Add `tee` + `appsink` branch to pipeline (F32LE mono, circular buffer)
   - Implement static `GetAudioSamples()` that reads from appsink buffer
   - Maintain API compatibility with existing `SDLOutput::GetAudioSamples(float*, int, int&)`
+  - `wled.cpp` tries GStreamer first, falls back to SDL
 
-- [ ] **2.3** Update factory in `mediaoutput.cpp`:
+- [x] **2.3** Update factory in `mediaoutput.cpp`:
   - `CreateMediaOutput()`: Audio-only → `GStreamerOutput` (replacing `SDLOutput`)
   - Keep SDL fallback initially behind a setting/compile flag
 
-- [ ] **2.4** Volume control integration:
+- [x] **2.4** Volume control integration:
   - `setVolume()` in `mediaoutput.cpp` continues using `pactl` for PipeWire system volume
   - GStreamer pipeline volume element used for per-stream adjustment if needed
 
-- [ ] **2.5** Test main show playback:
+- [x] **2.5** Test main show playback:
   - FSEQ with audio plays correctly through all group members
   - Seeking (start at non-zero position) works
-  - Volume slider works
-  - WLED audio-reactive effects receive samples
-  - Position reporting accurate for sequence sync
-  - Graceful stop/start between playlist entries
+  - Volume slider works (verified 30%→75% via pactl)
+  - WLED audio-reactive effects receive samples (tee+appsink)
+  - Position reporting accurate for sequence sync (elapsed/remaining)
+  - Graceful stop/start between playlist entries (5x rapid cycle stress tested)
+  - Pipeline teardown deadlock fixed (atomic shutdown flag + signal disconnect before state change)
 
 ### Files Modified
-| File | Change |
-|------|--------|
-| `src/mediaoutput/GStreamerOut.cpp` | Extend for sequence audio mode, add appsink for WLED |
-| `src/mediaoutput/GStreamerOut.h` | Add static `GetAudioSamples()` |
-| `src/mediaoutput/mediaoutput.cpp` | Factory: Audio-only → GStreamerOutput |
-| `src/overlays/wled/wled.cpp` | Change `SDLOutput::GetAudioSamples` → `GStreamerOutput::GetAudioSamples` |
+| File                               | Change                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `src/mediaoutput/GStreamerOut.cpp` | Extend for sequence audio mode, add appsink for WLED                     |
+| `src/mediaoutput/GStreamerOut.h`   | Add static `GetAudioSamples()`                                           |
+| `src/mediaoutput/mediaoutput.cpp`  | Factory: Audio-only → GStreamerOutput                                    |
+| `src/overlays/wled/wled.cpp`       | Change `SDLOutput::GetAudioSamples` → `GStreamerOutput::GetAudioSamples` |
 
 ---
 
@@ -336,11 +339,11 @@ class GStreamerPlayData {
   - `channeloutputthread.cpp` line 101: Same change
 
 ### Files Modified
-| File | Change |
-|------|--------|
-| `src/mediaoutput/GStreamerOut.cpp` | Add video appsink branch |
-| `src/mediaoutput/GStreamerOut.h` | Add static video methods |
-| `src/Sequence.cpp` | Update static method calls |
+| File                                        | Change                     |
+| ------------------------------------------- | -------------------------- |
+| `src/mediaoutput/GStreamerOut.cpp`          | Add video appsink branch   |
+| `src/mediaoutput/GStreamerOut.h`            | Add static video methods   |
+| `src/Sequence.cpp`                          | Update static method calls |
 | `src/channeloutput/channeloutputthread.cpp` | Update static method calls |
 
 ---
@@ -383,10 +386,10 @@ class GStreamerPlayData {
   - Hardware decoding if available
 
 ### Files Modified
-| File | Change |
-|------|--------|
-| `src/mediaoutput/GStreamerOut.cpp` | Add kmssink video mode |
-| `src/mediaoutput/mediaoutput.cpp` | Factory: Video+HDMI → GStreamerOutput |
+| File                               | Change                                |
+| ---------------------------------- | ------------------------------------- |
+| `src/mediaoutput/GStreamerOut.cpp` | Add kmssink video mode                |
+| `src/mediaoutput/mediaoutput.cpp`  | Factory: Video+HDMI → GStreamerOutput |
 
 ---
 
@@ -423,8 +426,8 @@ class GStreamerPlayData {
   - Large drifts handled with seek jumps
 
 ### Files Modified
-| File | Change |
-|------|--------|
+| File                               | Change                                         |
+| ---------------------------------- | ---------------------------------------------- |
 | `src/mediaoutput/GStreamerOut.cpp` | Implement AdjustSpeed with rate-matching logic |
 
 ---
@@ -462,20 +465,195 @@ class GStreamerPlayData {
   - Test on all platforms: Pi 4, Pi 5, BBB, x86
 
 ### Files Removed
-| File |
-|------|
+| File                         |
+| ---------------------------- |
 | `src/mediaoutput/VLCOut.cpp` |
-| `src/mediaoutput/VLCOut.h` |
+| `src/mediaoutput/VLCOut.h`   |
 | `src/mediaoutput/SDLOut.cpp` |
-| `src/mediaoutput/SDLOut.h` |
+| `src/mediaoutput/SDLOut.h`   |
 
 ### Files Modified
-| File | Change |
-|------|--------|
-| `src/makefiles/fpp_so.mk` | Remove SDL/VLC/FFmpeg libs |
+| File                              | Change                             |
+| --------------------------------- | ---------------------------------- |
+| `src/makefiles/fpp_so.mk`         | Remove SDL/VLC/FFmpeg libs         |
 | `src/mediaoutput/mediaoutput.cpp` | Simplify to GStreamer-only factory |
-| `src/commands/MediaCommands.cpp` | Remove HAS_VLC guards |
-| `SD/FPP_Install.sh` | Update package dependencies |
+| `src/commands/MediaCommands.cpp`  | Remove HAS_VLC guards              |
+| `SD/FPP_Install.sh`               | Update package dependencies        |
+
+---
+
+## Phase 7: AES67 via GStreamer
+
+**Objective:** Replace PipeWire's `libpipewire-module-rtp-sink` / `module-rtp-source` with GStreamer-based AES67 send/receive pipelines that use GStreamer's native `GstPtpClock` for IEEE 1588 PTP-derived media clock timestamps — achieving true AES67 compliance.
+
+### Why GStreamer is Better for AES67
+
+The current PipeWire approach has several limitations:
+
+| Aspect                   | PipeWire RTP Modules                                                                                      | GStreamer RTP                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **PTP clock**            | Indirect — `ptp4l` disciplines system clock, PipeWire uses `CLOCK_MONOTONIC`                              | Native `GstPtpClock` — RTP timestamps derive directly from IEEE 1588 PTP time            |
+| **Media clock**          | Not AES67-compliant — no `mediaclk:direct=0` support                                                      | `rtpbin.rfc7273-sync=true` — purpose-built for AES67 media clock reconstruction          |
+| **SAP/SDP**              | Non-compliant — missing `ts-refclk`, wrong `mediaclk`, wrong direction. Requires custom Python SAP daemon | GStreamer SDP library can generate compliant SDP with correct `ts-refclk` and `mediaclk` |
+| **Packet timing**        | Limited control over ptime                                                                                | `rtpL24pay` has `min-ptime` / `max-ptime` for strict 1ms/4ms AES67 intervals             |
+| **Pipeline integration** | Audio must route through PipeWire combine-stream → adds hop                                               | `tee` in GStreamer pipeline → zero-copy branch to both pipewiresink and RTP              |
+| **Receive sync**         | Jitter buffer only, no PTP-aware sync                                                                     | `rtpbin.rfc7273-sync=true` + `GstPtpClock` for PTP-aware playout                         |
+| **L24 codec**            | Handled internally by module                                                                              | Native `rtpL24pay` / `rtpL24depay` — RFC 3190 compliant                                  |
+| **Error recovery**       | Module restart required                                                                                   | Pipeline can be rebuilt/restarted independently                                          |
+
+### Current AES67 Architecture (PipeWire)
+```
+Config: pipewire-aes67-instances.json
+  │
+  ├── apply_aes67_config (Python)
+  │   ├── Writes: 96-fpp-aes67-rtp.conf (PipeWire modules)
+  │   ├── Writes: 96-fpp-aes67-sap.conf (SAP receive)
+  │   ├── Writes: /etc/ptp4l-fpp.conf
+  │   ├── Starts: ptp4l daemon
+  │   └── Starts: fpp_aes67_sap daemon (custom SAP announcer)
+  │
+  └── PipeWire runtime:
+      ├── libpipewire-module-rtp-sink  → multicast RTP out
+      ├── libpipewire-module-rtp-source → multicast RTP in
+      └── libpipewire-module-rtp-sap   → SAP receive
+```
+
+### Target AES67 Architecture (GStreamer)
+```
+Config: pipewire-aes67-instances.json (same JSON format)
+  │
+  ├── AES67Manager (C++, in fppd)
+  │   ├── For each SEND instance:
+  │   │   GstPipeline:
+  │   │     pipewiresrc (captures from group/node) → audioconvert →
+  │   │     rtpL24pay pt=96 → rtpbin (PTP clock) → udpsink (multicast)
+  │   │
+  │   ├── For each RECEIVE instance:
+  │   │   GstPipeline:
+  │   │     udpsrc (multicast) → rtpbin (rfc7273-sync, PTP clock) →
+  │   │     rtpL24depay → audioconvert → pipewiresink (creates virtual source)
+  │   │
+  │   ├── PTP: gst_ptp_init() + GstPtpClock per domain
+  │   │   (replaces external ptp4l daemon)
+  │   │
+  │   └── SAP: Built-in compliant SAP announcer thread
+  │       (replaces fpp_aes67_sap Python daemon)
+  │
+  └── Still integrates with PipeWire Audio Groups:
+      ├── Send: pipewiresrc captures from group combine-sink (or specific node)
+      └── Receive: pipewiresink creates virtual Audio/Source node
+```
+
+### Available GStreamer Elements (verified on Pi 5)
+```
+rtpL24pay / rtpL24depay  — L24 (S24BE) payload, RFC 3190
+rtpbin                   — RTP session manager, rfc7273-sync, NTP sync
+udpsrc / udpsink         — UDP multicast send/receive
+multiudpsink             — Multi-destination UDP (SAP multicast)
+GstPtpClock              — IEEE 1588 PTP clock (gst_ptp_clock_new)
+pipewiresrc              — Capture from PipeWire node
+pipewiresink             — Output to PipeWire node
+```
+
+### Tasks
+
+- [ ] **7.1** Create `AES67Manager` class:
+  - Singleton lifecycle managed by fppd
+  - Reads `pipewire-aes67-instances.json` config
+  - Creates/destroys GStreamer pipelines per instance
+  - Manages `gst_ptp_init()` / `GstPtpClock` lifecycle
+
+- [ ] **7.2** Implement AES67 send pipeline:
+  - Pipeline: `pipewiresrc target-object=<node> ! audioconvert ! audio/x-raw,format=S24BE,rate=48000 ! rtpL24pay pt=96 min-ptime=<ptime_ns> max-ptime=<ptime_ns> ! rtpbin ! udpsink host=<multicast_ip> port=<port> multicast-iface=<iface> ttl=4 auto-multicast=true`
+  - Use `GstPtpClock` as pipeline clock for PTP-derived RTP timestamps
+  - Support 1ms and 4ms packet times per AES67 spec
+  - Support 2-8 channels with correct channel position mapping
+
+- [ ] **7.3** Implement AES67 receive pipeline:
+  - Pipeline: `udpsrc multicast-group=<ip> port=<port> ! application/x-rtp,media=audio,clock-rate=48000,encoding-name=L24 ! rtpbin rfc7273-sync=true ! rtpL24depay ! audioconvert ! pipewiresink`
+  - Use PTP clock for receive-side media clock reconstruction
+  - Create a PipeWire `Audio/Source` node that routes into the local graph
+  - Configurable jitter buffer latency
+
+- [ ] **7.4** Implement SAP announcer (replaces fpp_aes67_sap Python daemon):
+  - Build AES67-compliant SDP with:
+    - `a=ts-refclk:ptp=IEEE1588-2008:<gmClockId>:0`
+    - `a=mediaclk:direct=0 rate=48000`
+    - `a=sendonly` / `a=recvonly`
+    - `a=rtpmap:96 L24/48000/<channels>`
+  - Send RFC 2974 SAP packets to `239.255.255.255:9875`
+  - Send deletion packets on instance removal/shutdown
+  - Could use GStreamer's SDP library (`GstSDPMessage`) for SDP construction
+
+- [ ] **7.5** Implement SAP receiver (replaces PipeWire `module-rtp-sap`):
+  - Listen on `239.255.255.255:9875` for SAP announcements
+  - Parse SDP, auto-create receive pipelines for discovered streams
+  - Handle stream removal via SAP deletion packets
+
+- [ ] **7.6** Integrate `GstPtpClock` (replaces external ptp4l daemon):
+  - Call `gst_ptp_init(GST_PTP_CLOCK_ID_NONE, NULL)` at startup
+  - Create `GstPtpClock` for domain 0 (default AES67 domain)
+  - Participate in BMCA (Best Master Clock Algorithm)
+  - Expose PTP status (synced/offset/GM identity) via API
+  - **Fallback:** Keep `ptp4l` as optional external clock source if GStreamer PTP has limitations
+
+- [ ] **7.7** Update PHP API (`pipewire.php`):
+  - `POST /api/pipewire/aes67/apply` → signals fppd to rebuild GStreamer AES67 pipelines instead of writing PipeWire module configs
+  - AES67 status endpoint reads from GStreamer pipeline state + PTP statistics
+  - Config format unchanged (backward-compatible JSON)
+
+- [ ] **7.8** Update boot sequence (`FPPINIT.cpp`):
+  - Remove PipeWire RTP module config generation
+  - Remove `ptp4l` daemon startup (if GStreamer PTP used)
+  - Remove `fpp_aes67_sap` daemon startup
+  - Signal fppd to initialize AES67Manager at startup
+
+- [ ] **7.9** Direct media-to-AES67 path (zero-hop optimization):
+  - When playing media that should go to AES67, add an RTP branch directly in the GStreamer media pipeline via `tee`:
+    ```
+    decodebin ! audioconvert ! tee
+      ├── pipewiresink (local playback)
+      └── audioconvert ! rtpL24pay ! rtpbin ! udpsink (AES67)
+    ```
+  - Eliminates the PipeWire combine-stream → pipewiresrc → GStreamer RTP chain
+  - Lower latency, fewer clock domain crossings
+  - Only possible when GStreamer is the media backend (Phase 2+)
+
+- [ ] **7.10** Test with AES67 ecosystem:
+  - Send: Verify RTP stream received by AES67 Stream Monitor / Dante receivers
+  - Receive: Verify FPP receives streams from Dante / other AES67 senders
+  - SAP: Verify discovery in AES67 Stream Monitor and Dante Controller
+  - PTP: Verify clock sync accuracy (sub-millisecond)
+  - Multi-instance: Multiple send + receive simultaneously
+  - Migration: Verify existing `pipewire-aes67-instances.json` configs work without changes
+
+### Files Created
+| File                               | Purpose                                            |
+| ---------------------------------- | -------------------------------------------------- |
+| `src/mediaoutput/AES67Manager.h`   | AES67 pipeline manager class                       |
+| `src/mediaoutput/AES67Manager.cpp` | Send/receive pipeline construction, PTP clock, SAP |
+
+### Files Modified
+| File                               | Change                                                 |
+| ---------------------------------- | ------------------------------------------------------ |
+| `src/mediaoutput/GStreamerOut.cpp` | Add optional RTP tee branch for direct AES67           |
+| `www/api/controllers/pipewire.php` | Update apply endpoint to signal fppd                   |
+| `src/boot/FPPINIT.cpp`             | Remove PipeWire RTP module/ptp4l/SAP daemon startup    |
+| `src/makefiles/fpp_so.mk`          | Add `AES67Manager.o`, add `-lgstnet-1.0` for PTP clock |
+
+### Files Eventually Removed
+| File                          | Replaced By                    |
+| ----------------------------- | ------------------------------ |
+| `scripts/apply_aes67_config`  | `AES67Manager` in fppd         |
+| `scripts/fpp_aes67_sap`       | Built-in SAP in `AES67Manager` |
+| `scripts/fpp_aes67_common.py` | Constants/logic moved to C++   |
+
+### Migration Strategy
+- **Phase 7 does NOT block Phases 2-6** — PipeWire RTP modules continue working
+- Can run in parallel: GStreamer for media playback + PipeWire for AES67 initially
+- Migration: Replace PipeWire RTP modules one instance at a time
+- Fallback: Keep `apply_aes67_config` script as alternative if GStreamer PTP has issues
+- The `pipewire-aes67-instances.json` config format stays the same — only the backend changes
 
 ---
 
@@ -485,11 +663,13 @@ class GStreamerPlayData {
 ```
 libgstreamer1.0-dev          # Core GStreamer development
 libgstreamer-plugins-base1.0-dev  # Base plugins development (appsink, etc.)
+libgstreamer-plugins-bad1.0-dev   # Bad plugins development (rtpsink/rtpsrc)
 gstreamer1.0-plugins-base    # Runtime: audioconvert, audioresample, playback
-gstreamer1.0-plugins-good    # Runtime: autoaudiosink, pulsesink, etc.
-gstreamer1.0-plugins-bad     # Runtime: kmssink (for HDMI video)
+gstreamer1.0-plugins-good    # Runtime: autoaudiosink, rtpL24pay/depay, udpsrc/sink, rtpbin
+gstreamer1.0-plugins-bad     # Runtime: kmssink (for HDMI video), rtpsink/rtpsrc
 gstreamer1.0-plugins-ugly    # Runtime: mp3 decoding (mpg123), etc.
 gstreamer1.0-pipewire        # Runtime: pipewiresink/pipewiresrc elements
+# libgstnet-1.0 (from libgstreamer1.0-dev) provides GstPtpClock for AES67
 ```
 
 ### Packages Eventually Removed
@@ -533,3 +713,29 @@ Result: All outputs are clocked from the same source.
 With SDL (current): SDL_QueueAudio pushes into PulseAudio compat layer → extra buffer → different timing.
 With VLC native PipeWire: VLC has its own internal buffering → different timing.
 With GStreamer pipewiresink: GStreamer becomes a node in the PipeWire graph → same timing as everything else.
+
+### AES67 Clock Architecture (Phase 7)
+
+```
+Current PipeWire AES67 approach:
+  ptp4l (external daemon) ──disciplines──► system CLOCK_MONOTONIC
+  PipeWire graph clock (CLOCK_MONOTONIC) ──► module-rtp-sink ──► RTP multicast
+  Problem: PTP sync is indirect — system clock discipline has jitter,
+           PipeWire RTP timestamps ≠ PTP media clock timestamps.
+           Custom Python SAP daemon needed (PipeWire SAP is non-compliant).
+
+Target GStreamer AES67 approach:
+  GstPtpClock (domain 0) ──► Pipeline clock
+  ├── rtpL24pay timestamps derive directly from PTP time
+  ├── rtpbin.rfc7273-sync=true for receive-side PTP reconstruction
+  └── SDP with correct ts-refclk/mediaclk attributes
+
+  Media ──► decodebin ──► audioconvert ──► tee
+              ├── pipewiresink (local playback, same PipeWire graph clock)
+              └── rtpL24pay ──► rtpbin ──► udpsink (AES67 multicast)
+                  clocked by GstPtpClock = true AES67 media clock
+
+  Benefit: RTP timestamps are PTP-derived (not system-clock-derived),
+           meeting AES67's media clock requirement exactly.
+           SAP announcements can include correct ts-refclk.
+```
