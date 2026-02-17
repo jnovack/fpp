@@ -14,13 +14,13 @@
 // AES67Manager — GStreamer-based AES67 audio-over-IP send/receive
 //
 // Replaces the previous PipeWire RTP module approach with GStreamer pipelines
-// that use GstPtpClock for IEEE 1588 PTP-derived media clock timestamps,
-// achieving true AES67 compliance.
+// and uses ptp4l (linuxptp) for IEEE 1588 PTP clock synchronization on the
+// network, achieving true AES67 compliance.
 //
 // Features:
-//   - Send: pipewiresrc → audioconvert → rtpL24pay → rtpbin → udpsink
-//   - Receive: udpsrc → rtpbin (rfc7273-sync) → rtpL24depay → audioconvert → pipewiresink
-//   - GstPtpClock for PTP-derived RTP timestamps
+//   - Send: pipewiresrc → audioconvert → rtpL24pay → udpsink
+//   - Receive: udpsrc → rtpjitterbuffer → rtpL24depay → audioconvert → pipewiresink
+//   - ptp4l for IEEE 1588 PTP on the network (grandmaster or follower via BMCA)
 //   - Built-in SAP announcer (replaces external fpp_aes67_sap Python daemon)
 //   - SAP receiver for inbound stream discovery
 //   - Config format: same pipewire-aes67-instances.json (backward-compatible)
@@ -210,12 +210,16 @@ private:
     std::string m_configPath;
     bool LoadConfig();
 
-    // PTP
+    // PTP (managed via ptp4l subprocess)
     bool m_ptpInitialized = false;
-    GstClock* m_ptpClock = nullptr;
+    pid_t m_ptp4lPid = -1;               // ptp4l child process ID
+    pid_t m_phc2sysPid = -1;             // phc2sys child process ID
+    std::string m_ptpConfPath;           // temp config file for ptp4l
     bool InitPTP();
     void ShutdownPTP();
+    bool IsPtp4lRunning() const;         // check if ptp4l process is alive
     std::string GetPTPClockId();         // EUI-64 from interface MAC
+    std::string GetPtp4lState();         // query ptp4l state via pmc
 
     // Pipeline management
     std::map<int, AES67Pipeline> m_sendPipelines;    // keyed by instance ID
