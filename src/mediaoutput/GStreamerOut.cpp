@@ -262,8 +262,15 @@ int GStreamerOutput::Start(int msTime) {
         g_object_set(m_appsink, "emit-signals", TRUE, "sync", FALSE,
                      "max-buffers", 3, "drop", TRUE, NULL);
 
+        // Force 48kHz output so PipeWire doesn't need to resample
+        GstElement* rateCapsfilter = gst_element_factory_make("capsfilter", "ratecaps");
+        GstCaps* rateCaps = gst_caps_new_simple("audio/x-raw",
+            "rate", G_TYPE_INT, 48000, NULL);
+        g_object_set(rateCapsfilter, "caps", rateCaps, NULL);
+        gst_caps_unref(rateCaps);
+
         // Add audio elements to pipeline
-        gst_bin_add_many(GST_BIN(m_pipeline), audioconvert, audioresample, tee,
+        gst_bin_add_many(GST_BIN(m_pipeline), audioconvert, audioresample, rateCapsfilter, tee,
                          queue1, m_volume, sink,
                          queue2, audioconvert2, capsfilterAudio, m_appsink, NULL);
 
@@ -273,8 +280,8 @@ int GStreamerOutput::Start(int msTime) {
         gst_object_ref(m_appsink);
 
         // Link audio chain
-        if (!gst_element_link_many(audioconvert, audioresample, tee, NULL)) {
-            LogErr(VB_MEDIAOUT, "GStreamer: Failed to link audioconvert->audioresample->tee\n");
+        if (!gst_element_link_many(audioconvert, audioresample, rateCapsfilter, tee, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer: Failed to link audioconvert->audioresample->ratecaps->tee\n");
         }
         if (!gst_element_link_many(queue1, m_volume, sink, NULL)) {
             LogErr(VB_MEDIAOUT, "GStreamer: Failed to link queue1->volume->sink\n");
@@ -404,15 +411,22 @@ int GStreamerOutput::Start(int msTime) {
         g_object_set(m_appsink, "emit-signals", TRUE, "sync", FALSE,
                      "max-buffers", 3, "drop", TRUE, NULL);
 
-        gst_bin_add_many(GST_BIN(m_pipeline), audioconvert, audioresample, tee,
+        // Force 48kHz output so PipeWire doesn't need to resample
+        GstElement* rateCapsfilter = gst_element_factory_make("capsfilter", "ratecaps");
+        GstCaps* rateCaps = gst_caps_new_simple("audio/x-raw",
+            "rate", G_TYPE_INT, 48000, NULL);
+        g_object_set(rateCapsfilter, "caps", rateCaps, NULL);
+        gst_caps_unref(rateCaps);
+
+        gst_bin_add_many(GST_BIN(m_pipeline), audioconvert, audioresample, rateCapsfilter, tee,
                          queue1, m_volume, sink,
                          queue2, audioconvert2, capsfilterAudio, m_appsink, NULL);
 
         gst_object_ref(m_volume);
         gst_object_ref(m_appsink);
 
-        if (!gst_element_link_many(audioconvert, audioresample, tee, NULL)) {
-            LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link audioconvert->audioresample->tee\n");
+        if (!gst_element_link_many(audioconvert, audioresample, rateCapsfilter, tee, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link audioconvert->audioresample->ratecaps->tee\n");
         }
         if (!gst_element_link_many(queue1, m_volume, sink, NULL)) {
             LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link queue1->volume->sink\n");
@@ -506,6 +520,7 @@ int GStreamerOutput::Start(int msTime) {
         // Audio-only pipeline (original gst_parse_launch approach)
         std::string pipelineStr =
             "filesrc location=\"" + fullPath + "\" ! decodebin ! audioconvert ! audioresample ! "
+            "audio/x-raw,rate=48000 ! "
             "tee name=t "
             "t. ! queue ! volume name=vol ! " + sinkStr + " "
             "t. ! queue max-size-buffers=3 leaky=downstream ! "
@@ -604,6 +619,11 @@ int GStreamerOutput::Start(int msTime) {
     m_playing = true;
     m_currentInstance = this;
 
+#ifdef HAS_AES67_GSTREAMER
+    // AES67 send pipelines run continuously (always sending to multicast).
+    // No resume needed — filter-chain outputs silence when idle.
+#endif
+
     if (m_mediaOutputStatus) {
         m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_PLAYING;
     }
@@ -622,6 +642,12 @@ int GStreamerOutput::Start(int msTime) {
 int GStreamerOutput::Stop(void) {
     LogDebug(VB_MEDIAOUT, "GStreamerOutput::Stop()\n");
     if (m_pipeline) {
+        // Detach AES67 zero-hop RTP branches BEFORE pipeline goes NULL —
+        // this resumes the standalone send pipeline so AES67 keeps working
+        // between tracks.
+#ifdef HAS_AES67_GSTREAMER
+        DetachAES67Branches();
+#endif
         Stopping();
         gst_element_set_state(m_pipeline, GST_STATE_NULL);
         m_playing = false;
@@ -805,6 +831,12 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
                                     0);
             LogDebug(VB_MEDIAOUT, "GStreamer sync: Looping (remaining: %d)\n", self->m_loopCount);
         } else {
+            // Detach AES67 inline branches so the standalone pipeline
+            // resumes sending — EOS means no more data will flow through
+            // the tee, so the inline branch is useless.
+#ifdef HAS_AES67_GSTREAMER
+            self->DetachAES67Branches();
+#endif
             self->m_playing = false;
             if (self->m_mediaOutputStatus) {
                 self->m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;
@@ -837,6 +869,9 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
         } else {
             LogErr(VB_MEDIAOUT, "GStreamer sync error (src=%s): %s\n", srcName, err->message);
             LogDebug(VB_MEDIAOUT, "GStreamer sync debug: %s\n", debug ? debug : "(none)");
+#ifdef HAS_AES67_GSTREAMER
+            self->DetachAES67Branches();
+#endif
             self->m_playing = false;
             if (self->m_mediaOutputStatus) {
                 self->m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;
@@ -877,10 +912,18 @@ int GStreamerOutput::Close(void) {
         // Detach AES67 zero-hop RTP branches before pipeline teardown
 #ifdef HAS_AES67_GSTREAMER
         DetachAES67Branches();
+        // AES67 send pipelines run continuously — no pause needed.
 #endif
 
         // Set shutdown flag FIRST — this prevents OnNewSample/OnNewVideoSample from doing any work
         m_shutdownFlag.store(true);
+
+        // Flush PipeWire filter-chain delay buffers.  Each audio group member
+        // has a builtin delay node whose internal ring-buffer retains old
+        // audio.  Setting the delay to 0 empties it; restoring the original
+        // value afterwards starts accumulating from scratch with silence.
+        // Spawned as a detached thread so we don't block Close().
+        FlushPipeWireDelayBuffers();
 
         // Disconnect appsink signals and disable emission BEFORE pipeline state change.
         // This prevents streaming threads from calling callbacks during teardown,
@@ -1263,25 +1306,134 @@ bool GStreamerOutput::GetAudioSamples(float* samples, int numSamples, int& sampl
 // ──────────────────────────────────────────────────────────────────────────────
 #ifdef HAS_AES67_GSTREAMER
 void GStreamerOutput::AttachAES67Branches(GstElement* tee) {
-    if (!AES67Manager::INSTANCE.IsActive() || !AES67Manager::INSTANCE.HasActiveSendInstances()) {
-        return;
-    }
-
-    m_aes67Branches = AES67Manager::INSTANCE.AttachInlineRTPBranches(m_pipeline, tee);
-
-    if (!m_aes67Branches.empty()) {
-        LogInfo(VB_MEDIAOUT, "GStreamer: %zu AES67 zero-hop RTP branch(es) attached\n",
-                m_aes67Branches.size());
-    }
+    // Inline zero-hop branches are disabled.  They create a second RTP stream
+    // (different SSRC) alongside the standalone pipewiresrc→udpsink pipeline,
+    // which confuses AES67 receivers causing repeated/out-of-time audio.
+    // The standalone pipeline with sync=false already provides low latency.
+    (void)tee;
+    return;
 }
 
 void GStreamerOutput::DetachAES67Branches() {
-    if (!m_aes67Branches.empty()) {
-        LogInfo(VB_MEDIAOUT, "GStreamer: Detaching %zu AES67 zero-hop RTP branch(es)\n",
-                m_aes67Branches.size());
-        AES67Manager::INSTANCE.DetachInlineRTPBranches(m_pipeline, m_aes67Branches);
-    }
+    // No-op: inline branches are disabled.
 }
 #endif // HAS_AES67_GSTREAMER
+
+// ──────────────────────────────────────────────────────────────────────────────
+// PipeWire filter-chain delay buffer flush
+// ──────────────────────────────────────────────────────────────────────────────
+// When media stops, PipeWire's builtin delay nodes retain old audio in their
+// ring-buffers.  If the next song starts before that audio drains naturally,
+// the listener hears a burst of the previous track.  This function resets all
+// delay controls to 0 (clearing the ring-buffers) and then immediately
+// restores the original values so they begin accumulating from silence.
+void GStreamerOutput::FlushPipeWireDelayBuffers() {
+    // Read audio groups config to find delay values
+    std::string configPath = FPP_DIR_CONFIG("/pipewire-audio-groups.json");
+    if (!FileExists(configPath)) {
+        return;
+    }
+
+    Json::Value root;
+    if (!LoadJsonFromFile(configPath, root) || !root.isMember("groups")) {
+        return;
+    }
+
+    // Channel labels matching the PHP filter-chain generator
+    static const char* channelLabels[] = { "l", "r", "c", "lfe", "rl", "rr", "sl", "sr" };
+
+    struct DelayInfo {
+        std::string fxNodeName; // e.g. fpp_fx_g1_s3
+        int channels;
+        double delaySec;
+    };
+    std::vector<DelayInfo> delays;
+
+    for (const auto& group : root["groups"]) {
+        int groupId = group.get("id", 0).asInt();
+        if (!group.isMember("members"))
+            continue;
+        for (const auto& member : group["members"]) {
+            std::string cardId = member.get("cardId", "").asString();
+            double delayMs = member.get("delayMs", 0.0).asDouble();
+            int channels = member.get("channels", 2).asInt();
+            if (cardId.empty() || delayMs <= 0)
+                continue; // no delay buffer to flush
+
+            // Normalize card ID to match PHP: preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId))
+            std::string cardIdNorm;
+            for (char c : cardId) {
+                if (std::isalnum(c) || c == '_')
+                    cardIdNorm += std::tolower(c);
+                else
+                    cardIdNorm += '_';
+            }
+            std::string fxNodeName = "fpp_fx_g" + std::to_string(groupId) + "_" + cardIdNorm;
+            delays.push_back({fxNodeName, std::min(channels, 8), delayMs / 1000.0});
+        }
+    }
+
+    if (delays.empty())
+        return;
+
+    // Fire-and-forget thread: set delays to 0, wait a quantum, restore.
+    std::thread([delays]() {
+        const char* env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+
+        // Phase 1: set all delays to 0 (clears ring-buffers)
+        for (const auto& d : delays) {
+            // Find node ID
+            std::string findCmd = std::string(env) + " pw-cli ls Node 2>/dev/null | grep -B1 'node.name = \"" + d.fxNodeName + "\"' | head -1 | awk '{print $2}'";
+            FILE* fp = popen(findCmd.c_str(), "r");
+            if (!fp) continue;
+            char buf[64] = {};
+            if (!fgets(buf, sizeof(buf), fp)) { pclose(fp); continue; }
+            pclose(fp);
+            int nodeId = atoi(buf);
+            if (nodeId <= 0) continue;
+
+            // Build params string: "delay_l:Delay (s)" 0 "delay_r:Delay (s)" 0 ...
+            std::string params;
+            for (int ch = 0; ch < d.channels; ch++) {
+                if (!params.empty()) params += " ";
+                params += "\"delay_";
+                params += channelLabels[ch];
+                params += ":Delay (s)\" 0";
+            }
+            std::string cmd = std::string(env) + " pw-cli set-param " + std::to_string(nodeId)
+                + " Props '{ params = [ " + params + " ] }' 2>/dev/null";
+            system(cmd.c_str());
+        }
+
+        // Wait two PipeWire quanta (~42ms) for the zero-delay to take effect
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        // Phase 2: restore original delay values
+        for (const auto& d : delays) {
+            std::string findCmd = std::string(env) + " pw-cli ls Node 2>/dev/null | grep -B1 'node.name = \"" + d.fxNodeName + "\"' | head -1 | awk '{print $2}'";
+            FILE* fp = popen(findCmd.c_str(), "r");
+            if (!fp) continue;
+            char buf[64] = {};
+            if (!fgets(buf, sizeof(buf), fp)) { pclose(fp); continue; }
+            pclose(fp);
+            int nodeId = atoi(buf);
+            if (nodeId <= 0) continue;
+
+            std::string params;
+            for (int ch = 0; ch < d.channels; ch++) {
+                if (!params.empty()) params += " ";
+                params += "\"delay_";
+                params += channelLabels[ch];
+                params += ":Delay (s)\" ";
+                params += std::to_string(d.delaySec);
+            }
+            std::string cmd = std::string(env) + " pw-cli set-param " + std::to_string(nodeId)
+                + " Props '{ params = [ " + params + " ] }' 2>/dev/null";
+            system(cmd.c_str());
+        }
+
+        LogDebug(VB_MEDIAOUT, "PipeWire delay buffers flushed and restored\n");
+    }).detach();
+}
 
 #endif // HAS_GSTREAMER

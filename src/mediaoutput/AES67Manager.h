@@ -200,6 +200,14 @@ public:
     // Detach and clean up inline RTP branches attached by AttachInlineRTPBranches.
     void DetachInlineRTPBranches(GstElement* pipeline, std::vector<InlineRTPBranch>& branches);
 
+    // Pause/resume standalone send pipelines.
+    // Called by GStreamerOutput so that send pipelines only run PLAYING
+    // while media is actually being played, preventing digital noise on
+    // the AES67 output when nothing is playing (pipewiresrc would capture
+    // uninitialized data from the idle PipeWire node).
+    void PauseSendPipelines();
+    void ResumeSendPipelines();
+
     AES67Manager();
     virtual ~AES67Manager();
 

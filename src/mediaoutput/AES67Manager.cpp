@@ -557,10 +557,11 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
     //   ! audioconvert ! audio/x-raw,format=S24BE,rate=48000,channels=N
     //   ! rtpL24pay pt=96 min-ptime=<ns> max-ptime=<ns>
     //   ! application/x-rtp,clock-rate=48000
-    //   ! udpsink host=<multicast> port=<port> multicast-iface=<iface> ttl=4 auto-multicast=true sync=true
+    //   ! udpsink host=<multicast> port=<port> multicast-iface=<iface> ttl-mc=4 auto-multicast=true sync=true
 
     std::ostringstream oss;
-    oss << "pipewiresrc stream-properties=\"props,node.name=" << nodeName << "\" "
+    oss << "pipewiresrc min-buffers=2 stream-properties=\"props,node.name=" << nodeName
+        << ",node.autoconnect=false\" "
         << "! audioconvert "
         << "! audio/x-raw,format=S24BE,rate=" << AES67::AUDIO_RATE
         << ",channels=" << inst.channels << " "
@@ -570,8 +571,8 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
         << "! application/x-rtp,clock-rate=" << AES67::AUDIO_RATE << " "
         << "! udpsink name=usink host=" << inst.multicastIP
         << " port=" << inst.port
-        << " ttl=" << AES67::AUDIO_RTP_TTL
-        << " auto-multicast=true sync=true";
+        << " ttl-mc=" << AES67::AUDIO_RTP_TTL
+        << " auto-multicast=true sync=false";
 
     if (!inst.interface.empty()) {
         oss << " multicast-iface=" << inst.interface;
@@ -599,7 +600,11 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
     gst_bus_add_watch(bus, OnBusMessage, this);
     gst_object_unref(bus);
 
-    // Start pipeline
+    // Start pipeline in PLAYING state.  With node.autoconnect=false on
+    // pipewiresrc, only the PipeWire filter-chain (which has an explicit
+    // node.target) connects.  When no media is playing the filter-chain
+    // outputs clean silence, so there is no need to mute/unmute — the
+    // pipeline always sends to the real multicast address.
     GstStateChangeReturn ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         LogErr(VB_MEDIAOUT, "AES67 send pipeline [%d] failed to start\n", inst.id);
@@ -734,6 +739,16 @@ void AES67Manager::StopAllPipelines() {
         StopPipeline(p);
     }
     m_recvPipelines.clear();
+}
+
+void AES67Manager::PauseSendPipelines() {
+    // No-op: with node.autoconnect=false the send pipeline always outputs
+    // to multicast.  When no media is playing, the filter-chain delivers
+    // clean silence — no muting needed.
+}
+
+void AES67Manager::ResumeSendPipelines() {
+    // No-op: pipeline is always sending to multicast.
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1235,20 +1250,25 @@ std::vector<AES67Manager::InlineRTPBranch> AES67Manager::AttachInlineRTPBranches
             "max-ptime", ptimeNs,
             NULL);
 
-        // Configure udpsink
+        // Configure udpsink — sync=FALSE so packets go out immediately.
+        // The playback pipeline's tee delivers data at real-time rate;
+        // adding sync=true would cause the udpsink to buffer based on the
+        // pipeline clock, which can lag behind the stream position and
+        // block output entirely.
         g_object_set(udpsink,
             "host", inst.multicastIP.c_str(),
             "port", inst.port,
-            "ttl", AES67::AUDIO_RTP_TTL,
+            "ttl-mc", AES67::AUDIO_RTP_TTL,
             "auto-multicast", TRUE,
-            "sync", TRUE,
+            "sync", FALSE,
             NULL);
         if (!inst.interface.empty()) {
             g_object_set(udpsink, "multicast-iface", inst.interface.c_str(), NULL);
         }
 
-        // Configure queue for low-latency
-        g_object_set(queue, "max-size-buffers", 10, "leaky", 2 /* downstream */, NULL);
+        // Configure queue: small buffer for low-latency, leaky to avoid
+        // blocking the main audio chain if the network stalls
+        g_object_set(queue, "max-size-buffers", 3, "leaky", 2 /* downstream */, NULL);
 
         // Add elements to pipeline bin
         gst_bin_add_many(GST_BIN(pipeline), queue, aconv, capsf, rtppay, udpsink, NULL);
@@ -1290,6 +1310,12 @@ std::vector<AES67Manager::InlineRTPBranch> AES67Manager::AttachInlineRTPBranches
         branch.queue = queue;
         branch.teeSrcPad = teeSrcPad;
         branches.push_back(branch);
+
+        // NOTE: We do NOT pause the standalone send pipeline.  Pausing it
+        // with pipewiresrc causes preroll issues when trying to resume
+        // (PAUSED→PLAYING can hang if pipewiresrc can't re-acquire buffers).
+        // Both streams (inline + standalone) will coexist briefly during
+        // playback — they have different SSRCs so receivers pick one.
 
         LogInfo(VB_MEDIAOUT, "AES67 zero-hop: Branch active for '%s' → %s:%d (%dch, %dms)\n",
                 inst.name.c_str(), inst.multicastIP.c_str(), inst.port,

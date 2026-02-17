@@ -137,6 +137,9 @@ private:
     void DetachAES67Branches();
 #endif
 
+    // Flush PipeWire filter-chain delay buffers between songs
+    static void FlushPipeWireDelayBuffers();
+
     static GStreamerOutput* m_currentInstance;
 };
 
