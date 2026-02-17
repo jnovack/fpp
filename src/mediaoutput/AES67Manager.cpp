@@ -547,19 +547,20 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
     int64_t ptimeNs = (int64_t)inst.ptime * 1000000LL;
 
     // Build pipeline string
-    // pipewiresrc captures from the PipeWire node (the AES67 sink that
-    // audio groups route audio to). Clock selection is handled via
-    // gst_pipeline_use_clock() after pipeline creation.
+    // pipewiresrc registers itself as a PipeWire node with the expected name
+    // so that the audio group's filter-chain output (which has
+    // node.target=<nodeName>) can connect to it.  We do NOT use
+    // target-object because this node is the DESTINATION, not the source.
     //
     // Pipeline:
-    //   pipewiresrc target-object=<node>
-    //   ! audio/x-raw,format=S24BE,rate=48000,channels=N
+    //   pipewiresrc stream-properties="props,node.name=<node>"
+    //   ! audioconvert ! audio/x-raw,format=S24BE,rate=48000,channels=N
     //   ! rtpL24pay pt=96 min-ptime=<ns> max-ptime=<ns>
     //   ! application/x-rtp,clock-rate=48000
     //   ! udpsink host=<multicast> port=<port> multicast-iface=<iface> ttl=4 auto-multicast=true sync=true
 
     std::ostringstream oss;
-    oss << "pipewiresrc target-object=" << nodeName << " "
+    oss << "pipewiresrc stream-properties=\"props,node.name=" << nodeName << "\" "
         << "! audioconvert "
         << "! audio/x-raw,format=S24BE,rate=" << AES67::AUDIO_RATE
         << ",channels=" << inst.channels << " "

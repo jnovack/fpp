@@ -644,25 +644,37 @@ int GStreamerOutput::Process(void) {
         gint64 pos = 0, dur = 0;
         if (gst_element_query_position(m_pipeline, GST_FORMAT_TIME, &pos) &&
             gst_element_query_duration(m_pipeline, GST_FORMAT_TIME, &dur)) {
+
+            // Track the maximum observed duration — VBR MP3 files can report
+            // fluctuating durations as GStreamer revises its estimate during
+            // decoding.  Using the max prevents time-remaining from jumping
+            // backwards or going negative.
+            if (dur > m_maxDuration) {
+                m_maxDuration = dur;
+            }
+            gint64 effectiveDur = m_maxDuration;
+
             float elapsed = (float)pos / GST_SECOND;
-            float remaining = (float)(dur - pos) / GST_SECOND;
+            float remaining = (float)(effectiveDur - pos) / GST_SECOND;
             setMediaElapsed(elapsed, remaining);
 
-            // Set total duration for playlist status reporting
-            if (m_mediaOutputStatus && m_mediaOutputStatus->minutesTotal == 0 && m_mediaOutputStatus->secondsTotal == 0) {
-                int totalSecs = (int)(dur / GST_SECOND);
-                m_mediaOutputStatus->minutesTotal = totalSecs / 60;
-                m_mediaOutputStatus->secondsTotal = totalSecs % 60;
-                if (totalSecs > 0) {
-                    LogInfo(VB_MEDIAOUT, "GStreamer duration: %d:%02d\n",
-                            m_mediaOutputStatus->minutesTotal, m_mediaOutputStatus->secondsTotal);
+            // Always update total duration — it may be refined for VBR media
+            if (effectiveDur > 0) {
+                int totalSecs = (int)(effectiveDur / GST_SECOND);
+                int newMin = totalSecs / 60;
+                int newSec = totalSecs % 60;
+                if (newMin != m_mediaOutputStatus->minutesTotal ||
+                    newSec != m_mediaOutputStatus->secondsTotal) {
+                    m_mediaOutputStatus->minutesTotal = newMin;
+                    m_mediaOutputStatus->secondsTotal = newSec;
+                    LogInfo(VB_MEDIAOUT, "GStreamer duration: %d:%02d\n", newMin, newSec);
                 }
             }
 
             // Stall watchdog: detect when PipeWire stops consuming data
             // (e.g. HDMI sink unplugged causing combine-stream to block)
             // Skip watchdog near end of media — position naturally stops advancing
-            bool nearEnd = (dur > 0 && (dur - pos) < GST_SECOND);
+            bool nearEnd = (effectiveDur > 0 && (effectiveDur - pos) < GST_SECOND);
 
             if (pos != m_lastPosition) {
                 m_lastPosition = pos;
@@ -676,7 +688,7 @@ int GStreamerOutput::Process(void) {
                 } else if ((now - m_stallStartMs) > (STALL_TIMEOUT_MS * 2)) {
                     // EOS should have arrived by now but didn't — force end
                     LogInfo(VB_MEDIAOUT, "GStreamer: media reached end (%.1fs/%.1fs), forcing stop\n",
-                            elapsed, (float)dur / GST_SECOND);
+                            elapsed, (float)effectiveDur / GST_SECOND);
                     m_playing = false;
                     if (m_mediaOutputStatus) {
                         m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;
@@ -807,16 +819,34 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
         GError* err;
         gchar* debug;
         gst_message_parse_error(msg, &err, &debug);
-        LogErr(VB_MEDIAOUT, "GStreamer sync error: %s\n", err->message);
-        LogDebug(VB_MEDIAOUT, "GStreamer sync debug: %s\n", debug ? debug : "(none)");
+
+        // Identify which element produced the error
+        const gchar* srcName = GST_MESSAGE_SRC(msg) ?
+            GST_OBJECT_NAME(GST_MESSAGE_SRC(msg)) : "unknown";
+
+        // AES67 inline RTP branch elements are named "aes67_*".
+        // Errors from these branches (e.g. network issues, PipeWire
+        // disconnects) should NOT stop media playback.
+        bool isAES67Branch = (strncmp(srcName, "aes67_", 6) == 0);
+
+        if (isAES67Branch) {
+            LogWarn(VB_MEDIAOUT, "GStreamer AES67 branch error (non-fatal, src=%s): %s\n",
+                    srcName, err->message);
+            LogDebug(VB_MEDIAOUT, "GStreamer AES67 branch debug: %s\n",
+                     debug ? debug : "(none)");
+        } else {
+            LogErr(VB_MEDIAOUT, "GStreamer sync error (src=%s): %s\n", srcName, err->message);
+            LogDebug(VB_MEDIAOUT, "GStreamer sync debug: %s\n", debug ? debug : "(none)");
+            self->m_playing = false;
+            if (self->m_mediaOutputStatus) {
+                self->m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;
+            }
+            self->Stopping();
+            self->Stopped();
+        }
+
         g_error_free(err);
         g_free(debug);
-        self->m_playing = false;
-        if (self->m_mediaOutputStatus) {
-            self->m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;
-        }
-        self->Stopping();
-        self->Stopped();
         gst_message_unref(msg);
         return GST_BUS_DROP;
     }
