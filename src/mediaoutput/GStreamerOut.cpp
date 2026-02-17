@@ -26,6 +26,7 @@
 
 #include "common.h"
 #include "log.h"
+#include "mediadetails.h"
 #include "settings.h"
 #include "channeloutput/channeloutputthread.h"
 #include "overlays/PixelOverlay.h"
@@ -138,6 +139,24 @@ int GStreamerOutput::Start(int msTime) {
     if (!FileExists(fullPath)) {
         LogErr(VB_MEDIAOUT, "GStreamer: media file not found: %s\n", m_mediaFilename.c_str());
         return 0;
+    }
+
+    // Pre-populate duration from file metadata so that
+    // PlaylistEntryMedia::GetLengthInMS() returns a valid value immediately.
+    // Without this, the playlist status polls GetElapsedMS() before GStreamer
+    // has queried the duration, causing m_duration to track elapsed time
+    // and seconds_remaining to always report 0.
+    {
+        MediaDetails details;
+        details.ParseMedia(fullPath.c_str());
+        if (details.lengthMS > 0) {
+            int totalSecs = details.lengthMS / 1000;
+            m_mediaOutputStatus->minutesTotal = totalSecs / 60;
+            m_mediaOutputStatus->secondsTotal = totalSecs % 60;
+            m_maxDuration = (gint64)details.lengthMS * GST_MSECOND;
+            LogInfo(VB_MEDIAOUT, "GStreamer: pre-set duration from metadata: %d:%02d (%d ms)\n",
+                    m_mediaOutputStatus->minutesTotal, m_mediaOutputStatus->secondsTotal, details.lengthMS);
+        }
     }
 
     // Determine if we need a video overlay branch or HDMI output
@@ -668,20 +687,21 @@ int GStreamerOutput::Process(void) {
     // Update position
     if (m_playing) {
         gint64 pos = 0, dur = 0;
-        if (gst_element_query_position(m_pipeline, GST_FORMAT_TIME, &pos) &&
-            gst_element_query_duration(m_pipeline, GST_FORMAT_TIME, &dur)) {
+        bool havePos = gst_element_query_position(m_pipeline, GST_FORMAT_TIME, &pos);
+        bool haveDur = gst_element_query_duration(m_pipeline, GST_FORMAT_TIME, &dur);
 
+        if (havePos) {
             // Track the maximum observed duration — VBR MP3 files can report
             // fluctuating durations as GStreamer revises its estimate during
             // decoding.  Using the max prevents time-remaining from jumping
             // backwards or going negative.
-            if (dur > m_maxDuration) {
+            if (haveDur && dur > m_maxDuration) {
                 m_maxDuration = dur;
             }
             gint64 effectiveDur = m_maxDuration;
 
             float elapsed = (float)pos / GST_SECOND;
-            float remaining = (float)(effectiveDur - pos) / GST_SECOND;
+            float remaining = (effectiveDur > pos) ? (float)(effectiveDur - pos) / GST_SECOND : 0.0f;
             setMediaElapsed(elapsed, remaining);
 
             // Always update total duration — it may be refined for VBR media

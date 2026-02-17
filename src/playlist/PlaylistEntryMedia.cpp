@@ -236,10 +236,17 @@ uint64_t PlaylistEntryMedia::GetLengthInMS() {
         MediaDetails details;
         details.ParseMedia(m_mediaFilename.c_str());
         m_duration = details.lengthMS;
-        if (m_duration == 0) {
-            float f = mediaOutputStatus.minutesTotal * 60 + mediaOutputStatus.secondsTotal;
-            f *= 1000;
-            m_duration = f;
+    }
+    // Always try to refine from the running media output status.
+    // Some backends (e.g. GStreamer) may not have the duration available
+    // immediately at Start(), so minutesTotal/secondsTotal get populated
+    // asynchronously.  Re-checking here prevents GetElapsedMS()'s
+    // "if (f > m_duration)" guard from permanently caching a wrong value
+    // (i.e., the elapsed time) before the real duration was known.
+    if (mediaOutputStatus.minutesTotal > 0 || mediaOutputStatus.secondsTotal > 0) {
+        uint64_t d = ((uint64_t)mediaOutputStatus.minutesTotal * 60 + mediaOutputStatus.secondsTotal) * 1000;
+        if (d > m_duration) {
+            m_duration = d;
         }
     }
     return m_duration;
