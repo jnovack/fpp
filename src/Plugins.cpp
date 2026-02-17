@@ -481,7 +481,7 @@ FPPPlugins::Plugin* PluginManager::loadUserPlugin(const std::string& name) {
         TrimWhiteSpace(callback_list);
 
         LogExcess(VB_PLUGIN, "Callback output: (%s)\n", callback_list.c_str());
-        wait(NULL);
+        waitpid(pid, NULL, 0);
     }
 
     ScriptFPPPlugin* spl = new ScriptFPPPlugin(name, filename, callback_list);
@@ -692,7 +692,7 @@ void MediaCallback::run(const Json::Value& playlist, const MediaDetails& mediaDe
         _exit(EXIT_FAILURE);
     } else {
         LogExcess(VB_PLUGIN, "Media parent process, resuming work.\n");
-        wait(NULL);
+        waitpid(pid, NULL, 0);
     }
 }
 
@@ -722,7 +722,7 @@ void PlaylistCallback::run(const Json::Value& playlist, const std::string& actio
         _exit(EXIT_FAILURE);
     } else {
         LogExcess(VB_PLUGIN, "Playlist parent process, resuming work.\n");
-        wait(NULL);
+        waitpid(pid, NULL, 0);
     }
 }
 void LifecycleCallback::run(const std::string& lifecycle) {
@@ -743,6 +743,6 @@ void LifecycleCallback::run(const std::string& lifecycle) {
         _exit(EXIT_FAILURE);
     } else {
         LogExcess(VB_PLUGIN, "Lifecycle parent process, resuming work.\n");
-        wait(NULL);
+        waitpid(pid, NULL, 0);
     }
 }

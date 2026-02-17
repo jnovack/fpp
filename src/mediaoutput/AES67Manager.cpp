@@ -61,7 +61,7 @@ static AES67Manager s_aes67Manager;
 AES67Manager& AES67Manager::INSTANCE = s_aes67Manager;
 
 AES67Manager::AES67Manager() {
-    m_configPath = std::string(FPP_DIR_CONFIG("")) + "pipewire-aes67-instances.json";
+    m_configPath = FPP_DIR_CONFIG("/pipewire-aes67-instances.json");
 }
 
 AES67Manager::~AES67Manager() {
@@ -387,18 +387,18 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
 
     // Build pipeline string
     // pipewiresrc captures from the PipeWire node (the AES67 sink that
-    // audio groups route audio to). We use the "provide-clock=FALSE"
-    // approach and set the pipeline clock to PTP clock instead.
+    // audio groups route audio to). Clock selection is handled via
+    // gst_pipeline_use_clock() after pipeline creation.
     //
     // Pipeline:
-    //   pipewiresrc target-object=<node> provide-clock=false
+    //   pipewiresrc target-object=<node>
     //   ! audio/x-raw,format=S24BE,rate=48000,channels=N
     //   ! rtpL24pay pt=96 min-ptime=<ns> max-ptime=<ns>
     //   ! application/x-rtp,clock-rate=48000
     //   ! udpsink host=<multicast> port=<port> multicast-iface=<iface> ttl=4 auto-multicast=true sync=true
 
     std::ostringstream oss;
-    oss << "pipewiresrc target-object=" << nodeName << " provide-clock=false "
+    oss << "pipewiresrc target-object=" << nodeName << " "
         << "! audioconvert "
         << "! audio/x-raw,format=S24BE,rate=" << AES67::AUDIO_RATE
         << ",channels=" << inst.channels << " "
@@ -474,7 +474,7 @@ bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
     //   ! rtpjitterbuffer latency=<ms>
     //   ! rtpL24depay
     //   ! audioconvert
-    //   ! pipewiresink target-object=<node> provide-clock=false
+    //   ! pipewiresink target-object=<node>
     //     stream-properties="props,media.class=Audio/Source,node.name=<node>"
 
     std::ostringstream oss;
@@ -492,7 +492,7 @@ bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
         << "! rtpjitterbuffer latency=" << inst.latency << " "
         << "! rtpL24depay "
         << "! audioconvert "
-        << "! pipewiresink name=pwsink provide-clock=false "
+        << "! pipewiresink name=pwsink "
         << "stream-properties=\"props,media.class=Audio/Source,"
         << "node.name=" << nodeName << ","
         << "node.description=" << inst.sessionName << " (Receive)\"";
