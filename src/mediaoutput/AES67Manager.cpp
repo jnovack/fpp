@@ -1121,12 +1121,11 @@ std::vector<AES67Manager::InlineRTPBranch> AES67Manager::AttachInlineRTPBranches
         }
         gst_object_unref(queueSinkPad);
 
-        // Set PTP clock on these elements if available
-        if (m_ptpClock) {
-            // The pipeline clock is set at pipeline level; elements inherit it.
-            // But we can also explicitly use PTP for the udpsink.
-            gst_pipeline_use_clock(GST_PIPELINE(pipeline), m_ptpClock);
-        }
+        // NOTE: Do NOT call gst_pipeline_use_clock() here.
+        // The playback pipeline's own clock (e.g. system clock) must remain.
+        // An unsynced PTP clock returns GST_CLOCK_TIME_NONE which crashes
+        // the pipeline.  PTP clock is only set on standalone AES67 send
+        // pipelines via CreateSendPipeline().
 
         InlineRTPBranch branch;
         branch.instanceId = inst.id;
