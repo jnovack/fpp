@@ -400,48 +400,45 @@ class GStreamerPlayData {
 
 ---
 
-## Phase 4: HDMI/DRM Video via GStreamer
+## Phase 4: HDMI/DRM Video via GStreamer ✅
 
 **Objective:** Replace VLC's DRM/KMS video output with GStreamer's `kmssink` for direct HDMI playback.
 
-### Current Code
-- `VLCOut.cpp` lines 224-251: DRM/KMS connector detection and VLC arg setup
-- VLC3: `drm_vout` plugin. VLC4: `kms-device` + `kms-connector`
-- Hardware decoding: `--avcodec-hw` toggle
-- Connector status check via `/sys/class/drm/cardN-<connector>/status`
+**Status:** Complete — tested 2026-02-17 on Pi 5/Bookworm. Video plays full-screen on HDMI with audio through PipeWire.
 
-### Target Design
-```cpp
-// GStreamer video-to-HDMI pipeline:
-// decodebin ! videoconvert ! kmssink connector-id=<id>
-//
-// Or with hardware decode:
-// decodebin ! v4l2h264dec ! kmssink connector-id=<id>
+### Implementation
+
+#### DRM Connector Resolution (`ResolveDrmConnector()`)
+- Scans `/sys/class/drm/cardN-<connector>/` for connector_id, status, modes
+- Cross-Pi compatible: iterates cards 0-7, works regardless of which card is the display card
+- Pi 5: card0=v3d (render), card1=vc4-drm (display). Pi 4: varies by kernel
+- Returns `DrmConnectorInfo` struct with cardPath, connectorId, connected flag, display width/height
+
+#### HDMI Video Pipeline
 ```
+filesrc ! decodebin name=decoder
+  decoder.video → queue ! videoconvert ! videoscale ! capsfilter(WxH) ! kmssink
+  decoder.audio → audioconvert ! audioresample ! tee
+                    ├→ queue ! pipewiresink (main audio)
+                    └→ queue ! appsink (WLED tap)
+```
+- `kmssink` properties: `driver-name=vc4`, `connector-id=N`, `skip-vsync=TRUE`, `restore-crtc=TRUE`
+- Video scaled to display resolution via `videoscale ! capsfilter` to fill screen
+- `decodebin` auto-selects best decoder by rank (no platform-specific decode code)
+  - Pi 5: `v4l2slh265dec` for H.265, `avdec_h264` (software) for H.264
+  - Pi 4: `v4l2h264dec` if available, else `avdec_h264`
+  - Universal: `avdec_h264` from `gstreamer1.0-libav` (always available)
 
-### Tasks
-
-- [ ] **4.1** Implement connector detection:
-  - Reuse existing DRM connector probing logic from VLCOut.cpp
-  - Map connector name (HDMI-A-1) to kmssink `connector-id` property
-
-- [ ] **4.2** Build video-to-HDMI pipeline:
-  - `decodebin ! videoconvert ! kmssink`
-  - Hardware decoding via `v4l2h264dec` or `vaapidecode` (platform-specific)
-
-- [ ] **4.3** Update factory in `mediaoutput.cpp`:
-  - Video + HDMI connected → `GStreamerOutput` with kmssink (replacing VLCOutput)
-
-- [ ] **4.4** Test with HDMI monitor:
-  - Video playback to HDMI output
-  - Audio synced to video via PipeWire shared clock
-  - Hardware decoding if available
+#### Video Output Routing
+- `IsHDMIOut()` recognizes connector names: `HDMI-*`, `DSI-*`, `Composite-*`, `--HDMI--`
+- `CreateMediaOutput()` factory: `useGStreamer && IsExtensionVideo && IsHDMIOut` → `GStreamerOutput`
 
 ### Files Modified
-| File                               | Change                                |
-| ---------------------------------- | ------------------------------------- |
-| `src/mediaoutput/GStreamerOut.cpp` | Add kmssink video mode                |
-| `src/mediaoutput/mediaoutput.cpp`  | Factory: Video+HDMI → GStreamerOutput |
+| File                               | Change                                                              |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `src/mediaoutput/GStreamerOut.h`   | `DrmConnectorInfo` struct, `ResolveDrmConnector()`, HDMI members    |
+| `src/mediaoutput/GStreamerOut.cpp` | `ResolveDrmConnector()`, HDMI pipeline in `Start()`, cleanup paths  |
+| `src/mediaoutput/mediaoutput.cpp`  | Factory: Video+HDMI → `GStreamerOutput` (before VLC fallback)       |
 
 ---
 

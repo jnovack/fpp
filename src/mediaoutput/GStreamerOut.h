@@ -100,6 +100,25 @@ private:
 
     static GstFlowReturn OnNewVideoSample(GstAppSink* appsink, gpointer userData);
 
+    // HDMI/DRM video output via kmssink (Phase 4)
+    bool m_wantHDMI = false;               // true when outputting to HDMI via kmssink
+    GstElement* m_kmssink = nullptr;       // kmssink element (owned by pipeline bin)
+    int m_hdmiConnectorId = -1;            // DRM connector ID from sysfs
+    std::string m_hdmiCardPath;            // e.g. "/dev/dri/card1"
+    int m_hdmiDisplayWidth = 0;            // display resolution
+    int m_hdmiDisplayHeight = 0;
+
+    // Resolve connector name (e.g., "HDMI-A-1") to DRM card path, connector ID,
+    // and display resolution by scanning sysfs.  Works on all Pi models.
+    struct DrmConnectorInfo {
+        std::string cardPath;     // e.g. "/dev/dri/card1"
+        int connectorId = -1;    // integer ID for kmssink
+        bool connected = false;
+        int displayWidth = 0;
+        int displayHeight = 0;
+    };
+    static DrmConnectorInfo ResolveDrmConnector(const std::string& connectorName);
+
     // Dynamic pad linking for decodebin (video requires pad-added signal)
     static void OnPadAdded(GstElement* element, GstPad* pad, gpointer userData);
     static void OnNoMorePads(GstElement* element, gpointer userData);

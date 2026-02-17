@@ -336,6 +336,13 @@ MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::
                 mediaFilename.c_str(), vo.c_str());
         return new GStreamerOutput(mediaFilename, &mediaOutputStatus, vo);
     }
+    if (useGStreamer && IsExtensionVideo(ext) && IsHDMIOut(vo)) {
+        // Video to HDMI via GStreamer kmssink — audio through PipeWire
+        LogInfo(VB_MEDIAOUT, "Using GStreamer for video+HDMI playback: %s (output=%s)\n",
+                mediaFilename.c_str(), vo.c_str());
+        mediaOutputStatus.output = vo;
+        return new GStreamerOutput(mediaFilename, &mediaOutputStatus, vo);
+    }
 #endif
 
 #ifdef HAS_VLC

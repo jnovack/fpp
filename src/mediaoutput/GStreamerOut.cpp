@@ -20,6 +20,9 @@
 #include <gst/app/gstappsink.h>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
+#include <fstream>
+#include <sstream>
 
 #include "common.h"
 #include "log.h"
@@ -57,6 +60,57 @@ static void EnsureGStreamerInit() {
     }
 }
 
+// Resolve a DRM connector name (e.g., "HDMI-A-1") to its card path, connector ID,
+// connection status, and current display resolution by scanning sysfs.
+// Works on all Pi models (Pi 3/4/5) and x86 — no libdrm ioctls needed.
+GStreamerOutput::DrmConnectorInfo GStreamerOutput::ResolveDrmConnector(const std::string& connectorName) {
+    DrmConnectorInfo info;
+
+    // Scan /sys/class/drm/ for cardN-<connectorName>
+    for (int cardNum = 0; cardNum < 8; cardNum++) {
+        std::string sysBase = "/sys/class/drm/card" + std::to_string(cardNum) + "-" + connectorName;
+        std::string statusPath = sysBase + "/status";
+        if (!FileExists(statusPath))
+            continue;
+
+        info.cardPath = "/dev/dri/card" + std::to_string(cardNum);
+
+        // Read connection status
+        std::string status = GetFileContents(statusPath);
+        info.connected = (status.find("connected") != std::string::npos &&
+                          status.find("disconnected") == std::string::npos);
+
+        // Read connector ID (available since Linux 5.x)
+        std::string cidPath = sysBase + "/connector_id";
+        if (FileExists(cidPath)) {
+            std::string cidStr = GetFileContents(cidPath);
+            info.connectorId = atoi(cidStr.c_str());
+        }
+
+        // Read display resolution from first available mode
+        std::string modesPath = sysBase + "/modes";
+        if (FileExists(modesPath)) {
+            std::ifstream mf(modesPath);
+            std::string firstMode;
+            if (std::getline(mf, firstMode) && !firstMode.empty()) {
+                // Format: "1920x1080" or "1280x720"
+                size_t xpos = firstMode.find('x');
+                if (xpos != std::string::npos) {
+                    info.displayWidth = atoi(firstMode.substr(0, xpos).c_str());
+                    info.displayHeight = atoi(firstMode.substr(xpos + 1).c_str());
+                }
+            }
+        }
+
+        LogInfo(VB_MEDIAOUT, "GStreamer DRM: %s on card%d connector_id=%d connected=%d display=%dx%d\n",
+                connectorName.c_str(), cardNum, info.connectorId, info.connected,
+                info.displayWidth, info.displayHeight);
+        break;
+    }
+
+    return info;
+}
+
 GStreamerOutput::GStreamerOutput(const std::string& mediaFilename, MediaOutputStatus* status, const std::string& videoOut)
     : m_videoOut(videoOut) {
     m_mediaFilename = mediaFilename;
@@ -86,9 +140,41 @@ int GStreamerOutput::Start(int msTime) {
         return 0;
     }
 
-    // Determine if we need a video overlay branch
-    bool wantVideo = (m_videoOut != "--Disabled--" && m_videoOut != "" &&
-                      m_videoOut != "--HDMI--" && m_videoOut != "HDMI");
+    // Determine if we need a video overlay branch or HDMI output
+    bool wantVideo = false;  // PixelOverlay mode
+    bool wantHDMI = false;   // DRM/KMS HDMI mode
+
+    if (m_videoOut != "--Disabled--" && !m_videoOut.empty()) {
+        // Check if this is an HDMI/DRM output connector
+        if (m_videoOut.starts_with("HDMI-") || m_videoOut.starts_with("DSI-") ||
+            m_videoOut.starts_with("Composite-") ||
+            m_videoOut == "--HDMI--" || m_videoOut == "--hdmi--" || m_videoOut == "HDMI") {
+            // Resolve the connector name
+            std::string connectorName = m_videoOut;
+            if (connectorName == "--HDMI--" || connectorName == "--hdmi--" || connectorName == "HDMI") {
+                connectorName = "HDMI-A-1";
+            }
+            DrmConnectorInfo drmInfo = ResolveDrmConnector(connectorName);
+            if (drmInfo.connected && drmInfo.connectorId >= 0) {
+                m_wantHDMI = true;
+                wantHDMI = true;
+                m_hdmiConnectorId = drmInfo.connectorId;
+                m_hdmiCardPath = drmInfo.cardPath;
+                m_hdmiDisplayWidth = drmInfo.displayWidth;
+                m_hdmiDisplayHeight = drmInfo.displayHeight;
+                LogInfo(VB_MEDIAOUT, "GStreamer HDMI output: connector=%s id=%d card=%s resolution=%dx%d\n",
+                        connectorName.c_str(), m_hdmiConnectorId, m_hdmiCardPath.c_str(),
+                        m_hdmiDisplayWidth, m_hdmiDisplayHeight);
+            } else if (!drmInfo.connected) {
+                LogWarn(VB_MEDIAOUT, "GStreamer: %s is not connected, disabling video\n", connectorName.c_str());
+            } else {
+                LogWarn(VB_MEDIAOUT, "GStreamer: could not resolve connector ID for %s\n", connectorName.c_str());
+            }
+        } else {
+            // PixelOverlay model name
+            wantVideo = true;
+        }
+    }
 
     if (wantVideo) {
         // Register listener and get model
@@ -250,6 +336,155 @@ int GStreamerOutput::Start(int msTime) {
 
         // Remember the video chain entry point for pad-added linkage
         m_videoChain = videoQueue;
+
+        // Connect decodebin pad-added signal for dynamic linking
+        GstElement* decoder = gst_bin_get_by_name(GST_BIN(m_pipeline), "decoder");
+        g_signal_connect(decoder, "pad-added", G_CALLBACK(OnPadAdded), this);
+        g_signal_connect(decoder, "no-more-pads", G_CALLBACK(OnNoMorePads), this);
+        gst_object_unref(decoder);
+
+    } else if (wantHDMI) {
+        // ---------------------------------------------------------------
+        // HDMI/DRM video output via kmssink (Phase 4)
+        // Pipeline: filesrc ! decodebin name=decoder
+        //   Audio: pad-added -> audioconvert ! audioresample ! tee
+        //     tee -> queue ! volume ! pipewiresink
+        //     tee -> queue ! audioconvert ! F32LE,1ch ! appsink (WLED tap)
+        //   Video: pad-added -> queue ! videoconvert ! videoscale ! capsfilter ! kmssink
+        //
+        // decodebin auto-selects the best available decoder:
+        //   Pi 5: v4l2slh265dec for H.265, avdec_h264 for H.264
+        //   Pi 4: v4l2 stateless H.264 if kernel supports, else avdec_h264
+        //   Pi 3/Zero2: avdec_h264 software decode
+        //   All platforms: avdec_h264 from gstreamer1.0-libav as universal fallback
+        // ---------------------------------------------------------------
+        std::string pipelineStr =
+            "filesrc location=\"" + fullPath + "\" ! decodebin name=decoder";
+
+        LogDebug(VB_MEDIAOUT, "GStreamer pipeline (HDMI): %s  connector-id=%d card=%s\n",
+                 pipelineStr.c_str(), m_hdmiConnectorId, m_hdmiCardPath.c_str());
+        m_pipeline = gst_parse_launch(pipelineStr.c_str(), &error);
+        if (error) {
+            LogErr(VB_MEDIAOUT, "GStreamer HDMI pipeline error: %s\n", error->message);
+            g_error_free(error);
+            return 0;
+        }
+
+        // Build audio sub-chain (same as overlay mode)
+        GstElement* audioconvert = gst_element_factory_make("audioconvert", "aconv");
+        GstElement* audioresample = gst_element_factory_make("audioresample", "aresample");
+        GstElement* tee = gst_element_factory_make("tee", "t");
+        GstElement* queue1 = gst_element_factory_make("queue", "q1");
+        m_volume = gst_element_factory_make("volume", "vol");
+        GstElement* sink = nullptr;
+        if (!pipelineSinkName.empty()) {
+            sink = gst_element_factory_make("pipewiresink", "pwsink");
+            g_object_set(sink, "target-object", pipelineSinkName.c_str(), NULL);
+        } else {
+            sink = gst_element_factory_make("autoaudiosink", "audiosink");
+        }
+        GstElement* queue2 = gst_element_factory_make("queue", "q2");
+        GstElement* audioconvert2 = gst_element_factory_make("audioconvert", "aconv2");
+        GstElement* capsfilterAudio = gst_element_factory_make("capsfilter", "acapsf");
+        m_appsink = gst_element_factory_make("appsink", "sampletap");
+
+        // Set audio tap caps: F32LE mono
+        GstCaps* audioCaps = gst_caps_new_simple("audio/x-raw",
+            "format", G_TYPE_STRING, "F32LE",
+            "channels", G_TYPE_INT, 1, NULL);
+        g_object_set(capsfilterAudio, "caps", audioCaps, NULL);
+        gst_caps_unref(audioCaps);
+
+        g_object_set(queue2, "max-size-buffers", 3, "leaky", 2 /* downstream */, NULL);
+        g_object_set(m_appsink, "emit-signals", TRUE, "sync", FALSE,
+                     "max-buffers", 3, "drop", TRUE, NULL);
+
+        gst_bin_add_many(GST_BIN(m_pipeline), audioconvert, audioresample, tee,
+                         queue1, m_volume, sink,
+                         queue2, audioconvert2, capsfilterAudio, m_appsink, NULL);
+
+        gst_object_ref(m_volume);
+        gst_object_ref(m_appsink);
+
+        if (!gst_element_link_many(audioconvert, audioresample, tee, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link audioconvert->audioresample->tee\n");
+        }
+        if (!gst_element_link_many(queue1, m_volume, sink, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link queue1->volume->sink\n");
+        }
+        if (!gst_element_link_many(queue2, audioconvert2, capsfilterAudio, m_appsink, NULL)) {
+            LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link audio appsink chain\n");
+        }
+
+        GstPad* teeSrc1 = gst_element_request_pad_simple(tee, "src_%u");
+        GstPad* q1Sink = gst_element_get_static_pad(queue1, "sink");
+        gst_pad_link(teeSrc1, q1Sink);
+        gst_object_unref(teeSrc1);
+        gst_object_unref(q1Sink);
+
+        GstPad* teeSrc2 = gst_element_request_pad_simple(tee, "src_%u");
+        GstPad* q2Sink = gst_element_get_static_pad(queue2, "sink");
+        gst_pad_link(teeSrc2, q2Sink);
+        gst_object_unref(teeSrc2);
+        gst_object_unref(q2Sink);
+
+        m_audioChain = audioconvert;
+
+        // Build video sub-chain: queue ! videoconvert ! videoscale ! capsfilter ! kmssink
+        GstElement* videoQueue = gst_element_factory_make("queue", "vq");
+        GstElement* videoconvert = gst_element_factory_make("videoconvert", "vconv");
+        GstElement* videoscale = gst_element_factory_make("videoscale", "vscale");
+        m_kmssink = gst_element_factory_make("kmssink", "kmsvideosink");
+
+        if (!m_kmssink) {
+            LogErr(VB_MEDIAOUT, "GStreamer: kmssink element not available — is gstreamer1.0-plugins-bad installed?\n");
+            gst_object_unref(m_pipeline);
+            m_pipeline = nullptr;
+            return 0;
+        }
+
+        // Configure kmssink:
+        //   driver-name: "vc4" on all Pi models (vc4-kms-v3d driver)
+        //   connector-id: resolved from sysfs for the specific HDMI port
+        //   restore-crtc: restore the console/framebuffer mode on stop
+        //   skip-vsync: true for atomic drivers (vc4) to avoid double vsync
+        g_object_set(m_kmssink,
+                     "driver-name", "vc4",
+                     "connector-id", m_hdmiConnectorId,
+                     "restore-crtc", TRUE,
+                     "skip-vsync", TRUE,
+                     NULL);
+
+        // Scale video to display resolution if known — fills the entire screen.
+        // If display resolution is unknown, let kmssink negotiate (may not fill screen).
+        GstElement* capsfilterVideo = nullptr;
+        if (m_hdmiDisplayWidth > 0 && m_hdmiDisplayHeight > 0) {
+            capsfilterVideo = gst_element_factory_make("capsfilter", "vcapsf");
+            GstCaps* videoCaps = gst_caps_new_simple("video/x-raw",
+                "width", G_TYPE_INT, m_hdmiDisplayWidth,
+                "height", G_TYPE_INT, m_hdmiDisplayHeight, NULL);
+            g_object_set(capsfilterVideo, "caps", videoCaps, NULL);
+            gst_caps_unref(videoCaps);
+        }
+
+        // Add video elements to pipeline
+        if (capsfilterVideo) {
+            gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
+                             capsfilterVideo, m_kmssink, NULL);
+            if (!gst_element_link_many(videoQueue, videoconvert, videoscale,
+                                       capsfilterVideo, m_kmssink, NULL)) {
+                LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain\n");
+            }
+        } else {
+            gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
+                             m_kmssink, NULL);
+            if (!gst_element_link_many(videoQueue, videoconvert, videoscale, m_kmssink, NULL)) {
+                LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain (no scaling)\n");
+            }
+        }
+
+        m_videoChain = videoQueue;
+        m_hasVideoStream = true;  // expect video stream from decodebin
 
         // Connect decodebin pad-added signal for dynamic linking
         GstElement* decoder = gst_bin_get_by_name(GST_BIN(m_pipeline), "decoder");
@@ -655,6 +890,8 @@ int GStreamerOutput::Close(void) {
     m_videoFramesDelivered = 0;
     m_audioChain = nullptr;
     m_videoChain = nullptr;
+    m_kmssink = nullptr;     // owned by pipeline bin, already freed
+    m_wantHDMI = false;
 
     // Remove model listener
     if (!m_videoOut.empty() && m_videoOut != "--Disabled--") {
@@ -884,7 +1121,7 @@ void GStreamerOutput::OnNoMorePads(GstElement* element, gpointer userData) {
     if (!self->m_videoLinked && self->m_videoChain && self->m_pipeline) {
         LogInfo(VB_MEDIAOUT, "GStreamer: Removing unconnected video chain (audio-only media)\n");
 
-        const char* videoNames[] = {"vq", "vconv", "vscale", "vcapsf", "videosink", nullptr};
+        const char* videoNames[] = {"vq", "vconv", "vscale", "vcapsf", "videosink", "kmsvideosink", nullptr};
         for (int i = 0; videoNames[i]; i++) {
             GstElement* el = gst_bin_get_by_name(GST_BIN(self->m_pipeline), videoNames[i]);
             if (el) {
@@ -902,6 +1139,7 @@ void GStreamerOutput::OnNoMorePads(GstElement* element, gpointer userData) {
         self->m_videoChain = nullptr;
         self->m_videoAppsinkSignalId = 0;
         self->m_hasVideoStream = false;
+        self->m_kmssink = nullptr;  // owned by pipeline bin, already removed above
     }
 }
 
