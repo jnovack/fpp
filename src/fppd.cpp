@@ -78,6 +78,7 @@
 #include "channeloutput/channeloutputthread.h"
 #include "channeltester/ChannelTester.h"
 #include "commands/Commands.h"
+#include "mediaoutput/AES67Manager.h"
 #include "mediaoutput/MediaOutputBase.h"
 #include "mediaoutput/MediaOutputStatus.h"
 #include "mediaoutput/mediaoutput.h"
@@ -780,6 +781,10 @@ int main(int argc, char* argv[]) {
     PluginManager::INSTANCE.init();
 
     InitMediaOutput();
+#ifdef HAS_AES67_GSTREAMER
+    AES67Manager::INSTANCE.Init();
+    AES67Manager::INSTANCE.ApplyConfig();
+#endif
     PixelOverlayManager::INSTANCE.Initialize();
     PingManager::INSTANCE.Initialize();
     WLEDAPIResponder::INSTANCE.Initialize();
@@ -813,6 +818,10 @@ int main(int argc, char* argv[]) {
     // partway through (e.g. fppd_stop's 1s timeout), at least other
     // discovery clients won't keep our entries cached for the TTL.
     MDNSManager::INSTANCE.Cleanup();
+
+#ifdef HAS_AES67_GSTREAMER
+    AES67Manager::INSTANCE.Shutdown();
+#endif
     CleanupMediaOutput();
     CloseEffects();
     CloseChannelOutputs();

@@ -106,6 +106,10 @@ void CommandManager::Init() {
     addCommand(new StopMediaCommand());
     addCommand(new StopAllMediaCommand());
 #endif
+#ifdef HAS_AES67_GSTREAMER
+    addCommand(new AES67ApplyCommand());
+    addCommand(new AES67CleanupCommand());
+#endif
     addCommand(new PlaylistPauseCommand());
     addCommand(new PlaylistResumeCommand());
     addCommand(new TriggerPresetCommand());

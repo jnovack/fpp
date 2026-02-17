@@ -65,3 +65,17 @@ public:
     virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
 };
 #endif
+
+#ifdef HAS_AES67_GSTREAMER
+class AES67ApplyCommand : public Command {
+public:
+    AES67ApplyCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class AES67CleanupCommand : public Command {
+public:
+    AES67CleanupCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+#endif

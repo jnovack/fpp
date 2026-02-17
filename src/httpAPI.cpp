@@ -63,6 +63,7 @@ extern volatile int runMainFPPDLoop;
 #include "channeloutput/ChannelOutputSetup.h"
 #include "channeltester/ChannelTester.h"
 #include "commands/Commands.h"
+#include "mediaoutput/AES67Manager.h"
 #include "mediaoutput/MediaOutputBase.h"
 #include "mediaoutput/MediaOutputStatus.h"
 #include "mediaoutput/mediaoutput.h"
@@ -312,6 +313,14 @@ void APIServer::Init(void) {
         callback(resp);
     };
     app.registerHandlerViaRegex("/fppd/testing(/.*)?", handleTesting, {drogon::Get, drogon::Post, drogon::Head});
+
+#ifdef HAS_AES67_GSTREAMER
+    // AES67 endpoint via compat shim (AES67Manager still uses httpserver types)
+    {
+        httpserver::webserver shimWs;
+        shimWs.register_resource("/aes67", &AES67Manager::INSTANCE, true);
+    }
+#endif
 
     // PlayerResource catch-all for all other /fppd/* paths (registered AFTER
     // specific /fppd/ports and /fppd/testing routes so they match first)

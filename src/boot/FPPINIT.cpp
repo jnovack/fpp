@@ -1876,20 +1876,15 @@ static void setupAudio() {
         }
     }
 
-    // --- AES67 Multi-Instance Configuration ---
-    // Write AES67 configs BEFORE restarting PipeWire so they are in place
-    // when PipeWire reads its config directory. Use --no-restart to avoid
-    // a double-restart race that triggers systemd's start-limit-hit.
-    const std::string aes67JsonPath = FPP_MEDIA_DIR + "/config/pipewire-aes67-instances.json";
-
-    if (usePipeWireBackend && !runningInDocker && FileExists(aes67JsonPath)) {
-        printf("FPP - Applying AES67 audio-over-IP configuration\n");
-        exec("/opt/fpp/scripts/apply_aes67_config --no-restart");
-    } else if (usePipeWireBackend && !runningInDocker) {
-        // No AES67 JSON — clean up any leftover config files (no restart needed,
-        // we'll restart below)
-        exec("/opt/fpp/scripts/apply_aes67_config --cleanup --no-restart");
-    }
+    // --- AES67 cleanup ---
+    // AES67 is now managed by AES67Manager in fppd (GStreamer-based).
+    // Remove any leftover PipeWire RTP module configs from the legacy Python approach.
+    unlink("/etc/pipewire/pipewire.conf.d/96-fpp-aes67-rtp.conf");
+    unlink("/etc/pipewire/pipewire.conf.d/96-fpp-aes67-sap.conf");
+    unlink("/etc/ptp4l-fpp.conf");
+    // Kill any leftover legacy daemons
+    exec("pkill -f fpp_aes67_sap 2>/dev/null || true");
+    exec("pkill -f 'ptp4l.*ptp4l-fpp' 2>/dev/null || true");
 
     // Single PipeWire restart after all configs are written.
     // systemctl restart is synchronous — it waits for the service to be
@@ -1902,12 +1897,8 @@ static void setupAudio() {
         exec("/usr/bin/systemctl stop fpp-pipewire-pulse.service fpp-wireplumber.service fpp-pipewire.service");
     }
 
-    // Start SAP announcer and PTP in the background after PipeWire is running.
-    // These are background daemons that don't need to be ready before FPPD starts,
-    // so we don't block the boot sequence waiting for PTP hardware detection.
-    if (usePipeWireBackend && !runningInDocker && FileExists(aes67JsonPath)) {
-        exec("/opt/fpp/scripts/apply_aes67_config --post-start &");
-    }
+    // AES67 is now initialized by AES67Manager in fppd after PipeWire is running.
+    // No external daemons to start here.
 }
 void setupKiosk(bool force = false) {
     int km = getRawSettingInt("Kiosk", 0);

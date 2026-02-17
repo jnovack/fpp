@@ -412,3 +412,25 @@ std::unique_ptr<Command::Result> StopAllMediaCommand::run(const std::vector<std:
     return std::make_unique<Command::Result>("Stopped");
 }
 #endif
+
+#ifdef HAS_AES67_GSTREAMER
+#include "mediaoutput/AES67Manager.h"
+
+AES67ApplyCommand::AES67ApplyCommand() :
+    Command("AES67 Apply", "Apply AES67 audio-over-IP configuration") {
+}
+std::unique_ptr<Command::Result> AES67ApplyCommand::run(const std::vector<std::string>& args) {
+    if (AES67Manager::INSTANCE.ApplyConfig()) {
+        return std::make_unique<Command::Result>("AES67 config applied");
+    }
+    return std::make_unique<Command::ErrorResult>("AES67 apply failed");
+}
+
+AES67CleanupCommand::AES67CleanupCommand() :
+    Command("AES67 Cleanup", "Stop all AES67 pipelines and clean up") {
+}
+std::unique_ptr<Command::Result> AES67CleanupCommand::run(const std::vector<std::string>& args) {
+    AES67Manager::INSTANCE.Cleanup();
+    return std::make_unique<Command::Result>("AES67 cleaned up");
+}
+#endif

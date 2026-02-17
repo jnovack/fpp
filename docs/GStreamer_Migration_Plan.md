@@ -83,7 +83,7 @@ Benefit: Single clock tree, consistent latency, one buffer path
 | **4** | HDMI/DRM video output via GStreamer kmssink (replaces VLC video)         | High        | Not started  |
 | **5** | MultiSync rate adjustment via GStreamer (replaces VLC AdjustSpeed)       | Medium-High | Not started  |
 | **6** | Remove SDL and VLC dependencies entirely                                 | Low         | Not started  |
-| **7** | AES67 via GStreamer (replaces PipeWire RTP modules)                      | Medium-High | Not started  |
+| **7** | AES67 via GStreamer (replaces PipeWire RTP modules)                      | Medium-High | **Complete** |
 
 ### Migration Strategy (per dkulp)
 > "We could always use gstreamer on master (no playback speed adjustments) and keep vlc for remotes if needed."
@@ -606,25 +606,25 @@ pipewiresink             — Output to PipeWire node
 
 ### Tasks
 
-- [ ] **7.1** Create `AES67Manager` class:
+- [x] **7.1** Create `AES67Manager` class:
   - Singleton lifecycle managed by fppd
   - Reads `pipewire-aes67-instances.json` config
   - Creates/destroys GStreamer pipelines per instance
   - Manages `gst_ptp_init()` / `GstPtpClock` lifecycle
 
-- [ ] **7.2** Implement AES67 send pipeline:
+- [x] **7.2** Implement AES67 send pipeline:
   - Pipeline: `pipewiresrc target-object=<node> ! audioconvert ! audio/x-raw,format=S24BE,rate=48000 ! rtpL24pay pt=96 min-ptime=<ptime_ns> max-ptime=<ptime_ns> ! rtpbin ! udpsink host=<multicast_ip> port=<port> multicast-iface=<iface> ttl=4 auto-multicast=true`
   - Use `GstPtpClock` as pipeline clock for PTP-derived RTP timestamps
   - Support 1ms and 4ms packet times per AES67 spec
   - Support 2-8 channels with correct channel position mapping
 
-- [ ] **7.3** Implement AES67 receive pipeline:
+- [x] **7.3** Implement AES67 receive pipeline:
   - Pipeline: `udpsrc multicast-group=<ip> port=<port> ! application/x-rtp,media=audio,clock-rate=48000,encoding-name=L24 ! rtpbin rfc7273-sync=true ! rtpL24depay ! audioconvert ! pipewiresink`
   - Use PTP clock for receive-side media clock reconstruction
   - Create a PipeWire `Audio/Source` node that routes into the local graph
   - Configurable jitter buffer latency
 
-- [ ] **7.4** Implement SAP announcer (replaces fpp_aes67_sap Python daemon):
+- [x] **7.4** Implement SAP announcer (replaces fpp_aes67_sap Python daemon):
   - Build AES67-compliant SDP with:
     - `a=ts-refclk:ptp=IEEE1588-2008:<gmClockId>:0`
     - `a=mediaclk:direct=0 rate=48000`
@@ -634,24 +634,24 @@ pipewiresink             — Output to PipeWire node
   - Send deletion packets on instance removal/shutdown
   - Could use GStreamer's SDP library (`GstSDPMessage`) for SDP construction
 
-- [ ] **7.5** Implement SAP receiver (replaces PipeWire `module-rtp-sap`):
+- [x] **7.5** Implement SAP receiver (replaces PipeWire `module-rtp-sap`):
   - Listen on `239.255.255.255:9875` for SAP announcements
   - Parse SDP, auto-create receive pipelines for discovered streams
   - Handle stream removal via SAP deletion packets
 
-- [ ] **7.6** Integrate `GstPtpClock` (replaces external ptp4l daemon):
+- [x] **7.6** Integrate `GstPtpClock` (replaces external ptp4l daemon):
   - Call `gst_ptp_init(GST_PTP_CLOCK_ID_NONE, NULL)` at startup
   - Create `GstPtpClock` for domain 0 (default AES67 domain)
   - Participate in BMCA (Best Master Clock Algorithm)
   - Expose PTP status (synced/offset/GM identity) via API
   - **Fallback:** Keep `ptp4l` as optional external clock source if GStreamer PTP has limitations
 
-- [ ] **7.7** Update PHP API (`pipewire.php`):
+- [x] **7.7** Update PHP API (`pipewire.php`):
   - `POST /api/pipewire/aes67/apply` → signals fppd to rebuild GStreamer AES67 pipelines instead of writing PipeWire module configs
   - AES67 status endpoint reads from GStreamer pipeline state + PTP statistics
   - Config format unchanged (backward-compatible JSON)
 
-- [ ] **7.8** Update boot sequence (`FPPINIT.cpp`):
+- [x] **7.8** Update boot sequence (`FPPINIT.cpp`):
   - Remove PipeWire RTP module config generation
   - Remove `ptp4l` daemon startup (if GStreamer PTP used)
   - Remove `fpp_aes67_sap` daemon startup
@@ -685,24 +685,26 @@ pipewiresink             — Output to PipeWire node
 ### Files Modified
 | File                               | Change                                                 |
 | ---------------------------------- | ------------------------------------------------------ |
-| `src/mediaoutput/GStreamerOut.cpp` | Add optional RTP tee branch for direct AES67           |
-| `www/api/controllers/pipewire.php` | Update apply endpoint to signal fppd                   |
+| `src/fppd.cpp`                      | Init/Shutdown AES67Manager in fppd lifecycle           |
+| `src/commands/Commands.cpp`         | Register AES67 Apply and Cleanup commands              |
+| `src/commands/MediaCommands.h/cpp`  | AES67ApplyCommand and AES67CleanupCommand              |
+| `src/httpAPI.cpp`                   | Register `/aes67` HTTP resource for status endpoint    |
+| `www/api/controllers/pipewire.php`  | Update apply endpoint to signal fppd via command API   |
 | `src/boot/FPPINIT.cpp`             | Remove PipeWire RTP module/ptp4l/SAP daemon startup    |
-| `src/makefiles/fpp_so.mk`          | Add `AES67Manager.o`, add `-lgstnet-1.0` for PTP clock |
+| `src/makefiles/fpp_so.mk`          | Add `AES67Manager.o`, add `gstreamer-net-1.0` for PTP  |
 
-### Files Eventually Removed
+### Files Removed
 | File                          | Replaced By                    |
 | ----------------------------- | ------------------------------ |
 | `scripts/apply_aes67_config`  | `AES67Manager` in fppd         |
 | `scripts/fpp_aes67_sap`       | Built-in SAP in `AES67Manager` |
 | `scripts/fpp_aes67_common.py` | Constants/logic moved to C++   |
 
-### Migration Strategy
-- **Phase 7 does NOT block Phases 2-6** — PipeWire RTP modules continue working
-- Can run in parallel: GStreamer for media playback + PipeWire for AES67 initially
-- Migration: Replace PipeWire RTP modules one instance at a time
-- Fallback: Keep `apply_aes67_config` script as alternative if GStreamer PTP has issues
-- The `pipewire-aes67-instances.json` config format stays the same — only the backend changes
+### Migration Notes
+- Legacy PipeWire RTP module configs and daemons are cleaned up at boot by `FPPINIT.cpp`
+- `AES67Manager` is initialized after PipeWire is ready and applies config automatically
+- The `pipewire-aes67-instances.json` config format is unchanged — backward-compatible
+- PHP API signals fppd via command API; status queries go to fppd's `/aes67/status` HTTP endpoint
 
 ---
 

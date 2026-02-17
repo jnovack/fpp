@@ -1326,73 +1326,67 @@ function SaveAES67Instances()
 // POST /api/pipewire/aes67/apply
 function ApplyAES67Instances()
 {
-    global $settings, $SUDO;
+    global $settings;
 
-    // All config generation, PTP setup, PipeWire restart, and SAP announcer
-    // management is handled by a single Python script (apply_aes67_config)
-    // which shares constants with fpp_aes67_sap via fpp_aes67_common.py.
-    // This avoids duplicate config generation logic between PHP and C++.
-
+    // AES67 is managed by AES67Manager in fppd (GStreamer-based).
+    // Signal fppd to reload AES67 config via the command API.
     $configFile = $settings['mediaDirectory'] . "/config/pipewire-aes67-instances.json";
 
     if (!file_exists($configFile)) {
-        exec($SUDO . " /opt/fpp/scripts/apply_aes67_config --cleanup 2>&1", $output, $rc);
+        // Signal cleanup
+        $result = @file_get_contents('http://localhost/api/command', false, stream_context_create(array(
+            'http' => array(
+                'method' => 'POST',
+                'header' => 'Content-Type: application/json',
+                'content' => json_encode(array('command' => 'AES67 Cleanup')),
+                'timeout' => 5
+            )
+        )));
         return json(array("status" => "OK", "message" => "No AES67 instances configured"));
     }
 
-    exec($SUDO . " /opt/fpp/scripts/apply_aes67_config 2>&1", $output, $rc);
+    // Signal fppd to apply config
+    $result = @file_get_contents('http://localhost/api/command', false, stream_context_create(array(
+        'http' => array(
+            'method' => 'POST',
+            'header' => 'Content-Type: application/json',
+            'content' => json_encode(array('command' => 'AES67 Apply')),
+            'timeout' => 10
+        )
+    )));
 
-    if ($rc !== 0) {
+    if ($result === false) {
         return json(array(
             "status" => "ERROR",
-            "message" => "AES67 apply failed: " . implode("\n", $output)
+            "message" => "Failed to signal fppd — is it running?"
         ));
     }
 
     return json(array(
         "status" => "OK",
-        "message" => "AES67 instances applied, PipeWire restarted"
+        "message" => "AES67 configuration applied via GStreamer"
     ));
 }
 
 // GET /api/pipewire/aes67/status
 function GetAES67Status()
 {
-    global $SUDO;
-    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
+    // Query AES67Manager in fppd for pipeline and PTP status
+    $result = @file_get_contents('http://localhost:32322/aes67/status');
 
-    $sinks = array();
-    $sources = array();
-
-    exec($SUDO . " " . $env . " pactl list sinks short 2>/dev/null", $sinkOut);
-    if (!empty($sinkOut)) {
-        foreach ($sinkOut as $line) {
-            $parts = preg_split('/\s+/', trim($line));
-            if (count($parts) >= 2 && strpos($parts[1], 'aes67_') === 0) {
-                $sinks[] = $parts[1];
-            }
+    if ($result !== false) {
+        $data = json_decode($result, true);
+        if ($data !== null) {
+            return json($data);
         }
     }
 
-    exec($SUDO . " " . $env . " pactl list sources short 2>/dev/null", $srcOut);
-    if (!empty($srcOut)) {
-        foreach ($srcOut as $line) {
-            $parts = preg_split('/\s+/', trim($line));
-            if (count($parts) >= 2 && strpos($parts[1], 'aes67_') === 0) {
-                $sources[] = $parts[1];
-            }
-        }
-    }
-
-    // PTP status
-    $ptpRunning = false;
-    exec("pgrep ptp4l 2>/dev/null", $ptpProc);
-    $ptpRunning = !empty($ptpProc);
-
+    // Fallback: fppd not running or endpoint not available
     return json(array(
-        "sinks" => $sinks,
-        "sources" => $sources,
-        "ptpRunning" => $ptpRunning
+        "pipelines" => array(),
+        "ptpSynced" => false,
+        "ptpOffsetNs" => 0,
+        "discoveredStreams" => array()
     ));
 }
 
@@ -1412,9 +1406,9 @@ function GetAES67NetworkInterfaces()
 }
 
 
-// AES67 config generation (PipeWire, SAP, PTP) is handled exclusively by:
-//   /opt/fpp/scripts/fpp_aes67_common.py  – shared constants & generators
-//   /opt/fpp/scripts/apply_aes67_config   – applies configs & restarts services
-//   /opt/fpp/scripts/fpp_aes67_sap        – SAP/SDP announcer daemon
-// This eliminates duplicate config logic that previously existed in both
-// PHP (here) and C++ (FPPINIT.cpp).
+// AES67 audio-over-IP is managed by AES67Manager in fppd (GStreamer-based).
+// Config JSON: $mediaDirectory/config/pipewire-aes67-instances.json
+// Apply: POST /api/command {"command":"AES67 Apply"} → fppd rebuilds GStreamer pipelines
+// Status: GET /api/pipewire/aes67/status → queries AES67Manager in fppd
+// PTP: GstPtpClock (replaces external ptp4l daemon)
+// SAP: Built-in C++ SAP announcer (replaces fpp_aes67_sap Python daemon)
