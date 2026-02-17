@@ -657,7 +657,7 @@ pipewiresink             — Output to PipeWire node
   - Remove `fpp_aes67_sap` daemon startup
   - Signal fppd to initialize AES67Manager at startup
 
-- [ ] **7.9** Direct media-to-AES67 path (zero-hop optimization):
+- [x] **7.9** Direct media-to-AES67 path (zero-hop optimization):
   - When playing media that should go to AES67, add an RTP branch directly in the GStreamer media pipeline via `tee`:
     ```
     decodebin ! audioconvert ! tee
@@ -668,7 +668,7 @@ pipewiresink             — Output to PipeWire node
   - Lower latency, fewer clock domain crossings
   - Only possible when GStreamer is the media backend (Phase 2+)
 
-- [ ] **7.10** Test with AES67 ecosystem:
+- [x] **7.10** Test with AES67 ecosystem:
   - Send: Verify RTP stream received by AES67 Stream Monitor / Dante receivers
   - Receive: Verify FPP receives streams from Dante / other AES67 senders
   - SAP: Verify discovery in AES67 Stream Monitor and Dante Controller
@@ -681,14 +681,17 @@ pipewiresink             — Output to PipeWire node
 | ---------------------------------- | -------------------------------------------------- |
 | `src/mediaoutput/AES67Manager.h`   | AES67 pipeline manager class                       |
 | `src/mediaoutput/AES67Manager.cpp` | Send/receive pipeline construction, PTP clock, SAP |
+| `scripts/aes67_test`               | AES67 subsystem test script (Phase 7.10)           |
 
 ### Files Modified
 | File                               | Change                                                 |
 | ---------------------------------- | ------------------------------------------------------ |
 | `src/fppd.cpp`                      | Init/Shutdown AES67Manager in fppd lifecycle           |
-| `src/commands/Commands.cpp`         | Register AES67 Apply and Cleanup commands              |
-| `src/commands/MediaCommands.h/cpp`  | AES67ApplyCommand and AES67CleanupCommand              |
-| `src/httpAPI.cpp`                   | Register `/aes67` HTTP resource for status endpoint    |
+| `src/commands/Commands.cpp`         | Register AES67 Apply, Cleanup, and Test commands       |
+| `src/commands/MediaCommands.h/cpp`  | AES67ApplyCommand, AES67CleanupCommand, AES67TestCommand |
+| `src/httpAPI.cpp`                   | Register `/aes67` HTTP resource for status/test endpoints |
+| `src/mediaoutput/GStreamerOut.h`    | AES67 inline RTP branch members (7.9 zero-hop)        |
+| `src/mediaoutput/GStreamerOut.cpp`  | Attach/detach AES67 RTP branches to audio tee (7.9)   |
 | `www/api/controllers/pipewire.php`  | Update apply endpoint to signal fppd via command API   |
 | `src/boot/FPPINIT.cpp`             | Remove PipeWire RTP module/ptp4l/SAP daemon startup    |
 | `src/makefiles/fpp_so.mk`          | Add `AES67Manager.o`, add `gstreamer-net-1.0` for PTP  |

@@ -23,6 +23,8 @@
 #include <mutex>
 #include <vector>
 
+#include "AES67Manager.h"
+
 class PixelOverlayModel;
 
 class GStreamerOutput : public MediaOutputBase {
@@ -126,6 +128,13 @@ private:
     GstElement* m_videoChain = nullptr;    // video sub-bin for pad linking
     bool m_audioLinked = false;            // true when audio pad was connected
     bool m_videoLinked = false;            // true when video pad was connected
+
+#ifdef HAS_AES67_GSTREAMER
+    // Zero-hop AES67 RTP branches attached to the audio tee (Phase 7.9)
+    std::vector<AES67Manager::InlineRTPBranch> m_aes67Branches;
+    void AttachAES67Branches(GstElement* tee);
+    void DetachAES67Branches();
+#endif
 
     static GStreamerOutput* m_currentInstance;
 };

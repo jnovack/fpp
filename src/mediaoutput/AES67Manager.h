@@ -161,11 +161,44 @@ public:
     };
     Status GetStatus();
 
+    // Self-test — validates AES67 subsystem components.
+    // Returns JSON with pass/fail for each test.
+    struct TestResult {
+        std::string testName;
+        bool passed;
+        std::string message;
+    };
+    std::vector<TestResult> RunSelfTest();
+
     // Signal from fppd that PipeWire is ready (called after PipeWire restart)
     void OnPipeWireReady();
 
     // Check if manager is active
     bool IsActive() const { return m_active.load(); }
+
+    // Returns true if there are active AES67 send instances that want
+    // zero-hop direct RTP branches from media pipelines.
+    bool HasActiveSendInstances();
+
+    // Zero-hop optimization (7.9): Attach RTP send branches directly to an
+    // existing GStreamer tee element inside a media pipeline, bypassing the
+    // PipeWire→pipewiresrc→AES67 path for lower latency.
+    //
+    // For each active send instance, creates:
+    //   queue → audioconvert → S24BE,48kHz,Nch caps → rtpL24pay → udpsink
+    // and links it as a new branch on the tee.
+    //
+    // Returns a list of GstElement* branch entry queues (one per send instance).
+    // The caller must call DetachInlineRTPBranches() before destroying the pipeline.
+    struct InlineRTPBranch {
+        int instanceId;
+        GstElement* queue = nullptr;     // branch entry point (added to caller's bin)
+        GstPad* teeSrcPad = nullptr;     // requested pad on tee (must be released)
+    };
+    std::vector<InlineRTPBranch> AttachInlineRTPBranches(GstElement* pipeline, GstElement* tee);
+
+    // Detach and clean up inline RTP branches attached by AttachInlineRTPBranches.
+    void DetachInlineRTPBranches(GstElement* pipeline, std::vector<InlineRTPBranch>& branches);
 
     AES67Manager();
     virtual ~AES67Manager();

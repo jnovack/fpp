@@ -109,6 +109,7 @@ void CommandManager::Init() {
 #ifdef HAS_AES67_GSTREAMER
     addCommand(new AES67ApplyCommand());
     addCommand(new AES67CleanupCommand());
+    addCommand(new AES67TestCommand());
 #endif
     addCommand(new PlaylistPauseCommand());
     addCommand(new PlaylistResumeCommand());

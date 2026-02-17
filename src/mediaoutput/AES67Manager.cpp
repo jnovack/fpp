@@ -1006,6 +1006,163 @@ void AES67Manager::HandleSAPPacket(const uint8_t* data, size_t len,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Zero-hop inline RTP branches (7.9)
+// ──────────────────────────────────────────────────────────────────────────────
+bool AES67Manager::HasActiveSendInstances() {
+    if (!m_active.load()) return false;
+    std::lock_guard<std::mutex> lock(m_pipelineMutex);
+    return !m_sendPipelines.empty();
+}
+
+std::vector<AES67Manager::InlineRTPBranch> AES67Manager::AttachInlineRTPBranches(
+    GstElement* pipeline, GstElement* tee) {
+
+    std::vector<InlineRTPBranch> branches;
+
+    if (!m_active.load() || !pipeline || !tee) {
+        return branches;
+    }
+
+    // Get the current send config (not the pipelines — those capture from pipewiresrc).
+    // For each enabled send instance, we create a parallel RTP branch on the tee.
+    AES67Config config;
+    {
+        // Grab a snapshot of the config
+        config = m_config;
+    }
+
+    for (const auto& inst : config.instances) {
+        if (!inst.enabled) continue;
+        if (inst.mode != "send" && inst.mode != "both") continue;
+
+        LogInfo(VB_MEDIAOUT, "AES67 zero-hop: Attaching inline RTP branch for '%s' → %s:%d\n",
+                inst.name.c_str(), inst.multicastIP.c_str(), inst.port);
+
+        int64_t ptimeNs = (int64_t)inst.ptime * 1000000LL;
+        std::string branchName = "aes67_q_" + std::to_string(inst.id);
+
+        // Create branch elements
+        GstElement* queue = gst_element_factory_make("queue", branchName.c_str());
+        GstElement* aconv = gst_element_factory_make("audioconvert",
+            ("aes67_aconv_" + std::to_string(inst.id)).c_str());
+        GstElement* capsf = gst_element_factory_make("capsfilter",
+            ("aes67_caps_" + std::to_string(inst.id)).c_str());
+        GstElement* rtppay = gst_element_factory_make("rtpL24pay",
+            ("aes67_rtppay_" + std::to_string(inst.id)).c_str());
+        GstElement* udpsink = gst_element_factory_make("udpsink",
+            ("aes67_udpsink_" + std::to_string(inst.id)).c_str());
+
+        if (!queue || !aconv || !capsf || !rtppay || !udpsink) {
+            LogErr(VB_MEDIAOUT, "AES67 zero-hop: Failed to create elements for instance %d\n", inst.id);
+            if (queue) gst_object_unref(queue);
+            if (aconv) gst_object_unref(aconv);
+            if (capsf) gst_object_unref(capsf);
+            if (rtppay) gst_object_unref(rtppay);
+            if (udpsink) gst_object_unref(udpsink);
+            continue;
+        }
+
+        // Configure caps: S24BE at 48kHz
+        GstCaps* caps = gst_caps_new_simple("audio/x-raw",
+            "format", G_TYPE_STRING, AES67::AUDIO_FORMAT,
+            "rate", G_TYPE_INT, AES67::AUDIO_RATE,
+            "channels", G_TYPE_INT, inst.channels, NULL);
+        g_object_set(capsf, "caps", caps, NULL);
+        gst_caps_unref(caps);
+
+        // Configure rtpL24pay
+        g_object_set(rtppay,
+            "pt", (guint)AES67::RTP_PAYLOAD_TYPE,
+            "min-ptime", ptimeNs,
+            "max-ptime", ptimeNs,
+            NULL);
+
+        // Configure udpsink
+        g_object_set(udpsink,
+            "host", inst.multicastIP.c_str(),
+            "port", inst.port,
+            "ttl", AES67::AUDIO_RTP_TTL,
+            "auto-multicast", TRUE,
+            "sync", TRUE,
+            NULL);
+        if (!inst.interface.empty()) {
+            g_object_set(udpsink, "multicast-iface", inst.interface.c_str(), NULL);
+        }
+
+        // Configure queue for low-latency
+        g_object_set(queue, "max-size-buffers", 10, "leaky", 2 /* downstream */, NULL);
+
+        // Add elements to pipeline bin
+        gst_bin_add_many(GST_BIN(pipeline), queue, aconv, capsf, rtppay, udpsink, NULL);
+
+        // Link: queue → audioconvert → capsfilter → rtpL24pay → udpsink
+        if (!gst_element_link_many(queue, aconv, capsf, rtppay, udpsink, NULL)) {
+            LogErr(VB_MEDIAOUT, "AES67 zero-hop: Failed to link branch for instance %d\n", inst.id);
+            // Elements are owned by bin now, cleanup happens when pipeline is destroyed
+            continue;
+        }
+
+        // Sync element states to pipeline state
+        gst_element_sync_state_with_parent(queue);
+        gst_element_sync_state_with_parent(aconv);
+        gst_element_sync_state_with_parent(capsf);
+        gst_element_sync_state_with_parent(rtppay);
+        gst_element_sync_state_with_parent(udpsink);
+
+        // Request tee pad and link to queue
+        GstPad* teeSrcPad = gst_element_request_pad_simple(tee, "src_%u");
+        GstPad* queueSinkPad = gst_element_get_static_pad(queue, "sink");
+
+        if (gst_pad_link(teeSrcPad, queueSinkPad) != GST_PAD_LINK_OK) {
+            LogErr(VB_MEDIAOUT, "AES67 zero-hop: Failed to link tee to queue for instance %d\n", inst.id);
+            gst_object_unref(teeSrcPad);
+            gst_object_unref(queueSinkPad);
+            continue;
+        }
+        gst_object_unref(queueSinkPad);
+
+        // Set PTP clock on these elements if available
+        if (m_ptpClock) {
+            // The pipeline clock is set at pipeline level; elements inherit it.
+            // But we can also explicitly use PTP for the udpsink.
+            gst_pipeline_use_clock(GST_PIPELINE(pipeline), m_ptpClock);
+        }
+
+        InlineRTPBranch branch;
+        branch.instanceId = inst.id;
+        branch.queue = queue;
+        branch.teeSrcPad = teeSrcPad;
+        branches.push_back(branch);
+
+        LogInfo(VB_MEDIAOUT, "AES67 zero-hop: Branch active for '%s' → %s:%d (%dch, %dms)\n",
+                inst.name.c_str(), inst.multicastIP.c_str(), inst.port,
+                inst.channels, inst.ptime);
+    }
+
+    return branches;
+}
+
+void AES67Manager::DetachInlineRTPBranches(GstElement* pipeline,
+                                            std::vector<InlineRTPBranch>& branches) {
+    for (auto& branch : branches) {
+        if (branch.teeSrcPad) {
+            // Get the tee element from the pad's parent
+            GstElement* tee = gst_pad_get_parent_element(branch.teeSrcPad);
+            if (tee) {
+                gst_element_release_request_pad(tee, branch.teeSrcPad);
+                gst_object_unref(tee);
+            }
+            gst_object_unref(branch.teeSrcPad);
+            branch.teeSrcPad = nullptr;
+        }
+        // The queue and downstream elements are owned by the pipeline bin
+        // and will be destroyed when the pipeline is unreffed.
+        branch.queue = nullptr;
+    }
+    branches.clear();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Status reporting — for PHP API
 // ──────────────────────────────────────────────────────────────────────────────
 AES67Manager::Status AES67Manager::GetStatus() {
@@ -1076,6 +1233,200 @@ AES67Manager::Status AES67Manager::GetStatus() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Self-test — validates AES67 subsystem components (7.10)
+// ──────────────────────────────────────────────────────────────────────────────
+std::vector<AES67Manager::TestResult> AES67Manager::RunSelfTest() {
+    std::vector<TestResult> results;
+
+    // Test 1: GStreamer initialization
+    {
+        TestResult r;
+        r.testName = "gstreamer_init";
+        r.passed = gst_is_initialized();
+        r.message = r.passed ? "GStreamer is initialized" : "GStreamer is NOT initialized";
+        results.push_back(r);
+    }
+
+    // Test 2: Required GStreamer elements available
+    {
+        const char* requiredElements[] = {
+            "rtpL24pay", "rtpL24depay", "rtpjitterbuffer",
+            "udpsrc", "udpsink", "audioconvert", "audioresample",
+            "pipewiresrc", "pipewiresink", nullptr
+        };
+        for (int i = 0; requiredElements[i]; i++) {
+            TestResult r;
+            r.testName = std::string("element_") + requiredElements[i];
+            GstElementFactory* factory = gst_element_factory_find(requiredElements[i]);
+            r.passed = (factory != nullptr);
+            r.message = r.passed
+                ? std::string(requiredElements[i]) + " element available"
+                : std::string(requiredElements[i]) + " element NOT FOUND";
+            if (factory) gst_object_unref(factory);
+            results.push_back(r);
+        }
+    }
+
+    // Test 3: PTP clock
+    {
+        TestResult r;
+        r.testName = "ptp_initialized";
+        r.passed = m_ptpInitialized;
+        r.message = r.passed ? "PTP subsystem initialized" : "PTP subsystem not initialized";
+        results.push_back(r);
+    }
+    {
+        TestResult r;
+        r.testName = "ptp_clock_created";
+        r.passed = (m_ptpClock != nullptr);
+        r.message = r.passed ? "PTP clock object created" : "No PTP clock object";
+        results.push_back(r);
+    }
+    if (m_ptpClock) {
+        TestResult r;
+        r.testName = "ptp_clock_synced";
+        r.passed = gst_clock_is_synced(m_ptpClock);
+        r.message = r.passed ? "PTP clock is synced to master" : "PTP clock NOT synced (no PTP master on network?)";
+        results.push_back(r);
+    }
+
+    // Test 4: Config file
+    {
+        TestResult r;
+        r.testName = "config_file";
+        std::ifstream test(m_configPath);
+        r.passed = test.good();
+        r.message = r.passed
+            ? "Config file found: " + m_configPath
+            : "Config file missing: " + m_configPath;
+        results.push_back(r);
+    }
+
+    // Test 5: Config loaded and has instances
+    {
+        TestResult r;
+        r.testName = "config_instances";
+        r.passed = !m_config.instances.empty();
+        r.message = r.passed
+            ? std::to_string(m_config.instances.size()) + " instance(s) configured"
+            : "No instances configured";
+        results.push_back(r);
+    }
+
+    // Test 6: Network interface availability
+    {
+        TestResult r;
+        r.testName = "network_interface";
+        std::string ip = GetInterfaceIP(m_config.ptpInterface);
+        r.passed = !ip.empty();
+        r.message = r.passed
+            ? "Interface " + m_config.ptpInterface + " has IP: " + ip
+            : "Interface " + m_config.ptpInterface + " not found or has no IP";
+        results.push_back(r);
+    }
+
+    // Test 7: PTP clock ID derivation (EUI-64 from MAC)
+    {
+        TestResult r;
+        r.testName = "ptp_clock_id";
+        std::string clockId = GetPTPClockId();
+        r.passed = !clockId.empty() && clockId.length() == 23; // XX-XX-XX-XX-XX-XX-XX-XX
+        r.message = r.passed
+            ? "PTP Clock ID: " + clockId
+            : "Could not derive PTP Clock ID from MAC address";
+        results.push_back(r);
+    }
+
+    // Test 8: Send pipeline status
+    {
+        std::lock_guard<std::mutex> lock(m_pipelineMutex);
+        for (const auto& [id, p] : m_sendPipelines) {
+            TestResult r;
+            r.testName = "send_pipeline_" + std::to_string(id);
+            r.passed = p.running;
+            r.message = p.running
+                ? "Send pipeline " + std::to_string(id) + " is running"
+                : "Send pipeline " + std::to_string(id) + " is NOT running: " + p.errorMessage;
+            results.push_back(r);
+        }
+
+        for (const auto& [id, p] : m_recvPipelines) {
+            TestResult r;
+            r.testName = "recv_pipeline_" + std::to_string(id);
+            r.passed = p.running;
+            r.message = p.running
+                ? "Receive pipeline " + std::to_string(id) + " is running"
+                : "Receive pipeline " + std::to_string(id) + " is NOT running: " + p.errorMessage;
+            results.push_back(r);
+        }
+    }
+
+    // Test 9: SAP announcer running
+    {
+        TestResult r;
+        r.testName = "sap_announcer";
+        r.passed = m_sapAnnounceRunning.load();
+        r.message = r.passed ? "SAP announcer thread running" : "SAP announcer thread not running";
+        results.push_back(r);
+    }
+
+    // Test 10: SAP receiver running
+    {
+        TestResult r;
+        r.testName = "sap_receiver";
+        r.passed = m_sapRecvRunning.load();
+        r.message = r.passed ? "SAP receiver thread running" : "SAP receiver thread not running";
+        results.push_back(r);
+    }
+
+    // Test 11: Multicast socket test — try binding to SAP port (quick check)
+    {
+        TestResult r;
+        r.testName = "multicast_capability";
+        int sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock >= 0) {
+            int reuse = 1;
+            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+            struct sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_port = 0;  // any port
+            addr.sin_addr.s_addr = INADDR_ANY;
+            r.passed = (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+            r.message = r.passed ? "UDP socket creation and bind OK" : "Failed to create/bind UDP socket";
+            close(sock);
+        } else {
+            r.passed = false;
+            r.message = "Failed to create UDP socket";
+        }
+        results.push_back(r);
+    }
+
+    // Test 12: SDP generation test — verify we can build a valid SDP
+    {
+        TestResult r;
+        r.testName = "sdp_generation";
+        if (!m_config.instances.empty()) {
+            std::string sourceIP = GetInterfaceIP(m_config.ptpInterface);
+            std::string clockId = GetPTPClockId();
+            std::string sdp = BuildSDP(m_config.instances[0], sourceIP, clockId);
+            r.passed = !sdp.empty() && sdp.find("v=0") != std::string::npos
+                       && sdp.find("ts-refclk") != std::string::npos
+                       && sdp.find("mediaclk") != std::string::npos
+                       && sdp.find("L24") != std::string::npos;
+            r.message = r.passed
+                ? "SDP generation OK (" + std::to_string(sdp.size()) + " bytes)"
+                : "SDP generation failed or incomplete";
+        } else {
+            r.passed = false;
+            r.message = "No instances configured — cannot test SDP generation";
+        }
+        results.push_back(r);
+    }
+
+    return results;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // HTTP API endpoint — registered at /aes67
 // ──────────────────────────────────────────────────────────────────────────────
 HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> AES67Manager::render_GET(
@@ -1135,6 +1486,35 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> AES67Manager::ren
 
         Json::StreamWriterBuilder wbuilder;
         wbuilder["indentation"] = "";
+        std::string resultStr = Json::writeString(wbuilder, result);
+
+        return std::shared_ptr<httpserver::http_response>(
+            new httpserver::string_response(resultStr, 200, "application/json"));
+    }
+
+    if (url == "test") {
+        auto tests = RunSelfTest();
+        Json::Value result;
+        Json::Value testArray(Json::arrayValue);
+        int passed = 0, failed = 0;
+
+        for (const auto& t : tests) {
+            Json::Value tj;
+            tj["test"] = t.testName;
+            tj["passed"] = t.passed;
+            tj["message"] = t.message;
+            testArray.append(tj);
+            if (t.passed) passed++; else failed++;
+        }
+
+        result["tests"] = testArray;
+        result["summary"]["total"] = (int)tests.size();
+        result["summary"]["passed"] = passed;
+        result["summary"]["failed"] = failed;
+        result["summary"]["allPassed"] = (failed == 0);
+
+        Json::StreamWriterBuilder wbuilder;
+        wbuilder["indentation"] = "  ";
         std::string resultStr = Json::writeString(wbuilder, result);
 
         return std::shared_ptr<httpserver::http_response>(

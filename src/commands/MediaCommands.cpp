@@ -433,4 +433,25 @@ std::unique_ptr<Command::Result> AES67CleanupCommand::run(const std::vector<std:
     AES67Manager::INSTANCE.Cleanup();
     return std::make_unique<Command::Result>("AES67 cleaned up");
 }
+
+AES67TestCommand::AES67TestCommand() :
+    Command("AES67 Test", "Run AES67 subsystem self-test") {
+}
+std::unique_ptr<Command::Result> AES67TestCommand::run(const std::vector<std::string>& args) {
+    auto tests = AES67Manager::INSTANCE.RunSelfTest();
+    int passed = 0, failed = 0;
+    std::string report;
+    for (const auto& t : tests) {
+        report += (t.passed ? "PASS" : "FAIL");
+        report += ": " + t.testName + " - " + t.message + "\n";
+        if (t.passed) passed++; else failed++;
+    }
+    report += "\nTotal: " + std::to_string(tests.size()) +
+              " | Passed: " + std::to_string(passed) +
+              " | Failed: " + std::to_string(failed);
+    if (failed == 0) {
+        return std::make_unique<Command::Result>(report);
+    }
+    return std::make_unique<Command::ErrorResult>(report);
+}
 #endif

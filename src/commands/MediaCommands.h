@@ -78,4 +78,10 @@ public:
     AES67CleanupCommand();
     virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
 };
+
+class AES67TestCommand : public Command {
+public:
+    AES67TestCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
 #endif

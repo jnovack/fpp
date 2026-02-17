@@ -299,6 +299,11 @@ int GStreamerOutput::Start(int msTime) {
         // Remember the audio chain entry point for pad-added linkage
         m_audioChain = audioconvert;
 
+        // Attach AES67 zero-hop RTP branches if any send instances are active
+#ifdef HAS_AES67_GSTREAMER
+        AttachAES67Branches(tee);
+#endif
+
         // Build video sub-chain: videoconvert ! videoscale ! capsfilter(RGB,WxH) ! appsink
         GstElement* videoconvert = gst_element_factory_make("videoconvert", "vconv");
         GstElement* videoscale = gst_element_factory_make("videoscale", "vscale");
@@ -430,6 +435,11 @@ int GStreamerOutput::Start(int msTime) {
 
         m_audioChain = audioconvert;
 
+        // Attach AES67 zero-hop RTP branches if any send instances are active
+#ifdef HAS_AES67_GSTREAMER
+        AttachAES67Branches(tee);
+#endif
+
         // Build video sub-chain: queue ! videoconvert ! videoscale ! capsfilter ! kmssink
         GstElement* videoQueue = gst_element_factory_make("queue", "vq");
         GstElement* videoconvert = gst_element_factory_make("videoconvert", "vconv");
@@ -516,6 +526,17 @@ int GStreamerOutput::Start(int msTime) {
 
         // Get the appsink
         m_appsink = gst_bin_get_by_name(GST_BIN(m_pipeline), "sampletap");
+
+        // Attach AES67 zero-hop RTP branches to the audio tee
+#ifdef HAS_AES67_GSTREAMER
+        {
+            GstElement* tee = gst_bin_get_by_name(GST_BIN(m_pipeline), "t");
+            if (tee) {
+                AttachAES67Branches(tee);
+                gst_object_unref(tee);
+            }
+        }
+#endif
     }
 
     if (!m_pipeline) {
@@ -823,6 +844,11 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
 int GStreamerOutput::Close(void) {
     LogDebug(VB_MEDIAOUT, "GStreamerOutput::Close()\n");
     if (m_pipeline) {
+        // Detach AES67 zero-hop RTP branches before pipeline teardown
+#ifdef HAS_AES67_GSTREAMER
+        DetachAES67Branches();
+#endif
+
         // Set shutdown flag FIRST — this prevents OnNewSample/OnNewVideoSample from doing any work
         m_shutdownFlag.store(true);
 
@@ -1201,5 +1227,31 @@ bool GStreamerOutput::GetAudioSamples(float* samples, int numSamples, int& sampl
     }
     return true;
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// AES67 zero-hop RTP branch helpers (Phase 7.9)
+// ──────────────────────────────────────────────────────────────────────────────
+#ifdef HAS_AES67_GSTREAMER
+void GStreamerOutput::AttachAES67Branches(GstElement* tee) {
+    if (!AES67Manager::INSTANCE.IsActive() || !AES67Manager::INSTANCE.HasActiveSendInstances()) {
+        return;
+    }
+
+    m_aes67Branches = AES67Manager::INSTANCE.AttachInlineRTPBranches(m_pipeline, tee);
+
+    if (!m_aes67Branches.empty()) {
+        LogInfo(VB_MEDIAOUT, "GStreamer: %zu AES67 zero-hop RTP branch(es) attached\n",
+                m_aes67Branches.size());
+    }
+}
+
+void GStreamerOutput::DetachAES67Branches() {
+    if (!m_aes67Branches.empty()) {
+        LogInfo(VB_MEDIAOUT, "GStreamer: Detaching %zu AES67 zero-hop RTP branch(es)\n",
+                m_aes67Branches.size());
+        AES67Manager::INSTANCE.DetachInlineRTPBranches(m_pipeline, m_aes67Branches);
+    }
+}
+#endif // HAS_AES67_GSTREAMER
 
 #endif // HAS_GSTREAMER
