@@ -84,6 +84,7 @@ Benefit: Single clock tree, consistent latency, one buffer path
 | **5** | MultiSync rate adjustment via GStreamer (replaces VLC AdjustSpeed)       | Medium-High | Not started  |
 | **6** | Remove SDL and VLC dependencies entirely                                 | Low         | Not started  |
 | **7** | AES67 via GStreamer (replaces PipeWire RTP modules)                      | Medium-High | **Complete** |
+| **8** | Audio routing stability & volume control fixes                          | Medium      | **Complete** |
 
 ### Migration Strategy (per dkulp)
 > "We could always use gstreamer on master (no playback speed adjustments) and keep vlc for remotes if needed."
@@ -708,6 +709,70 @@ pipewiresink             — Output to PipeWire node
 - `AES67Manager` is initialized after PipeWire is ready and applies config automatically
 - The `pipewire-aes67-instances.json` config format is unchanged — backward-compatible
 - PHP API signals fppd via command API; status queries go to fppd's `/aes67/status` HTTP endpoint
+
+---
+
+## Phase 8: Audio Routing Stability & Volume Control Fixes ✅
+
+**Status: COMPLETE** — Committed as `8c48b0d3`
+
+**Problem:** Multiple audio routing issues surfaced during real-world testing with multi-output groups (Sound Blaster + ICUSBAUDIO7D + AES67):
+
+1. **Volume control broken**: `pactl` commands silently failed because `pipewire-pulse` is not running. All volume changes did nothing.
+2. **Doubled audio on Sound Blaster**: WirePlumber created rogue fallback links, causing audio to play twice through the SB.
+3. **AES67 garbage on track change**: Stale audio buffers in GStreamer elements caused ~200ms of garbage RTP when a new track started.
+4. **Combine-stream outputs unlinked**: Without explicit `node.target` in `create-stream`, WirePlumber sometimes couldn't match combine outputs to filter-chain sinks.
+
+### Tasks Completed
+
+- [x] **8.1** Replace `pactl` with `wpctl` for PipeWire volume control:
+  - `pactl` requires `pipewire-pulse` module (not running in FPP's system-wide PipeWire setup)
+  - `wpctl` talks directly to WirePlumber via `PIPEWIRE_REMOTE` socket
+  - Uses `@DEFAULT_AUDIO_SINK@` (the combine-stream sink) or looks up node ID by name
+  - Supports volume (0.0-1.0 linear), mute, and unmute
+
+- [x] **8.2** Fix double volume attenuation:
+  - Previous code applied volume in TWO places: PipeWire sink (pactl) AND GStreamer volume element
+  - With pactl broken, only GStreamer volume worked. Fixing pactl→wpctl would cause double attenuation.
+  - Solution: Skip `mediaOutput->SetVolume()` when PipeWire backend is active
+  - GStreamer `volume` element still used for per-track `volumeAdjust` (dB offset)
+
+- [x] **8.3** WirePlumber Lua hook to prevent rogue links:
+  - Root cause: WirePlumber's linking pipeline creates rogue links when:
+    1. Filter-chain outputs link back to combine sink (link-group loop via `canLink()` rejection)
+    2. Combine outputs fall back to default ALSA sink (Sound Blaster) — doubled audio
+  - Solution: Lua hook `fpp-block-combine-fallback.lua` installed in `/usr/share/wireplumber/scripts/linking/`
+  - Intercepts `select-target` events after `find-defined-target`/`find-filter-target` but before `find-default-target`
+  - For `^output%.fpp_group_` and `^fpp_fx_g%d+_.*_out$` nodes, calls `event:stop_processing()` to prevent fallback
+  - Does NOT set `was_handled = true` so WirePlumber rescans when target appears
+  - `InstallWirePlumberFppLinkingHook()` added to `pipewire.php` Apply handler for automatic installation
+
+- [x] **8.4** AES67 track transition flush via pad probe:
+  - Pad probe installed on `pipewiresrc` src pad (permanent, stays for pipeline lifetime)
+  - On track change, `FlushSendPipelines()` resets `dropCounter=50` (~200ms at 48kHz/192-sample packets)
+  - `DropBufferProbe()` callback drops buffers while counter > 0, passes through otherwise
+  - No pipeline state changes needed — avoids interrupting RTP flow
+  - Called from `GStreamerOutput::Close()` before pipeline teardown
+
+- [x] **8.5** Add `node.target` to combine-stream `create-stream` rules:
+  - Without this, WirePlumber relied on `node.name` match pattern alone
+  - Explicit `node.target` ensures combine outputs link to the correct filter-chain sink
+  - Added in `GeneratePipeWireGroupsConfig()` for all members (physical + AES67)
+
+### Files Modified
+| File                               | Change                                                              |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `src/mediaoutput/mediaoutput.cpp`  | pactl→wpctl volume, skip GStreamer SetVolume for PipeWire backend   |
+| `src/mediaoutput/AES67Manager.cpp` | FlushSendPipelines() with pad probe buffer dropping                |
+| `src/mediaoutput/AES67Manager.h`   | FlushSendPipelines(), dropCounter, probeId, probePad in AES67Pipeline |
+| `src/mediaoutput/GStreamerOut.cpp`  | Call FlushSendPipelines() from Close()                              |
+| `www/api/controllers/pipewire.php` | InstallWirePlumberFppLinkingHook(), node.target in create-stream    |
+
+### Files Installed by Apply
+| File                                                                | Purpose                                          |
+| ------------------------------------------------------------------- | ------------------------------------------------ |
+| `/usr/share/wireplumber/scripts/linking/fpp-block-combine-fallback.lua` | Lua hook blocking rogue default-target fallback |
+| `/etc/wireplumber/wireplumber.conf.d/60-fpp-block-combine-fallback.conf` | WirePlumber component registration             |
 
 ---
 
