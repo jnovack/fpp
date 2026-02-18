@@ -100,25 +100,31 @@ void setVolume(int vol) {
         const bool shouldMute = (volume == 0);
         std::string pipewireSink = getSetting("PipeWireSinkName");
         
-        // For system-wide PipeWire, use the FPP runtime directory
-        std::string pwPrefix = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp ";
+        // Use wpctl to control PipeWire volume directly (no pipewire-pulse needed)
+        // wpctl uses cubic volume mapping: 0.43 → linear 0.43^3 ≈ 0.0795
+        // This matches PulseAudio's volume curve, so the perceptual scale is correct
+        std::string pwPrefix = "PIPEWIRE_REMOTE=/run/pipewire-fpp/pipewire-0 ";
 
-        FILE* fp;
-        // If no sink specified, query the default sink name for pactl
-        if (pipewireSink.empty()) {
-            fp = popen((pwPrefix + "pactl get-default-sink 2>/dev/null").c_str(), "r");
+        // Determine the wpctl target: use node ID if sink name specified, else default
+        std::string wpctlTarget = "@DEFAULT_AUDIO_SINK@";
+        if (!pipewireSink.empty()) {
+            // Look up node ID by name using pw-cli
+            FILE* fp = popen((pwPrefix + "pw-cli ls Node 2>/dev/null | grep -B5 'node.name = \"" 
+                + pipewireSink + "\"' | grep 'id ' | tail -1 | sed 's/.*id \\([0-9]*\\).*/\\1/'").c_str(), "r");
             if (fp) {
-                char sinkBuf[256];
-                if (fgets(sinkBuf, sizeof(sinkBuf), fp)) {
-                    pipewireSink = std::string(sinkBuf);
-                    pipewireSink.erase(pipewireSink.find_last_not_of("\n\r") + 1);
+                char idBuf[32];
+                if (fgets(idBuf, sizeof(idBuf), fp)) {
+                    std::string nodeId(idBuf);
+                    nodeId.erase(nodeId.find_last_not_of("\n\r ") + 1);
+                    if (!nodeId.empty()) {
+                        wpctlTarget = nodeId;
+                    }
                 }
                 pclose(fp);
             }
-            if (pipewireSink.empty()) {
-                pipewireSink = "@DEFAULT_SINK@";  // fallback
-            }
         }
+
+        float volFloat = vol / 100.0f;
 
         bool wasZero = (lastPipeWireVolume == 0);
         bool isZero = shouldMute;
@@ -128,29 +134,28 @@ void setVolume(int vol) {
             wasZero = isZero;  // Treat first call as if we're already in that state
         }
 
-        // Use pactl for smoother volume transitions (PipeWire PulseAudio compat layer)
-        // pactl uses percentage values (0-100%) which matches FPP's volume range
+        // Use wpctl for volume control (works directly with PipeWire/WirePlumber)
 
         if (isZero && !wasZero) {
             // Going to zero: mute immediately
             snprintf(buffer, sizeof(buffer),
-                 "%s pactl set-sink-mute \"%s\" 1 >/dev/null 2>&1",
-                 pwPrefix.c_str(), pipewireSink.c_str());
-            LogDebug(VB_MEDIAOUT, "Calling pactl to mute PipeWire: %s \n", buffer);
+                 "%s wpctl set-mute %s 1 >/dev/null 2>&1",
+                 pwPrefix.c_str(), wpctlTarget.c_str());
+            LogDebug(VB_MEDIAOUT, "Calling wpctl to mute PipeWire: %s \n", buffer);
             system(buffer);
         } else if (!isZero && wasZero) {
             // Coming from zero: set volume first, then unmute
             snprintf(buffer, sizeof(buffer),
-                 "%s sh -c 'pactl set-sink-volume \"%s\" %d%% && pactl set-sink-mute \"%s\" 0' >/dev/null 2>&1",
-                 pwPrefix.c_str(), pipewireSink.c_str(), vol, pipewireSink.c_str());
-            LogDebug(VB_MEDIAOUT, "Calling pactl to set PipeWire volume and unmute: %s \n", buffer);
+                 "%s sh -c 'wpctl set-volume %s %.4f && wpctl set-mute %s 0' >/dev/null 2>&1",
+                 pwPrefix.c_str(), wpctlTarget.c_str(), volFloat, wpctlTarget.c_str());
+            LogDebug(VB_MEDIAOUT, "Calling wpctl to set PipeWire volume and unmute: %s \n", buffer);
             system(buffer);
         } else if (!isZero) {
             // Volume change while playing: only adjust volume, don't touch mute
             snprintf(buffer, sizeof(buffer),
-                 "%s pactl set-sink-volume \"%s\" %d%% >/dev/null 2>&1",
-                 pwPrefix.c_str(), pipewireSink.c_str(), vol);
-            LogDebug(VB_MEDIAOUT, "Calling pactl to set PipeWire volume: %s \n", buffer);
+                 "%s wpctl set-volume %s %.4f >/dev/null 2>&1",
+                 pwPrefix.c_str(), wpctlTarget.c_str(), volFloat);
+            LogDebug(VB_MEDIAOUT, "Calling wpctl to set PipeWire volume: %s \n", buffer);
             system(buffer);
         }
         
@@ -177,7 +182,10 @@ void setVolume(int vol) {
 #endif
 
     std::unique_lock<std::mutex> lock(mediaOutputLock);
-    if (mediaOutput)
+    // For PipeWire backend, volume is controlled on the PipeWire sink via wpctl.
+    // Don't also set the GStreamer volume element or we get double attenuation.
+    // The GStreamer volume element is still used for per-track volumeAdjust (dB offset).
+    if (mediaOutput && !usePipeWireBackend)
         mediaOutput->SetVolume(vol);
 }
 

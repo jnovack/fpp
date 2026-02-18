@@ -945,6 +945,16 @@ int GStreamerOutput::Close(void) {
         // Spawned as a detached thread so we don't block Close().
         FlushPipeWireDelayBuffers();
 
+        // Flush AES67 send pipelines: cycle READY → PLAYING to clear all
+        // GStreamer-internal buffers (pipewiresrc, audioconvert, rtpL24pay).
+        // Without this, stale audio from the ending track gets sent as
+        // garbage when the next track starts.
+#ifdef HAS_AES67_GSTREAMER
+        if (AES67Manager::INSTANCE.IsActive()) {
+            AES67Manager::INSTANCE.FlushSendPipelines();
+        }
+#endif
+
         // Disconnect appsink signals and disable emission BEFORE pipeline state change.
         // This prevents streaming threads from calling callbacks during teardown,
         // which can deadlock with gst_element_set_state(NULL) due to malloc arena locks.

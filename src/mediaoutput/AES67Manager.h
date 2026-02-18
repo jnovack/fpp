@@ -104,6 +104,13 @@ struct AES67Pipeline {
     // Pipeline state
     bool running = false;
     std::string errorMessage;
+
+    // Buffer-drop probe: when > 0, the probe drops buffers and
+    // decrements the counter.  Used by FlushSendPipelines() to
+    // discard stale audio between tracks.
+    volatile int dropCounter = 0;
+    GstPad* probePad = nullptr;          // pad where probe is installed
+    gulong probeId = 0;                  // installed probe handle (0 = none)
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -207,6 +214,7 @@ public:
     // uninitialized data from the idle PipeWire node).
     void PauseSendPipelines();
     void ResumeSendPipelines();
+    void FlushSendPipelines();
 
     AES67Manager();
     virtual ~AES67Manager();

@@ -133,6 +133,12 @@ function ApplyPipeWireAudioGroups()
     $cachedConf = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.conf";
     file_put_contents($cachedConf, $conf);
 
+    // Install WirePlumber hook to prevent rogue default-target fallback links.
+    // Without this, combine-stream output nodes can get linked to the default
+    // sink (e.g. Sound Blaster) in addition to their intended filter-chain
+    // targets, causing doubled audio.
+    InstallWirePlumberFppLinkingHook($SUDO);
+
     // Restart PipeWire services to apply (order matters — pulse depends on pipewire socket)
     exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
     usleep(500000);
@@ -845,6 +851,112 @@ function FindFXFilterChainNodeId($groupId, $cardId)
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// Helper: Install WirePlumber Lua hook that prevents default-target fallback
+// for FPP combine-stream and filter-chain output nodes.
+// Without this hook, WirePlumber may create rogue links from combine outputs
+// to the default ALSA sink (e.g. Sound Blaster), causing doubled audio, and
+// may link filter-chain outputs back to the combine sink, creating loops.
+function InstallWirePlumberFppLinkingHook($SUDO)
+{
+    $luaScript = <<<'LUA'
+-- FPP: Block default target fallback for combine-stream and filter-chain nodes
+--
+-- Problem: When WirePlumber cannot find the defined target for a node,
+-- find-default-target links it to the default sink. This causes:
+--   1. Filter-chain outputs link back to the combine sink, creating a
+--      link-group loop that prevents combine-output -> filter-chain links.
+--   2. Combine outputs get rogue links to the default ALSA sink (doubled audio).
+--
+-- Solution: Block the default-target fallback for FPP nodes that have an
+-- explicit target set. On rescan (when the target appears), find-defined-target
+-- will succeed and create the correct link.
+
+lutils = require ("linking-utils")
+log = Log.open_topic ("s-fpp-linking")
+
+SimpleEventHook {
+  name = "linking/fpp-block-combine-fallback",
+  after = { "linking/find-defined-target", "linking/find-filter-target" },
+  before = { "linking/find-default-target", "linking/find-best-target" },
+  interests = {
+    EventInterest {
+      Constraint { "event.type", "=", "select-target" },
+    },
+  },
+  execute = function (event)
+    local source, om, si, si_props, si_flags, target =
+        lutils:unwrap_select_target_event (event)
+
+    -- If a target was already found, let it proceed normally
+    if target then
+      return
+    end
+
+    local node_name = si_props ["node.name"] or ""
+    local has_target = si_props ["node.target"] ~= nil or
+                       si_props ["target.object"] ~= nil
+
+    -- Block default fallback for FPP combine-stream outputs
+    if node_name:match ("^output%.fpp_group_") then
+      log:info (si, "... FPP combine output: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP filter-chain outputs with explicit target
+    -- (prevents linking back to combine sink when target isn't ready yet)
+    if node_name:match ("^fpp_fx_g%d+_.*_out$") and has_target then
+      log:info (si, "... FPP filter-chain output: blocking default fallback for "
+          .. node_name .. ", target: " .. tostring (si_props ["node.target"])
+          .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+  end
+}:register ()
+LUA;
+
+    $wpConfContent = <<<'WPCONF'
+# FPP: Block default target fallback for combine-stream outputs
+# Prevents WirePlumber from creating rogue links from combine-stream
+# output nodes to the default sink when the defined target isn't found
+# as a SiLinkable. The combine-stream module creates correct internal
+# links via the node.target property.
+
+wireplumber.components = [
+  {
+    name = linking/fpp-block-combine-fallback.lua, type = script/lua
+    provides = hooks.linking.target.fpp-block-combine-fallback
+  }
+]
+
+wireplumber.profiles = {
+  main = {
+    hooks.linking.target.fpp-block-combine-fallback = required
+  }
+}
+WPCONF;
+
+    // Write Lua script to WirePlumber scripts directory
+    $luaPath = "/usr/share/wireplumber/scripts/linking/fpp-block-combine-fallback.lua";
+    $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_wp_');
+    file_put_contents($tmpFile, $luaScript);
+    exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($luaPath));
+    exec($SUDO . " chmod 644 " . escapeshellarg($luaPath));
+    unlink($tmpFile);
+
+    // Write WirePlumber component config
+    $wpConfPath = "/etc/wireplumber/wireplumber.conf.d/60-fpp-block-combine-fallback.conf";
+    exec($SUDO . " /bin/mkdir -p /etc/wireplumber/wireplumber.conf.d");
+    $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_wp_');
+    file_put_contents($tmpFile, $wpConfContent);
+    exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($wpConfPath));
+    exec($SUDO . " chmod 644 " . escapeshellarg($wpConfPath));
+    unlink($tmpFile);
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // Helper: Generate PipeWire combine-stream config from groups
 function GeneratePipeWireGroupsConfig($groups)
 {
@@ -1236,6 +1348,7 @@ function GeneratePipeWireGroupsConfig($groups)
             $conf .= "          ]\n";
             $conf .= "          actions = {\n";
             $conf .= "            create-stream = {\n";
+            $conf .= "              node.target = \"$memberNodeName\"\n";
             $conf .= "              combine.audio.position = $combinePos\n";
             $conf .= "              audio.position = $streamPos\n";
             $conf .= "            }\n";

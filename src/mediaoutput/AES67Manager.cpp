@@ -751,6 +751,67 @@ void AES67Manager::ResumeSendPipelines() {
     // No-op: pipeline is always sending to multicast.
 }
 
+// Pad probe callback: drops buffers while dropCounter > 0, passes through otherwise.
+// Installed once on pipewiresrc's src pad and stays active for the pipeline's lifetime.
+static GstPadProbeReturn DropBufferProbe(GstPad* pad, GstPadProbeInfo* info, gpointer userData) {
+    volatile int* counter = static_cast<volatile int*>(userData);
+    if (!(info->type & GST_PAD_PROBE_TYPE_BUFFER))
+        return GST_PAD_PROBE_OK;
+    if (*counter <= 0)
+        return GST_PAD_PROBE_OK;
+    (*counter)--;
+    return GST_PAD_PROBE_DROP;
+}
+
+void AES67Manager::FlushSendPipelines() {
+    std::lock_guard<std::mutex> lock(m_pipelineMutex);
+    for (auto& kv : m_sendPipelines) {
+        AES67Pipeline& p = kv.second;
+        if (!p.pipeline || !p.running)
+            continue;
+
+        // Drop the next ~50 buffers (~200ms at 48kHz/192-sample packets)
+        // from pipewiresrc's src pad.  This discards any stale audio that
+        // was queued in GStreamer elements between the old track stopping
+        // and the new one starting, without disrupting the pipeline's
+        // event flow (no flush-start/stop, no state change).
+        constexpr int DROP_COUNT = 50;
+        LogInfo(VB_MEDIAOUT, "AES67 send pipeline [%d]: dropping next %d buffers\n",
+                p.instanceId, DROP_COUNT);
+
+        p.dropCounter = DROP_COUNT;
+
+        // Install the probe once; subsequent calls just reset the counter.
+        if (p.probeId != 0)
+            continue;
+
+        // Find pipewiresrc's src pad and install the permanent probe
+        GstIterator* it = gst_bin_iterate_sources(GST_BIN(p.pipeline));
+        GValue val = G_VALUE_INIT;
+        GstElement* srcElem = nullptr;
+        if (gst_iterator_next(it, &val) == GST_ITERATOR_OK) {
+            srcElem = GST_ELEMENT(g_value_get_object(&val));
+            gst_object_ref(srcElem);
+            g_value_unset(&val);
+        }
+        gst_iterator_free(it);
+
+        if (srcElem) {
+            GstPad* srcpad = gst_element_get_static_pad(srcElem, "src");
+            if (srcpad) {
+                p.probePad = srcpad;   // takes ownership of ref
+                p.probeId = gst_pad_add_probe(
+                    srcpad,
+                    GST_PAD_PROBE_TYPE_BUFFER,
+                    DropBufferProbe,
+                    const_cast<int*>(&p.dropCounter),
+                    nullptr);
+            }
+            gst_object_unref(srcElem);
+        }
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // GStreamer bus callback
 // ──────────────────────────────────────────────────────────────────────────────
