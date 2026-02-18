@@ -84,7 +84,7 @@ Benefit: Single clock tree, consistent latency, one buffer path
 | **5** | MultiSync rate adjustment via GStreamer (replaces VLC AdjustSpeed)       | Medium-High | Not started  |
 | **6** | Remove SDL and VLC dependencies entirely                                 | Low         | Not started  |
 | **7** | AES67 via GStreamer (replaces PipeWire RTP modules)                      | Medium-High | **Complete** |
-| **8** | Audio routing stability & volume control fixes                          | Medium      | **Complete** |
+| **8** | Audio routing stability & volume control fixes                           | Medium      | **Complete** |
 
 ### Migration Strategy (per dkulp)
 > "We could always use gstreamer on master (no playback speed adjustments) and keep vlc for remotes if needed."
@@ -369,14 +369,14 @@ class GStreamerPlayData {
 - [x] PixelOverlayModel disable/re-enable lifecycle matches SDLOutput behavior
 
 ### Files Modified
-| File                                        | Change                                                              |
-| ------------------------------------------- | ------------------------------------------------------------------- |
-| `src/mediaoutput/GStreamerOut.cpp`          | Video appsink branch, pad linking, stride fix, diagnostic logging   |
-| `src/mediaoutput/GStreamerOut.h`            | Video members, PixelOverlayModel, pad linking, frame counters       |
-| `src/mediaoutput/mediaoutput.cpp`           | Factory: Video+overlay → GStreamerOutput                            |
-| `src/Sequence.cpp`                          | Add GStreamerOutput::IsOverlayingVideo/ProcessVideoOverlay calls    |
-| `src/channeloutput/channeloutputthread.cpp` | Add GStreamerOutput::IsOverlayingVideo to forceOutput()             |
-| `src/commands/MediaCommands.cpp`            | Args bounds check fix                                               |
+| File                                        | Change                                                            |
+| ------------------------------------------- | ----------------------------------------------------------------- |
+| `src/mediaoutput/GStreamerOut.cpp`          | Video appsink branch, pad linking, stride fix, diagnostic logging |
+| `src/mediaoutput/GStreamerOut.h`            | Video members, PixelOverlayModel, pad linking, frame counters     |
+| `src/mediaoutput/mediaoutput.cpp`           | Factory: Video+overlay → GStreamerOutput                          |
+| `src/Sequence.cpp`                          | Add GStreamerOutput::IsOverlayingVideo/ProcessVideoOverlay calls  |
+| `src/channeloutput/channeloutputthread.cpp` | Add GStreamerOutput::IsOverlayingVideo to forceOutput()           |
+| `src/commands/MediaCommands.cpp`            | Args bounds check fix                                             |
 
 ---
 
@@ -392,12 +392,12 @@ class GStreamerPlayData {
 3. **Duplicate card name disambiguation in UI:** Both the AudioOutput options dropdown (`options.php`) and PipeWire Primary Output dropdown (`settings-av.php`) now detect duplicate card names and append `[ALSA_ID]` suffix for disambiguation (e.g., "ICUSBAUDIO7D [ICUSBAUDIO7D_1]").
 
 ### Files Modified
-| File                                         | Change                                                              |
-| -------------------------------------------- | ------------------------------------------------------------------- |
-| `src/boot/FPPINIT.cpp`                      | `getAlsaCardId()` helper; `hw:N` → `hw:ID` in sink config          |
-| `www/api/controllers/pipewire.php`           | pw-dump card resolution replacing by-path/fpp_card/pattern matching |
-| `www/api/controllers/options.php`            | Duplicate card name detection + `[cardId]` disambiguation           |
-| `www/settings-av.php`                        | Duplicate card name detection for PipeWire dropdown                 |
+| File                               | Change                                                              |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `src/boot/FPPINIT.cpp`             | `getAlsaCardId()` helper; `hw:N` → `hw:ID` in sink config           |
+| `www/api/controllers/pipewire.php` | pw-dump card resolution replacing by-path/fpp_card/pattern matching |
+| `www/api/controllers/options.php`  | Duplicate card name detection + `[cardId]` disambiguation           |
+| `www/settings-av.php`              | Duplicate card name detection for PipeWire dropdown                 |
 
 ---
 
@@ -435,11 +435,11 @@ filesrc ! decodebin name=decoder
 - `CreateMediaOutput()` factory: `useGStreamer && IsExtensionVideo && IsHDMIOut` → `GStreamerOutput`
 
 ### Files Modified
-| File                               | Change                                                              |
-| ---------------------------------- | ------------------------------------------------------------------- |
-| `src/mediaoutput/GStreamerOut.h`   | `DrmConnectorInfo` struct, `ResolveDrmConnector()`, HDMI members    |
-| `src/mediaoutput/GStreamerOut.cpp` | `ResolveDrmConnector()`, HDMI pipeline in `Start()`, cleanup paths  |
-| `src/mediaoutput/mediaoutput.cpp`  | Factory: Video+HDMI → `GStreamerOutput` (before VLC fallback)       |
+| File                               | Change                                                             |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `src/mediaoutput/GStreamerOut.h`   | `DrmConnectorInfo` struct, `ResolveDrmConnector()`, HDMI members   |
+| `src/mediaoutput/GStreamerOut.cpp` | `ResolveDrmConnector()`, HDMI pipeline in `Start()`, cleanup paths |
+| `src/mediaoutput/mediaoutput.cpp`  | Factory: Video+HDMI → `GStreamerOutput` (before VLC fallback)      |
 
 ---
 
@@ -691,17 +691,17 @@ pipewiresink             — Output to PipeWire node
 | `scripts/aes67_test`               | AES67 subsystem test script (Phase 7.10)           |
 
 ### Files Modified
-| File                               | Change                                                 |
-| ---------------------------------- | ------------------------------------------------------ |
-| `src/fppd.cpp`                      | Init/Shutdown AES67Manager in fppd lifecycle           |
-| `src/commands/Commands.cpp`         | Register AES67 Apply, Cleanup, and Test commands       |
-| `src/commands/MediaCommands.h/cpp`  | AES67ApplyCommand, AES67CleanupCommand, AES67TestCommand |
-| `src/httpAPI.cpp`                   | Register `/aes67` HTTP resource for status/test endpoints |
-| `src/mediaoutput/GStreamerOut.h`    | AES67 inline RTP branch members (7.9 zero-hop)        |
-| `src/mediaoutput/GStreamerOut.cpp`  | Attach/detach AES67 RTP branches to audio tee (7.9)   |
-| `www/api/controllers/pipewire.php`  | Update apply endpoint to signal fppd via command API   |
-| `src/boot/FPPINIT.cpp`             | Remove PipeWire RTP module/ptp4l/SAP daemon startup    |
-| `src/makefiles/fpp_so.mk`          | Add `AES67Manager.o`, add `gstreamer-net-1.0` for PTP  |
+| File                               | Change                                                    |
+| ---------------------------------- | --------------------------------------------------------- |
+| `src/fppd.cpp`                     | Init/Shutdown AES67Manager in fppd lifecycle              |
+| `src/commands/Commands.cpp`        | Register AES67 Apply, Cleanup, and Test commands          |
+| `src/commands/MediaCommands.h/cpp` | AES67ApplyCommand, AES67CleanupCommand, AES67TestCommand  |
+| `src/httpAPI.cpp`                  | Register `/aes67` HTTP resource for status/test endpoints |
+| `src/mediaoutput/GStreamerOut.h`   | AES67 inline RTP branch members (7.9 zero-hop)            |
+| `src/mediaoutput/GStreamerOut.cpp` | Attach/detach AES67 RTP branches to audio tee (7.9)       |
+| `www/api/controllers/pipewire.php` | Update apply endpoint to signal fppd via command API      |
+| `src/boot/FPPINIT.cpp`             | Remove PipeWire RTP module/ptp4l/SAP daemon startup       |
+| `src/makefiles/fpp_so.mk`          | Add `AES67Manager.o`, add `gstreamer-net-1.0` for PTP     |
 
 ### Files Removed
 | File                          | Replaced By                    |
@@ -766,19 +766,19 @@ pipewiresink             — Output to PipeWire node
   - Added in `GeneratePipeWireGroupsConfig()` for all members (physical + AES67)
 
 ### Files Modified
-| File                               | Change                                                              |
-| ---------------------------------- | ------------------------------------------------------------------- |
-| `src/mediaoutput/mediaoutput.cpp`  | pactl→wpctl volume, skip GStreamer SetVolume for PipeWire backend   |
-| `src/mediaoutput/AES67Manager.cpp` | FlushSendPipelines() with pad probe buffer dropping                |
+| File                               | Change                                                                |
+| ---------------------------------- | --------------------------------------------------------------------- |
+| `src/mediaoutput/mediaoutput.cpp`  | pactl→wpctl volume, skip GStreamer SetVolume for PipeWire backend     |
+| `src/mediaoutput/AES67Manager.cpp` | FlushSendPipelines() with pad probe buffer dropping                   |
 | `src/mediaoutput/AES67Manager.h`   | FlushSendPipelines(), dropCounter, probeId, probePad in AES67Pipeline |
-| `src/mediaoutput/GStreamerOut.cpp`  | Call FlushSendPipelines() from Close()                              |
-| `www/api/controllers/pipewire.php` | InstallWirePlumberFppLinkingHook(), node.target in create-stream    |
+| `src/mediaoutput/GStreamerOut.cpp` | Call FlushSendPipelines() from Close()                                |
+| `www/api/controllers/pipewire.php` | InstallWirePlumberFppLinkingHook(), node.target in create-stream      |
 
 ### Files Installed by Apply
-| File                                                                | Purpose                                          |
-| ------------------------------------------------------------------- | ------------------------------------------------ |
-| `/usr/share/wireplumber/scripts/linking/fpp-block-combine-fallback.lua` | Lua hook blocking rogue default-target fallback |
-| `/etc/wireplumber/wireplumber.conf.d/60-fpp-block-combine-fallback.conf` | WirePlumber component registration             |
+| File                                                                     | Purpose                                         |
+| ------------------------------------------------------------------------ | ----------------------------------------------- |
+| `/usr/share/wireplumber/scripts/linking/fpp-block-combine-fallback.lua`  | Lua hook blocking rogue default-target fallback |
+| `/etc/wireplumber/wireplumber.conf.d/60-fpp-block-combine-fallback.conf` | WirePlumber component registration              |
 
 ---
 

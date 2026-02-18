@@ -91,14 +91,14 @@ FPP's audio system routes decoded audio from GStreamer through PipeWire's graph 
 
 From bottom to top:
 
-| Layer | Component | Role |
-|-------|-----------|------|
-| **Kernel** | ALSA drivers | USB audio class, HDMI audio, I2S HATs |
-| **Audio Server** | PipeWire 1.4.2 (`fpp-pipewire.service`) | Graph-based audio routing, mixing, resampling. Runs as root system-wide (no user session). Socket at `/run/pipewire-fpp/pipewire-0` |
-| **Session Manager** | WirePlumber 0.5.8 (`fpp-wireplumber.service`) | Creates ALSA nodes from hardware, manages linking policy, handles node appearance/disappearance. Extends behavior via Lua scripts. |
-| **Media Framework** | GStreamer 1.26.2 (in fppd) | Decodes audio/video files, connects to PipeWire via `pipewiresink`/`pipewiresrc`. Also handles AES67 RTP encoding/decoding. |
-| **Application** | fppd | Playlist/sequence engine, HTTP API, volume control, AES67 management |
-| **UI** | PHP web interface | Audio group configuration, EQ, delay, AES67 instance management |
+| Layer               | Component                                     | Role                                                                                                                                |
+| ------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Kernel**          | ALSA drivers                                  | USB audio class, HDMI audio, I2S HATs                                                                                               |
+| **Audio Server**    | PipeWire 1.4.2 (`fpp-pipewire.service`)       | Graph-based audio routing, mixing, resampling. Runs as root system-wide (no user session). Socket at `/run/pipewire-fpp/pipewire-0` |
+| **Session Manager** | WirePlumber 0.5.8 (`fpp-wireplumber.service`) | Creates ALSA nodes from hardware, manages linking policy, handles node appearance/disappearance. Extends behavior via Lua scripts.  |
+| **Media Framework** | GStreamer 1.26.2 (in fppd)                    | Decodes audio/video files, connects to PipeWire via `pipewiresink`/`pipewiresrc`. Also handles AES67 RTP encoding/decoding.         |
+| **Application**     | fppd                                          | Playlist/sequence engine, HTTP API, volume control, AES67 management                                                                |
+| **UI**              | PHP web interface                             | Audio group configuration, EQ, delay, AES67 instance management                                                                     |
 
 ### Why Each Layer Exists
 
@@ -174,15 +174,15 @@ export XDG_RUNTIME_DIR=/run/pipewire-fpp
 
 When an audio group with 3 members is configured, PipeWire creates these nodes:
 
-| Node Type | Example Name | media.class | Purpose |
-|-----------|-------------|-------------|---------|
-| **ALSA Sink** | `alsa_output.usb-Creative_Technology_Ltd_Sound_Blaster_Play__3_00307683-00.analog-stereo` | Audio/Sink | Physical output to USB sound card |
-| **Filter-Chain Sink** | `fpp_fx_g1_s3` | Audio/Sink | Virtual sink — input side of delay+EQ filter-chain for Sound Blaster |
-| **Filter-Chain Output** | `fpp_fx_g1_s3_out` | Stream/Output/Audio | Output side of filter-chain — streams processed audio to ALSA sink |
-| **Combine-Stream Sink** | `fpp_group_stuart_headphones_and_hdmi` | Audio/Sink | Virtual sink that splits audio to all group members. This is the default audio sink. |
-| **Combine-Stream Output** | `output.fpp_group_stuart_headphones_and_hdmi_fpp_fx_g1_s3` | Stream/Output/Audio | One output leg per member — streams to that member's filter-chain |
-| **GStreamer pipewiresink** | `fppd` | Stream/Output/Audio | GStreamer playback node — connects to combine-stream sink |
-| **GStreamer pipewiresrc** | `aes67_aes67_stream_1_send` | Stream/Input/Audio | AES67 send pipeline — captures from filter-chain output |
+| Node Type                  | Example Name                                                                              | media.class         | Purpose                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| **ALSA Sink**              | `alsa_output.usb-Creative_Technology_Ltd_Sound_Blaster_Play__3_00307683-00.analog-stereo` | Audio/Sink          | Physical output to USB sound card                                                    |
+| **Filter-Chain Sink**      | `fpp_fx_g1_s3`                                                                            | Audio/Sink          | Virtual sink — input side of delay+EQ filter-chain for Sound Blaster                 |
+| **Filter-Chain Output**    | `fpp_fx_g1_s3_out`                                                                        | Stream/Output/Audio | Output side of filter-chain — streams processed audio to ALSA sink                   |
+| **Combine-Stream Sink**    | `fpp_group_stuart_headphones_and_hdmi`                                                    | Audio/Sink          | Virtual sink that splits audio to all group members. This is the default audio sink. |
+| **Combine-Stream Output**  | `output.fpp_group_stuart_headphones_and_hdmi_fpp_fx_g1_s3`                                | Stream/Output/Audio | One output leg per member — streams to that member's filter-chain                    |
+| **GStreamer pipewiresink** | `fppd`                                                                                    | Stream/Output/Audio | GStreamer playback node — connects to combine-stream sink                            |
+| **GStreamer pipewiresrc**  | `aes67_aes67_stream_1_send`                                                               | Stream/Input/Audio  | AES67 send pipeline — captures from filter-chain output                              |
 
 ### Live Topology Example
 
@@ -575,12 +575,12 @@ setVolume(43) in mediaoutput.cpp
 
 ### Why wpctl Instead of pactl
 
-| Feature | pactl | wpctl |
-|---------|-------|-------|
-| Requires | pipewire-pulse module | Only WirePlumber |
-| Protocol | PulseAudio D-Bus compat | Direct PipeWire protocol |
-| Env var | `PIPEWIRE_RUNTIME_DIR` + `XDG_RUNTIME_DIR` | `PIPEWIRE_REMOTE` |
-| Volume scale | Percentage (0-100%) | Linear (0.0-1.0) with cubic mapping |
+| Feature      | pactl                                      | wpctl                               |
+| ------------ | ------------------------------------------ | ----------------------------------- |
+| Requires     | pipewire-pulse module                      | Only WirePlumber                    |
+| Protocol     | PulseAudio D-Bus compat                    | Direct PipeWire protocol            |
+| Env var      | `PIPEWIRE_RUNTIME_DIR` + `XDG_RUNTIME_DIR` | `PIPEWIRE_REMOTE`                   |
+| Volume scale | Percentage (0-100%)                        | Linear (0.0-1.0) with cubic mapping |
 
 FPP uses `PIPEWIRE_REMOTE=/run/pipewire-fpp/pipewire-0 wpctl set-volume @DEFAULT_AUDIO_SINK@ <float>`.
 
@@ -625,14 +625,14 @@ Position jumps (>10s drift) use `gst_element_seek()` with `GST_SEEK_FLAG_FLUSH |
 
 ### Key Members (`GStreamerOut.h`)
 
-| Member | Type | Purpose |
-| --- | --- | --- |
-| `m_currentRate` | `float` | Current playback rate (1.0 = normal) |
-| `m_diffs[]` | `array<pair<int,float>, 10>` | Circular buffer of diff/rate pairs |
-| `m_lastDiff` | `int` | Previous diff value (-1 initially) |
-| `m_rateDiff` | `int` | Current rate-diff step count |
-| `m_lastRates` | `list<float>` | Running rate history (max 20) |
-| `m_allowSpeedAdjust` | `bool` | Enabled unless `remoteIgnoreSync=1` |
+| Member               | Type                         | Purpose                              |
+| -------------------- | ---------------------------- | ------------------------------------ |
+| `m_currentRate`      | `float`                      | Current playback rate (1.0 = normal) |
+| `m_diffs[]`          | `array<pair<int,float>, 10>` | Circular buffer of diff/rate pairs   |
+| `m_lastDiff`         | `int`                        | Previous diff value (-1 initially)   |
+| `m_rateDiff`         | `int`                        | Current rate-diff step count         |
+| `m_lastRates`        | `list<float>`                | Running rate history (max 20)        |
+| `m_allowSpeedAdjust` | `bool`                       | Enabled unless `remoteIgnoreSync=1`  |
 
 ---
 
@@ -699,23 +699,23 @@ When a song ends and a new one begins:
 
 ### PipeWire Configs
 
-| File | Purpose | Generated By |
-|------|---------|-------------|
-| `/etc/pipewire/pipewire.conf.d/95-fpp-alsa-sink.conf` | ALSA sink nodes using stable card IDs (hw:S3) | FPPINIT.cpp |
+| File                                                     | Purpose                                         | Generated By       |
+| -------------------------------------------------------- | ----------------------------------------------- | ------------------ |
+| `/etc/pipewire/pipewire.conf.d/95-fpp-alsa-sink.conf`    | ALSA sink nodes using stable card IDs (hw:S3)   | FPPINIT.cpp        |
 | `/etc/pipewire/pipewire.conf.d/96-fpp-audio-groups.conf` | Filter-chains + combine-stream for audio groups | pipewire.php Apply |
 
 ### WirePlumber Configs
 
-| File | Purpose | Generated By |
-|------|---------|-------------|
-| `/etc/wireplumber/wireplumber.conf.d/60-fpp-block-combine-fallback.conf` | Registers FPP Lua hook | pipewire.php Apply |
-| `/usr/share/wireplumber/scripts/linking/fpp-block-combine-fallback.lua` | Blocks rogue default-target fallback | pipewire.php Apply |
+| File                                                                     | Purpose                              | Generated By       |
+| ------------------------------------------------------------------------ | ------------------------------------ | ------------------ |
+| `/etc/wireplumber/wireplumber.conf.d/60-fpp-block-combine-fallback.conf` | Registers FPP Lua hook               | pipewire.php Apply |
+| `/usr/share/wireplumber/scripts/linking/fpp-block-combine-fallback.lua`  | Blocks rogue default-target fallback | pipewire.php Apply |
 
 ### FPP Audio Configs
 
-| File | Purpose |
-|------|---------|
-| `<media>/config/pipewire-audio-groups.json` | Audio group definitions (groups, members, delay, EQ) |
+| File                                           | Purpose                                                  |
+| ---------------------------------------------- | -------------------------------------------------------- |
+| `<media>/config/pipewire-audio-groups.json`    | Audio group definitions (groups, members, delay, EQ)     |
 | `<media>/config/pipewire-aes67-instances.json` | AES67 instance definitions (multicast IPs, ports, modes) |
 
 ---
@@ -774,16 +774,16 @@ pw-link -l | grep '|' | wc -l
 
 ### Common Issues & Solutions
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| No audio from any output | PipeWire not running or fppd not connected | `systemctl status fpp-pipewire fpp-wireplumber fppd` |
-| Volume slider has no effect | pactl used instead of wpctl (pipewire-pulse not running) | Fixed in commit 8c48b0d3 — uses wpctl now |
-| Doubled audio on one output | WirePlumber rogue default-target fallback links | FPP Lua hook should be installed — re-run Apply |
-| AES67 garbage between tracks | Stale buffers in GStreamer elements | FlushSendPipelines pad probe (automatic) |
-| AES67 silence (no RTP packets) | pipewiresrc stalled (e.g., after testing with gst-launch) | `systemctl restart fppd` |
-| 0 links in pw-link output | WirePlumber hasn't finished linking yet | Wait 5-8 seconds after restart |
-| Filter-chain not running | PipeWire config not applied | POST /api/pipewire/audio/groups/apply |
-| Wrong volume scale (too quiet) | Double attenuation (PipeWire + GStreamer both applying volume) | Ensure PipeWire backend skips GStreamer SetVolume |
+| Symptom                        | Cause                                                          | Fix                                                  |
+| ------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------- |
+| No audio from any output       | PipeWire not running or fppd not connected                     | `systemctl status fpp-pipewire fpp-wireplumber fppd` |
+| Volume slider has no effect    | pactl used instead of wpctl (pipewire-pulse not running)       | Fixed in commit 8c48b0d3 — uses wpctl now            |
+| Doubled audio on one output    | WirePlumber rogue default-target fallback links                | FPP Lua hook should be installed — re-run Apply      |
+| AES67 garbage between tracks   | Stale buffers in GStreamer elements                            | FlushSendPipelines pad probe (automatic)             |
+| AES67 silence (no RTP packets) | pipewiresrc stalled (e.g., after testing with gst-launch)      | `systemctl restart fppd`                             |
+| 0 links in pw-link output      | WirePlumber hasn't finished linking yet                        | Wait 5-8 seconds after restart                       |
+| Filter-chain not running       | PipeWire config not applied                                    | POST /api/pipewire/audio/groups/apply                |
+| Wrong volume scale (too quiet) | Double attenuation (PipeWire + GStreamer both applying volume) | Ensure PipeWire backend skips GStreamer SetVolume    |
 
 ### Verifying a Healthy System
 
