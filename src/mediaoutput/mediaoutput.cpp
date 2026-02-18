@@ -429,7 +429,9 @@ int OpenMediaOutput(const std::string& filename) {
                 vOut = "--Disabled--";
             }
         }
+        LogWarn(VB_MEDIAOUT, "OpenMediaOutput: Creating media output for '%s' vOut='%s'\n", tmpFile.c_str(), vOut.c_str());
         mediaOutput = CreateMediaOutput(tmpFile, vOut);
+        LogWarn(VB_MEDIAOUT, "OpenMediaOutput: CreateMediaOutput returned %p\n", mediaOutput);
         if (!mediaOutput) {
             LogErr(VB_MEDIAOUT, "No Media Output handler for %s\n", tmpFile.c_str());
             return 0;
@@ -500,6 +502,7 @@ int StartMediaOutput(const std::string& filename) {
         multiSync->SendMediaSyncStartPacket(mediaOutput->m_mediaFilename);
     }
 
+    LogWarn(VB_MEDIAOUT, "StartMediaOutput: Calling Start() on mediaOutput=%p\n", mediaOutput);
     if (!mediaOutput->Start()) {
         LogErr(VB_MEDIAOUT, "Could not start media %s\n", mediaOutput->m_mediaFilename.c_str());
         delete mediaOutput;

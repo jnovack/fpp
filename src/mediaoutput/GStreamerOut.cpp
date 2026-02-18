@@ -45,19 +45,21 @@ std::mutex GStreamerOutput::s_sampleMutex;
 static bool gst_initialized = false;
 static void EnsureGStreamerInit() {
     if (!gst_initialized) {
+        LogWarn(VB_MEDIAOUT, "GStreamer: EnsureGStreamerInit() entered\n");
         // Set PipeWire env vars so pipewiresink can find the FPP PipeWire runtime
         std::string audioBackend = getSetting("AudioBackend");
         if (audioBackend == "pipewire") {
             setenv("PIPEWIRE_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("XDG_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("PULSE_RUNTIME_PATH", "/run/pipewire-fpp/pulse", 1);
-            LogInfo(VB_MEDIAOUT, "GStreamer: Set PipeWire env (PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp)\n");
+            LogWarn(VB_MEDIAOUT, "GStreamer: Set PipeWire env (PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp)\n");
         } else {
-            LogInfo(VB_MEDIAOUT, "GStreamer: AudioBackend='%s', not setting PipeWire env\n", audioBackend.c_str());
+            LogWarn(VB_MEDIAOUT, "GStreamer: AudioBackend='%s', not setting PipeWire env\n", audioBackend.c_str());
         }
+        LogWarn(VB_MEDIAOUT, "GStreamer: Calling gst_init()...\n");
         gst_init(nullptr, nullptr);
         gst_initialized = true;
-        LogInfo(VB_MEDIAOUT, "GStreamer initialized: %s\n", gst_version_string());
+        LogWarn(VB_MEDIAOUT, "GStreamer initialized: %s\n", gst_version_string());
     }
 }
 
@@ -114,12 +116,12 @@ GStreamerOutput::DrmConnectorInfo GStreamerOutput::ResolveDrmConnector(const std
 
 GStreamerOutput::GStreamerOutput(const std::string& mediaFilename, MediaOutputStatus* status, const std::string& videoOut)
     : m_videoOut(videoOut) {
+    LogWarn(VB_MEDIAOUT, "GStreamer: CTOR enter (%s, videoOut=%s)\n", mediaFilename.c_str(), videoOut.c_str());
     m_mediaFilename = mediaFilename;
     m_mediaOutputStatus = status;
     m_allowSpeedAdjust = (getSettingInt("remoteIgnoreSync") == 0);
     EnsureGStreamerInit();
-    LogDebug(VB_MEDIAOUT, "GStreamerOutput::GStreamerOutput(%s, videoOut=%s)\n",
-             mediaFilename.c_str(), videoOut.c_str());
+    LogWarn(VB_MEDIAOUT, "GStreamer: CTOR done (%s)\n", mediaFilename.c_str());
 }
 
 GStreamerOutput::~GStreamerOutput() {
@@ -127,7 +129,7 @@ GStreamerOutput::~GStreamerOutput() {
 }
 
 int GStreamerOutput::Start(int msTime) {
-    LogDebug(VB_MEDIAOUT, "GStreamerOutput::Start(%d) - %s\n", msTime, m_mediaFilename.c_str());
+    LogWarn(VB_MEDIAOUT, "GStreamer: Start(%d) enter - %s\n", msTime, m_mediaFilename.c_str());
 
     // Reset MultiSync rate-matching state for the new track
     m_currentRate = 1.0f;
@@ -237,7 +239,9 @@ int GStreamerOutput::Start(int msTime) {
     // since decodebin creates pads on-the-fly for each stream type.
     // We still use gst_parse_launch for the audio chain and manually add the video chain.
 
+    LogWarn(VB_MEDIAOUT, "GStreamer: Start() building pipeline...");
     std::string pipelineSinkName = getSetting("PipeWireSinkName");
+    LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s'\n", pipelineSinkName.c_str());
 
     std::string sinkStr;
     if (!pipelineSinkName.empty()) {
@@ -549,6 +553,7 @@ int GStreamerOutput::Start(int msTime) {
 
     } else {
         // Audio-only pipeline (original gst_parse_launch approach)
+        LogWarn(VB_MEDIAOUT, "GStreamer: Building audio-only pipeline\n");
         std::string pipelineStr =
             "filesrc location=\"" + fullPath + "\" ! decodebin ! audioconvert ! audioresample ! "
             "audio/x-raw,rate=48000 ! "
@@ -558,9 +563,11 @@ int GStreamerOutput::Start(int msTime) {
             "audioconvert ! audio/x-raw,format=F32LE,channels=1 ! "
             "appsink name=sampletap emit-signals=true sync=false max-buffers=3 drop=true";
 
-        LogDebug(VB_MEDIAOUT, "GStreamer pipeline: %s\n", pipelineStr.c_str());
+        LogWarn(VB_MEDIAOUT, "GStreamer pipeline: %s\n", pipelineStr.c_str());
 
+        LogWarn(VB_MEDIAOUT, "GStreamer: Calling gst_parse_launch()...\n");
         m_pipeline = gst_parse_launch(pipelineStr.c_str(), &error);
+        LogWarn(VB_MEDIAOUT, "GStreamer: gst_parse_launch() returned (pipeline=%p, error=%p)\n", m_pipeline, error);
         if (error) {
             LogErr(VB_MEDIAOUT, "GStreamer pipeline error: %s\n", error->message);
             g_error_free(error);
@@ -626,14 +633,28 @@ int GStreamerOutput::Start(int msTime) {
     }
 
     // Get the bus for message handling
+    LogWarn(VB_MEDIAOUT, "GStreamer: Getting bus and setting sync handler...\n");
     m_bus = gst_element_get_bus(m_pipeline);
 
     // Install sync handler for autonomous bus message processing
     // This allows GStreamer playback to work without external Process() calls
     gst_bus_set_sync_handler(m_bus, BusSyncHandler, this, nullptr);
 
+    // Flush AES67 send pipelines just before PLAYING so the drop probe
+    // catches any PipeWire graph transition artifacts (combine-stream
+    // gaining a new source).  The Close()-time flush is consumed by
+    // silence buffers during idle, so this Start()-time flush is the
+    // one that actually protects the AES67 receivers.
+#ifdef HAS_AES67_GSTREAMER
+    if (AES67Manager::INSTANCE.IsActive()) {
+        AES67Manager::INSTANCE.FlushSendPipelines();
+    }
+#endif
+
     // Seek to start position if non-zero
+    LogWarn(VB_MEDIAOUT, "GStreamer: Setting pipeline to PLAYING...\n");
     GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
+    LogWarn(VB_MEDIAOUT, "GStreamer: set_state returned %d\n", ret);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         LogErr(VB_MEDIAOUT, "Failed to set GStreamer pipeline to PLAYING\n");
         Close();
@@ -957,10 +978,10 @@ int GStreamerOutput::Close(void) {
         // Spawned as a detached thread so we don't block Close().
         FlushPipeWireDelayBuffers();
 
-        // Flush AES67 send pipelines: cycle READY → PLAYING to clear all
-        // GStreamer-internal buffers (pipewiresrc, audioconvert, rtpL24pay).
-        // Without this, stale audio from the ending track gets sent as
-        // garbage when the next track starts.
+        // Flush AES67 send pipelines — drop a few buffers to discard
+        // tail-end audio from the ending track.  The Start()-time flush
+        // is the primary protection; this Close() flush is supplementary
+        // for cases where Close→Start is very fast (back-to-back tracks).
 #ifdef HAS_AES67_GSTREAMER
         if (AES67Manager::INSTANCE.IsActive()) {
             AES67Manager::INSTANCE.FlushSendPipelines();
