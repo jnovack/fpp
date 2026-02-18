@@ -443,31 +443,36 @@ filesrc ! decodebin name=decoder
 
 ---
 
-## Phase 5: MultiSync Rate Adjustment
+## Phase 5: MultiSync Rate Adjustment ✅ COMPLETE
 
 **Objective:** Implement remote/multisync speed matching equivalent to VLC's `AdjustSpeed()`.
 
-### Current Code
-- `VLCOut.cpp` lines 553-700: ~150 lines of rate matching logic
-- Circular buffer of position diffs, trend detection, proportional rate adjustment
-- Rate clamped [0.5, 2.0], seek jumps for >10s drift
-- SDLOutput does NOT implement speed adjustment (no-op)
+**Completed:** Full port of VLC rate-matching algorithm to GStreamer.
 
-### Target Design
-```cpp
-// GStreamer rate adjustment:
-// gst_element_seek(pipeline, rate, GST_FORMAT_TIME,
-//     GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
-//     GST_SEEK_TYPE_NONE, 0, GST_SEEK_TYPE_NONE, 0);
-//
-// Port the existing trend detection / proportional control from VLCOut
-```
+### Implementation Details
+
+**Algorithm** (ported from `VLCOut.cpp`):
+- Circular buffer of last 10 diff/rate pairs for trend detection
+- Proportional rate steps: ×1.02 (speed up) / ×0.98 (slow down) per diff unit
+- Running average of last 20 rates for smoothing
+- Sign-flip detection: reset to 1.0 when diff crosses zero
+- Dead zone: <30ms diff → return to normal rate
+- Transient check: 30-100ms with no prior diff → wait one cycle
+- Jump threshold: >10s drift → seek to master position
+- Rate clamped to [0.5, 2.0]
+
+**GStreamer-specific changes vs VLC:**
+- Uses `GST_SEEK_FLAG_INSTANT_RATE_CHANGE` for glitch-free rate changes (GStreamer ≥ 1.18)
+- Falls back to flush seek at current position if instant-rate-change is unsupported
+- Position jumps via `gst_element_seek()` with `GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE`
+- Rate state stored as instance members (not in a separate data class like VLC's `VLCInternalData`)
+- Rate averaging uses per-instance `m_lastRates` list (not file-scope statics)
 
 ### Tasks
 
-- [ ] **5.1** Implement `GStreamerOutput::AdjustSpeed(float masterPos)`:
-  - Port rate-matching algorithm from VLCOut.cpp
-  - Use GStreamer seek with rate parameter
+- [x] **5.1** Implement `GStreamerOutput::AdjustSpeed(float masterPos)`:
+  - Ported rate-matching algorithm from VLCOut.cpp
+  - Uses GStreamer instant-rate-change seek
   - Same trend detection, circular buffer, proportional control
 
 - [ ] **5.2** Test in remote/multisync mode:
@@ -476,9 +481,10 @@ filesrc ! decodebin name=decoder
   - Large drifts handled with seek jumps
 
 ### Files Modified
-| File                               | Change                                         |
-| ---------------------------------- | ---------------------------------------------- |
-| `src/mediaoutput/GStreamerOut.cpp` | Implement AdjustSpeed with rate-matching logic |
+| File                               | Change                                                           |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `src/mediaoutput/GStreamerOut.h`   | Added rate-tracking members, `pushDiff()`, `ApplyRate()` helpers |
+| `src/mediaoutput/GStreamerOut.cpp` | Full AdjustSpeed implementation, rate state reset in `Start()`   |
 
 ---
 

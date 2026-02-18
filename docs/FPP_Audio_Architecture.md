@@ -16,9 +16,10 @@
 6. [GStreamer Pipelines](#gstreamer-pipelines)
 7. [WirePlumber Linking & Lua Hooks](#wireplumber-linking--lua-hooks)
 8. [Volume Control](#volume-control)
-9. [AES67 Audio-over-IP](#aes67-audio-over-ip)
-10. [Configuration Files](#configuration-files)
-11. [Debugging & Diagnostics](#debugging--diagnostics)
+9. [MultiSync Rate Adjustment](#multisync-rate-adjustment)
+10. [AES67 Audio-over-IP](#aes67-audio-over-ip)
+11. [Configuration Files](#configuration-files)
+12. [Debugging & Diagnostics](#debugging--diagnostics)
 
 ---
 
@@ -589,6 +590,49 @@ When PipeWire backend is active, `mediaOutput->SetVolume(vol)` is **skipped** to
 - PipeWire sink at 43% AND GStreamer volume element at 43% = effective 18.5% (0.43 × 0.43)
 
 The GStreamer `volume` element is only used for per-track `volumeAdjust` (dB offset configured per media file).
+
+---
+
+## MultiSync Rate Adjustment
+
+### Purpose
+
+When an FPP unit runs as a **remote** (synced to a master), its local playback position drifts relative to the master over time. The `AdjustSpeed()` method adjusts the GStreamer playback rate so the remote converges on the master's position.
+
+### Algorithm (ported from VLC)
+
+1. **Diff calculation:** `rawdiff = local_ms - master_ms`
+2. **Sign-flip detection:** If diff crosses zero and rate ≠ 1.0, reset to normal speed (prevents oscillation)
+3. **Dead zone:** |diff| < 30ms → close enough, return to rate 1.0
+4. **Jump threshold:** |diff| > 10s → seek to master position (handles fppd restarts)
+5. **Transient filter:** 30-100ms diff with no prior diff → wait one cycle before adjusting
+6. **Proportional rate steps:** `rateDiff = diff / 100` (or `/50` in first 10s for faster lock-on), then:
+   - Speed up: `rate *= 1.02` per step (when local is behind master)
+   - Slow down: `rate *= 0.98` per step (when local is ahead of master)
+7. **Rate averaging:** Running average of last 20 applied rates for smoothing
+8. **Cross-unity check:** If rate crosses 1.0, reset to 1.0 before further adjustment
+9. **Clamping:** Rate clamped to [0.5, 2.0]
+
+### GStreamer Implementation
+
+Rate changes use `GST_SEEK_FLAG_INSTANT_RATE_CHANGE` (GStreamer ≥ 1.18) for glitch-free adjustment without flushing the pipeline. Falls back to a flush seek at the current position if instant-rate-change is unsupported by the pipeline elements.
+
+Position jumps (>10s drift) use `gst_element_seek()` with `GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE`.
+
+### Configuration
+
+- **`remoteIgnoreSync`** setting (int): When set to 1, disables speed adjustment (`m_allowSpeedAdjust = false`). Default is 0 (adjustment enabled).
+
+### Key Members (`GStreamerOut.h`)
+
+| Member | Type | Purpose |
+| --- | --- | --- |
+| `m_currentRate` | `float` | Current playback rate (1.0 = normal) |
+| `m_diffs[]` | `array<pair<int,float>, 10>` | Circular buffer of diff/rate pairs |
+| `m_lastDiff` | `int` | Previous diff value (-1 initially) |
+| `m_rateDiff` | `int` | Current rate-diff step count |
+| `m_lastRates` | `list<float>` | Running rate history (max 20) |
+| `m_allowSpeedAdjust` | `bool` | Enabled unless `remoteIgnoreSync=1` |
 
 ---
 

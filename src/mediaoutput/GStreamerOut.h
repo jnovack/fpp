@@ -20,6 +20,7 @@
 #include <gst/app/gstappsink.h>
 #include <array>
 #include <atomic>
+#include <list>
 #include <mutex>
 #include <vector>
 
@@ -139,6 +140,31 @@ private:
 
     // Flush PipeWire filter-chain delay buffers between songs
     static void FlushPipeWireDelayBuffers();
+
+    // ── Phase 5: MultiSync rate adjustment (ported from VLCOut) ──
+    bool m_allowSpeedAdjust = true;
+    float m_currentRate = 1.0f;
+
+    // Circular buffer of last MAX_DIFFS diff/rate pairs for trend detection
+    static constexpr int MAX_DIFFS = 10;
+    std::array<std::pair<int, float>, MAX_DIFFS> m_diffs{};
+    int m_diffsSize = 0;
+    int m_diffIdx = 0;
+    int m_diffSum = 0;
+    float m_rateSum = 0.0f;
+
+    void pushDiff(int diff, float rate);
+
+    int m_lastDiff = -1;   // init at -1 so speedup/slowdown logic initially assumes slightly behind master
+    int m_rateDiff = 0;
+
+    // Running rate average (smooths jitter)
+    static constexpr int RATE_AVERAGE_COUNT = 20;
+    std::list<float> m_lastRates;
+    float m_lastRatesSum = 0.0f;
+
+    // Apply playback rate change via GStreamer instant-rate-change seek
+    void ApplyRate(float rate);
 
     static GStreamerOutput* m_currentInstance;
 };

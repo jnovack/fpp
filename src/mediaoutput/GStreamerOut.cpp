@@ -116,6 +116,7 @@ GStreamerOutput::GStreamerOutput(const std::string& mediaFilename, MediaOutputSt
     : m_videoOut(videoOut) {
     m_mediaFilename = mediaFilename;
     m_mediaOutputStatus = status;
+    m_allowSpeedAdjust = (getSettingInt("remoteIgnoreSync") == 0);
     EnsureGStreamerInit();
     LogDebug(VB_MEDIAOUT, "GStreamerOutput::GStreamerOutput(%s, videoOut=%s)\n",
              mediaFilename.c_str(), videoOut.c_str());
@@ -127,6 +128,17 @@ GStreamerOutput::~GStreamerOutput() {
 
 int GStreamerOutput::Start(int msTime) {
     LogDebug(VB_MEDIAOUT, "GStreamerOutput::Start(%d) - %s\n", msTime, m_mediaFilename.c_str());
+
+    // Reset MultiSync rate-matching state for the new track
+    m_currentRate = 1.0f;
+    m_diffsSize = 0;
+    m_diffIdx = 0;
+    m_diffSum = 0;
+    m_rateSum = 0.0f;
+    m_lastDiff = -1;
+    m_rateDiff = 0;
+    m_lastRates.clear();
+    m_lastRatesSum = 0.0f;
 
     // Build full path — check music dir, then video dir (mirrors SDLOutput)
     std::string fullPath = m_mediaFilename;
@@ -1041,10 +1053,218 @@ int GStreamerOutput::IsPlaying(void) {
     return m_playing ? 1 : 0;
 }
 
-int GStreamerOutput::AdjustSpeed(float masterPos) {
-    // Phase 5 — will port VLC rate-matching algorithm
-    // For now, no-op (master units don't need speed adjustment)
+int GStreamerOutput::AdjustSpeed(float masterMediaPosition) {
+    if (!m_pipeline || !m_allowSpeedAdjust)
+        return 1;
+
+    // Can't adjust speed if not playing yet
+    if (m_mediaOutputStatus->mediaSeconds < 0.01f) {
+        LogDebug(VB_MEDIAOUT, "GStreamer: Can't adjust speed if not playing yet (%0.3f/%0.3f)\n",
+                 masterMediaPosition, m_mediaOutputStatus->mediaSeconds);
+        return 1;
+    }
+    if (m_mediaOutputStatus->mediaSeconds > 1 && m_mediaOutputStatus->status == MEDIAOUTPUTSTATUS_IDLE) {
+        LogDebug(VB_MEDIAOUT, "GStreamer: Can't adjust speed if beyond end of media (%0.3f/%0.3f)\n",
+                 masterMediaPosition, m_mediaOutputStatus->mediaSeconds);
+        return 1;
+    }
+
+    float rate = m_currentRate;
+
+    if (m_lastRates.empty()) {
+        // Preload rate list with normal (1.0) rate
+        m_lastRates.push_back(1.0f);
+        m_lastRatesSum = 1.0f;
+    }
+
+    int rawdiff = (int)(m_mediaOutputStatus->mediaSeconds * 1000) - (int)(masterMediaPosition * 1000);
+    int diff = rawdiff;
+    int sign = 1;
+    if (diff < 0) {
+        sign = -1;
+        diff = -diff;
+    }
+
+    if ((m_mediaOutputStatus->mediaSeconds < 1) || (diff > 3000)) {
+        LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tMaster: %0.3f  Local: %0.3f  Rate: %0.3f\n",
+                 rawdiff, masterMediaPosition, m_mediaOutputStatus->mediaSeconds, m_currentRate);
+    } else {
+        LogExcess(VB_MEDIAOUT, "GStreamer Diff: %d\tMaster: %0.3f  Local: %0.3f  Rate: %0.3f\n",
+                  rawdiff, masterMediaPosition, m_mediaOutputStatus->mediaSeconds, m_currentRate);
+    }
+
+    pushDiff(rawdiff, m_currentRate);
+
+    // Sign-flip detection: if diff sign flipped and we're not at normal speed,
+    // reset to 1.0 to avoid oscillation
+    int oldSign = m_lastDiff < 0 ? -1 : 1;
+    if ((oldSign != sign) && (m_lastDiff != 0) && (m_currentRate != 1.0f)) {
+        LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tFlipped, reset speed to normal\t(%0.3f)\n", rawdiff, 1.0f);
+        ApplyRate(1.0f);
+        // Reset rate average list to 1.0
+        m_lastRates.clear();
+        m_lastRates.push_back(1.0f);
+        m_lastRatesSum = 1.0f;
+        m_currentRate = 1.0f;
+        m_rateDiff = 0;
+        m_lastDiff = rawdiff;
+        return 1;
+    }
+
+    if (diff < 30) {
+        // Close enough — return to normal rate
+        if (m_currentRate != 1.0f) {
+            rate = 1.0f;
+            LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tVery close, use normal rate\t(%0.3f)\n", rawdiff, rate);
+            ApplyRate(rate);
+            m_lastRates.push_back(rate);
+            m_lastRatesSum += rate;
+            while ((int)m_lastRates.size() > RATE_AVERAGE_COUNT) {
+                m_lastRatesSum -= m_lastRates.front();
+                m_lastRates.pop_front();
+            }
+            m_currentRate = rate;
+            m_rateDiff = 0;
+            m_lastDiff = rawdiff;
+        }
+        return 1;
+    } else if (diff > 10000) {
+        // More than 10 seconds off — jump to the master position
+        gint64 pos_ns = (gint64)(masterMediaPosition * GST_SECOND);
+        LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tVery far, jumping to: %0.3f\t(currently at %0.3f)\n",
+                 rawdiff, masterMediaPosition, m_mediaOutputStatus->mediaSeconds);
+        gst_element_seek(m_pipeline, 1.0, GST_FORMAT_TIME,
+                         (GstSeekFlags)(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE),
+                         GST_SEEK_TYPE_SET, pos_ns, GST_SEEK_TYPE_NONE, 0);
+        m_lastRates.clear();
+        m_lastRates.push_back(1.0f);
+        m_lastRatesSum = 1.0f;
+        m_currentRate = 1.0f;
+        m_rateDiff = 0;
+        m_lastDiff = -1; // after seeking, assume slightly behind master
+        return 1;
+    } else if (diff < 100) {
+        // Very close — could be transient; delay one cycle
+        if (!m_lastDiff) {
+            LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tVery close but could be transient, wait till next time\n", rawdiff);
+            m_lastDiff = rawdiff;
+            return 1;
+        }
+    }
+
+    // Calculate proportional rate adjustment
+    float rateDiffF = (float)diff;
+    if (m_mediaOutputStatus->mediaSeconds > 10) {
+        rateDiffF /= 100.0f;
+        if (rateDiffF > 10.0f)
+            rateDiffF = 10.0f;
+    } else {
+        // In first 10 seconds, use larger rate changes to sync faster
+        rateDiffF /= 50.0f;
+        if (rateDiffF > 20.0f)
+            rateDiffF = 20.0f;
+    }
+
+    rateDiffF *= sign;
+    int rateDiffI = (int)std::round(rateDiffF);
+
+    LogExcess(VB_MEDIAOUT, "GStreamer Diff: %d\trateDiffI: %d  m_rateDiff: %d\n", rawdiff, rateDiffI, m_rateDiff);
+
+    if (rateDiffI < m_rateDiff) {
+        for (int r = rateDiffI; r < m_rateDiff; r++) {
+            rate = rate * 1.02f;
+        }
+        LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tSpeedUp  %0.3f/%0.3f [goal/current]\n", rawdiff, rate, m_currentRate);
+    } else if (rateDiffI > m_rateDiff) {
+        for (int r = rateDiffI; r > m_rateDiff; r--) {
+            rate = rate * 0.98f;
+        }
+        LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tSlowDown %0.3f/%0.3f [goal/current]\n", rawdiff, rate, m_currentRate);
+    } else {
+        // No rate change needed
+        LogExcess(VB_MEDIAOUT, "GStreamer Diff: %d\tno rate change\n", rawdiff);
+        return 1;
+    }
+
+    // Add to rate history for running average
+    m_lastRates.push_back(rate);
+    m_lastRatesSum += rate;
+    if ((int)m_lastRates.size() > RATE_AVERAGE_COUNT) {
+        m_lastRatesSum -= m_lastRates.front();
+        m_lastRates.pop_front();
+    }
+
+    // Cross-unity check: if rate crossed 1.0, reset to 1.0
+    if (((rate > 1.0f) && (m_currentRate < 1.0f)) || ((rate < 1.0f) && (m_currentRate > 1.0f))) {
+        rate = 1.0f;
+        m_rateDiff = 0;
+    }
+
+    LogExcess(VB_MEDIAOUT, "GStreamer Diff: %d\toldDiff: %d\tnewRate: %0.3f oldRate: %0.3f avgRate: %0.3f rateSum: %0.3f/%d\n",
+              rawdiff, m_lastDiff, m_lastRates.back(), m_currentRate, rate, m_lastRatesSum, (int)m_lastRates.size());
+
+    // Clamp rate to safe range
+    if (rate > 2.0f)
+        rate = 2.0f;
+    if (rate < 0.5f)
+        rate = 0.5f;
+
+    // Only apply if rate changed by > 0.001
+    if ((int)(rate * 1000) != (int)(m_currentRate * 1000)) {
+        LogDebug(VB_MEDIAOUT, "GStreamer Diff: %d\tApplyRate\t(%0.3f)\n", rawdiff, rate);
+        ApplyRate(rate);
+        m_currentRate = rate;
+        if (rate == 1.0f) {
+            m_rateDiff = 0;
+        } else {
+            m_rateDiff = rateDiffI;
+        }
+    }
+
+    m_lastDiff = rawdiff;
     return 1;
+}
+
+void GStreamerOutput::pushDiff(int diff, float rate) {
+    m_diffSum += diff;
+    m_rateSum += rate;
+    if (m_diffsSize < MAX_DIFFS) {
+        m_diffIdx = m_diffsSize;
+        m_diffsSize++;
+    } else {
+        m_diffIdx++;
+        if (m_diffIdx == MAX_DIFFS) {
+            m_diffIdx = 0;
+        }
+        m_diffSum -= m_diffs[m_diffIdx].first;
+        m_rateSum -= m_diffs[m_diffIdx].second;
+    }
+    m_diffs[m_diffIdx].first = diff;
+    m_diffs[m_diffIdx].second = rate;
+}
+
+void GStreamerOutput::ApplyRate(float rate) {
+    if (!m_pipeline)
+        return;
+
+    // Use instant-rate-change (GStreamer >= 1.18) for glitch-free rate adjustment.
+    // Falls back to a flush seek if instant-rate-change fails.
+    gboolean ok = gst_element_seek(m_pipeline, (gdouble)rate, GST_FORMAT_TIME,
+                                   GST_SEEK_FLAG_INSTANT_RATE_CHANGE,
+                                   GST_SEEK_TYPE_NONE, 0, GST_SEEK_TYPE_NONE, 0);
+    if (!ok) {
+        // Fallback: flush seek to current position with new rate
+        gint64 pos = 0;
+        if (gst_element_query_position(m_pipeline, GST_FORMAT_TIME, &pos)) {
+            LogDebug(VB_MEDIAOUT, "GStreamer: instant-rate-change failed, falling back to flush seek at %" GST_TIME_FORMAT "\n",
+                     GST_TIME_ARGS(pos));
+            gst_element_seek(m_pipeline, (gdouble)rate, GST_FORMAT_TIME,
+                             (GstSeekFlags)(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT),
+                             GST_SEEK_TYPE_SET, pos, GST_SEEK_TYPE_NONE, 0);
+        } else {
+            LogWarn(VB_MEDIAOUT, "GStreamer: ApplyRate(%0.3f) failed — could not query position\n", rate);
+        }
+    }
 }
 
 void GStreamerOutput::SetVolume(int volume) {
