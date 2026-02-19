@@ -100,6 +100,7 @@ struct AES67Pipeline {
     bool isSend = true;
     GstElement* pipeline = nullptr;
     GstElement* rtpbin = nullptr;
+    GstBus* bus = nullptr;          // polled by watchdog (no GLib main loop)
 
     // Pipeline state
     bool running = false;
@@ -111,6 +112,12 @@ struct AES67Pipeline {
     volatile int dropCounter = 0;
     GstPad* probePad = nullptr;          // pad where probe is installed
     gulong probeId = 0;                  // installed probe handle (0 = none)
+
+    // Zombie detection: track bytes pushed by udpsink across watchdog cycles.
+    // If bytes haven't increased for 2 consecutive checks while pipeline
+    // reports PLAYING, the pipewiresrc has lost its PipeWire connection.
+    uint64_t lastByteCount = 0;
+    int     stallCount = 0;              // consecutive checks with no progress
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -236,6 +243,10 @@ private:
     bool IsPtp4lRunning() const;         // check if ptp4l process is alive
     std::string GetPTPClockId();         // EUI-64 from interface MAC
     std::string GetPtp4lState();         // query ptp4l state via pmc
+
+    // Pipeline watchdog — called from SAP thread to poll bus messages
+    // and restart any pipeline that isn't in PLAYING state.
+    void PollPipelinesWatchdog();
 
     // Pipeline management
     std::map<int, AES67Pipeline> m_sendPipelines;    // keyed by instance ID

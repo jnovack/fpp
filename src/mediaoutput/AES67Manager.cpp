@@ -595,10 +595,10 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
     // handled externally by ptp4l + phc2sys, which keeps the system clock
     // aligned with PTP time.  We do NOT call gst_pipeline_use_clock() here.
 
-    // Add bus watch
+    // Store the bus for polling in the watchdog thread.
+    // gst_bus_add_watch() requires a running GLib main loop which fppd does
+    // not have — use gst_bus_pop() polling instead.
     GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
-    gst_bus_add_watch(bus, OnBusMessage, this);
-    gst_object_unref(bus);
 
     // Start pipeline in PLAYING state.  With node.autoconnect=false on
     // pipewiresrc, only the PipeWire filter-chain (which has an explicit
@@ -608,6 +608,7 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
     GstStateChangeReturn ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         LogErr(VB_MEDIAOUT, "AES67 send pipeline [%d] failed to start\n", inst.id);
+        gst_object_unref(bus);
         gst_object_unref(pipeline);
         return false;
     }
@@ -616,6 +617,7 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
     p.instanceId = inst.id;
     p.isSend = true;
     p.pipeline = pipeline;
+    p.bus = bus;  // watchdog takes ownership — released in TeardownPipeline
     p.running = true;
     m_sendPipelines[inst.id] = p;
 
@@ -675,19 +677,18 @@ bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
         return false;
     }
 
+    // Store the bus for polling in the watchdog thread (no GLib main loop).
+    GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
+
     // Note: PTP synchronization is handled externally by ptp4l + phc2sys.
     // The system clock is kept in sync with PTP, so the default pipeline
     // clock (system clock) inherits PTP accuracy.
-
-    // Add bus watch
-    GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
-    gst_bus_add_watch(bus, OnBusMessage, this);
-    gst_object_unref(bus);
 
     // Start pipeline
     GstStateChangeReturn ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         LogErr(VB_MEDIAOUT, "AES67 recv pipeline [%d] failed to start\n", inst.id);
+        gst_object_unref(bus);
         gst_object_unref(pipeline);
         return false;
     }
@@ -696,6 +697,7 @@ bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
     p.instanceId = inst.id;
     p.isSend = false;
     p.pipeline = pipeline;
+    p.bus = bus;  // watchdog takes ownership
     p.running = true;
     m_recvPipelines[inst.id] = p;
 
@@ -712,13 +714,11 @@ void AES67Manager::StopPipeline(AES67Pipeline& p) {
     if (p.pipeline) {
         gst_element_set_state(p.pipeline, GST_STATE_NULL);
 
-        // Remove bus watch
-        GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(p.pipeline));
-        if (bus) {
-            gst_bus_remove_watch(bus);
-            gst_object_unref(bus);
+        // Release the bus ref we stored at pipeline creation
+        if (p.bus) {
+            gst_object_unref(p.bus);
+            p.bus = nullptr;
         }
-
         gst_object_unref(p.pipeline);
         p.pipeline = nullptr;
         p.running = false;
@@ -770,12 +770,12 @@ void AES67Manager::FlushSendPipelines() {
         if (!p.pipeline || !p.running)
             continue;
 
-        // Drop the next ~50 buffers (~200ms at 48kHz/192-sample packets)
+        // Drop the next ~10 buffers (~53ms at 256-sample quantum / 48kHz)
         // from pipewiresrc's src pad.  This discards any stale audio that
         // was queued in GStreamer elements between the old track stopping
         // and the new one starting, without disrupting the pipeline's
         // event flow (no flush-start/stop, no state change).
-        constexpr int DROP_COUNT = 50;
+        constexpr int DROP_COUNT = 10;
         LogInfo(VB_MEDIAOUT, "AES67 send pipeline [%d]: dropping next %d buffers\n",
                 p.instanceId, DROP_COUNT);
 
@@ -815,6 +815,122 @@ void AES67Manager::FlushSendPipelines() {
 // ──────────────────────────────────────────────────────────────────────────────
 // GStreamer bus callback
 // ──────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// Pipeline watchdog — polls bus messages and recovers crashed pipelines.
+// Called from the SAP announcer thread (every SAP_ANNOUNCE_INTERVAL_S seconds).
+// fppd does not run a GLib main loop, so gst_bus_add_watch() callbacks would
+// never fire.  We poll the bus manually and promote any ERROR/WARNING messages.
+// ──────────────────────────────────────────────────────────────────────────────
+void AES67Manager::PollPipelinesWatchdog() {
+    bool needsRebuild = false;
+
+    {  // scope for pipeline mutex
+    std::lock_guard<std::mutex> lock(m_pipelineMutex);
+
+    auto checkPipelines = [this, &needsRebuild](std::map<int, AES67Pipeline>& pipelines, const char* direction) {
+        for (auto& kv : pipelines) {
+            AES67Pipeline& p = kv.second;
+            if (!p.pipeline || !p.running) continue;
+
+            // Drain bus messages (error, warning, state changes)
+            if (p.bus) {
+                GstMessage* msg;
+                while ((msg = gst_bus_pop(p.bus)) != nullptr) {
+                    switch (GST_MESSAGE_TYPE(msg)) {
+                        case GST_MESSAGE_ERROR: {
+                            GError* err = nullptr; gchar* dbg = nullptr;
+                            gst_message_parse_error(msg, &err, &dbg);
+                            LogErr(VB_MEDIAOUT,
+                                   "AES67 %s pipeline [%d] bus error: %s\n",
+                                   direction, p.instanceId, err->message);
+                            g_error_free(err); g_free(dbg);
+                            p.errorMessage = "GStreamer error";
+                            break;
+                        }
+                        case GST_MESSAGE_WARNING: {
+                            GError* err = nullptr; gchar* dbg = nullptr;
+                            gst_message_parse_warning(msg, &err, &dbg);
+                            LogWarn(VB_MEDIAOUT,
+                                    "AES67 %s pipeline [%d] bus warning: %s\n",
+                                    direction, p.instanceId, err->message);
+                            g_error_free(err); g_free(dbg);
+                            break;
+                        }
+                        default: break;
+                    }
+                    gst_message_unref(msg);
+                }
+            }
+
+            // Check current pipeline state
+            GstState curState = GST_STATE_NULL, pendingState = GST_STATE_VOID_PENDING;
+            gst_element_get_state(p.pipeline, &curState, &pendingState, 0 /* no blocking */);
+
+            if (curState != GST_STATE_PLAYING && pendingState != GST_STATE_PLAYING) {
+                LogWarn(VB_MEDIAOUT,
+                        "AES67 %s pipeline [%d] is in %s state — recovering to PLAYING\n",
+                        direction, p.instanceId,
+                        gst_element_state_get_name(curState));
+                GstStateChangeReturn ret =
+                    gst_element_set_state(p.pipeline, GST_STATE_PLAYING);
+                if (ret == GST_STATE_CHANGE_FAILURE) {
+                    LogErr(VB_MEDIAOUT,
+                           "AES67 %s pipeline [%d] recovery failed — flagging for rebuild\n",
+                           direction, p.instanceId);
+                    p.running = false;
+                    p.errorMessage = "Watchdog recovery failed";
+                    needsRebuild = true;
+                } else {
+                    LogInfo(VB_MEDIAOUT,
+                            "AES67 %s pipeline [%d] watchdog recovery: set_state returned %d\n",
+                            direction, p.instanceId, ret);
+                }
+            } else if (p.isSend) {
+                // Zombie detection for send pipelines: check if udpsink
+                // is actually pushing bytes.  pipewiresrc can lose its
+                // PipeWire socket connection (e.g. PipeWire restart) while
+                // GStreamer still reports PLAYING — producing no output.
+                GstElement* usink = gst_bin_get_by_name(GST_BIN(p.pipeline), "usink");
+                if (usink) {
+                    guint64 bytesSent = 0;
+                    g_object_get(usink, "bytes-served", &bytesSent, NULL);
+                    gst_object_unref(usink);
+
+                    if (bytesSent == p.lastByteCount) {
+                        p.stallCount++;
+                        if (p.stallCount >= 2) {
+                            LogWarn(VB_MEDIAOUT,
+                                    "AES67 %s pipeline [%d] stalled (bytes-sent=%llu for %d checks) — scheduling rebuild\n",
+                                    direction, p.instanceId, (unsigned long long)bytesSent, p.stallCount);
+                            p.running = false;
+                            p.errorMessage = "Watchdog: pipeline stalled";
+                            needsRebuild = true;
+                        }
+                    } else {
+                        p.stallCount = 0;
+                    }
+                    p.lastByteCount = bytesSent;
+                }
+            }
+        }
+    };
+
+    checkPipelines(m_sendPipelines, "send");
+    checkPipelines(m_recvPipelines, "recv");
+
+    // If any pipeline needs rebuilding, re-apply config.
+    // ApplyConfig() tears down all pipelines and recreates them with fresh
+    // PipeWire connections.
+    if (needsRebuild) {
+        LogWarn(VB_MEDIAOUT, "AES67 watchdog: triggering full pipeline rebuild\n");
+    }
+    }  // end pipeline mutex scope
+
+    if (needsRebuild) {
+        ApplyConfig();
+    }
+}
+
 gboolean AES67Manager::OnBusMessage(GstBus* bus, GstMessage* msg, gpointer userData) {
     switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_ERROR: {
@@ -1069,6 +1185,13 @@ void AES67Manager::SAPAnnounceLoop() {
         // Sleep for SAP_ANNOUNCE_INTERVAL_S, checking shutdown flag every second
         for (int i = 0; i < AES67::SAP_ANNOUNCE_INTERVAL_S && m_sapAnnounceRunning.load(); i++) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+
+        // Poll pipeline bus messages and recover any crashed pipelines.
+        // Runs every SAP_ANNOUNCE_INTERVAL_S (30s) — fast enough to detect
+        // silent failures without adding significant overhead.
+        if (m_sapAnnounceRunning.load()) {
+            PollPipelinesWatchdog();
         }
     }
 

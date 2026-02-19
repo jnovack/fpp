@@ -388,6 +388,43 @@ function GetPipeWireAudioCards()
     }
     unset($idOutput);
 
+    // Build direct alsa-card-number → PipeWire-node-name map via pw-dump.
+    // This is more reliable than by-id/by-path heuristics for identical USB
+    // cards where Linux only assigns one by-id symlink (e.g. two ICUSBAUDIO7D
+    // get one by-id entry pointing to one of them, leaving the other unresolvable).
+    $pwSinkByAlsaCardNum = array(); // alsa card number (int) => PW sink node name
+    $pwDumpOutput = shell_exec($SUDO . ' ' . $pwEnv . ' pw-dump 2>/dev/null');
+    if ($pwDumpOutput) {
+        $pwObjects = json_decode($pwDumpOutput, true);
+        if (is_array($pwObjects)) {
+            foreach ($pwObjects as $pwObj) {
+                $pwProps = isset($pwObj['info']['props']) ? $pwObj['info']['props'] : null;
+                if (!$pwProps) continue;
+                $pwClass = isset($pwProps['media.class']) ? $pwProps['media.class'] : '';
+                if ($pwClass !== 'Audio/Sink') continue;
+                $pwName = isset($pwProps['node.name']) ? $pwProps['node.name'] : '';
+                if ($pwName === '') continue;
+                // Strategy 1: WirePlumber-created sinks have alsa.card property
+                $pwAlsaCard = isset($pwProps['alsa.card']) ? strval($pwProps['alsa.card']) : '';
+                if ($pwAlsaCard !== '') {
+                    $pwCardNumInt = intval($pwAlsaCard);
+                    // Prefer non-fpp_fx sinks (raw card sinks over filter-chain nodes)
+                    if (!isset($pwSinkByAlsaCardNum[$pwCardNumInt]) ||
+                            strpos($pwName, 'fpp_fx') === false) {
+                        $pwSinkByAlsaCardNum[$pwCardNumInt] = $pwName;
+                    }
+                }
+                // Strategy 2: FPP-created sinks are named alsa_output.fpp_card{N}
+                // and do not have alsa.card set — derive card number from the name.
+                if (preg_match('/^alsa_output\.fpp_card(\d+)$/', $pwName, $fppMatch)) {
+                    $pwCardNumInt = intval($fppMatch[1]);
+                    // FPP-created sinks take priority (they are the managed sink for the card)
+                    $pwSinkByAlsaCardNum[$pwCardNumInt] = $pwName;
+                }
+            }
+        }
+    }
+
     if (!$return_val && !empty($output)) {
         $seenCards = array();
         foreach ($output as $line) {
@@ -446,33 +483,43 @@ function GetPipeWireAudioCards()
                     $pwNodeName = '';
                     // Determine the PipeWire card identifier for this ALSA card
                     $pwCardIdentifier = '';
-                    if ($byId && isset($pwSinkNames[$byId])) {
-                        $pwNodeName = $pwSinkNames[$byId];
-                        $pwCardIdentifier = $byId;
-                    } elseif ($byPath) {
-                        // Strip trailing -audio if present for matching
-                        $byPathBase = preg_replace('/-audio$/', '', $byPath);
-                        if (isset($pwSinkNames[$byPathBase])) {
-                            $pwNodeName = $pwSinkNames[$byPathBase];
-                            $pwCardIdentifier = $byPathBase;
-                        } elseif (isset($pwSinkNames[$byPath])) {
-                            $pwNodeName = $pwSinkNames[$byPath];
-                            $pwCardIdentifier = $byPath;
-                        } else {
-                            $pwCardIdentifier = $byPathBase;
+
+                    // PRIMARY: pw-dump alsa.card → node.name mapping.
+                    // Most reliable for identical USB cards where by-id symlinks
+                    // may only exist for one of the two devices.
+                    if (isset($pwSinkByAlsaCardNum[intval($cardNum)])) {
+                        $pwNodeName = $pwSinkByAlsaCardNum[intval($cardNum)];
+                    }
+
+                    // FALLBACK: by-id / by-path heuristics (for cards not resolved above)
+                    if (empty($pwNodeName)) {
+                        if ($byId && isset($pwSinkNames[$byId])) {
+                            $pwNodeName = $pwSinkNames[$byId];
+                            $pwCardIdentifier = $byId;
+                        } elseif ($byPath) {
+                            // Strip trailing -audio if present for matching
+                            $byPathBase = preg_replace('/-audio$/', '', $byPath);
+                            if (isset($pwSinkNames[$byPathBase])) {
+                                $pwNodeName = $pwSinkNames[$byPathBase];
+                                $pwCardIdentifier = $byPathBase;
+                            } elseif (isset($pwSinkNames[$byPath])) {
+                                $pwNodeName = $pwSinkNames[$byPath];
+                                $pwCardIdentifier = $byPath;
+                            } else {
+                                $pwCardIdentifier = $byPathBase;
+                            }
                         }
-                    }
-                    // Fallback: try fpp_card pattern
-                    if (empty($pwNodeName) && isset($pwSinkNames['fpp_card' . $cardNum])) {
-                        $pwNodeName = $pwSinkNames['fpp_card' . $cardNum];
-                    }
-                    // If still no active sink, derive the expected sink name from PipeWire card profiles
-                    // Card: alsa_card.{id} -> Sink: alsa_output.{id}.{profile}
-                    if (empty($pwNodeName) && !empty($pwCardIdentifier) && isset($pwCardProfiles[$pwCardIdentifier])) {
-                        $profiles = $pwCardProfiles[$pwCardIdentifier];
-                        // Pick the first available output profile
-                        if (!empty($profiles)) {
-                            $pwNodeName = 'alsa_output.' . $pwCardIdentifier . '.' . $profiles[0];
+                        // Fallback: try fpp_card pattern
+                        if (empty($pwNodeName) && isset($pwSinkNames['fpp_card' . $cardNum])) {
+                            $pwNodeName = $pwSinkNames['fpp_card' . $cardNum];
+                        }
+                        // If still no active sink, derive expected sink name from PipeWire card profiles
+                        // Card: alsa_card.{id} -> Sink: alsa_output.{id}.{profile}
+                        if (empty($pwNodeName) && !empty($pwCardIdentifier) && isset($pwCardProfiles[$pwCardIdentifier])) {
+                            $profiles = $pwCardProfiles[$pwCardIdentifier];
+                            if (!empty($profiles)) {
+                                $pwNodeName = 'alsa_output.' . $pwCardIdentifier . '.' . $profiles[0];
+                            }
                         }
                     }
 

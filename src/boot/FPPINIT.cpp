@@ -1831,7 +1831,7 @@ static void setupAudio() {
                      << "      media.class = \"Audio/Sink\"\n"
                      << "      api.alsa.path = \"hw:" << cardId << "\"\n"
                      << "      api.alsa.period-size = " << perSize << "\n"
-                     << "      api.alsa.headroom = 0\n"
+                     << "      api.alsa.headroom = 256\n"
                      << "      audio.format = \"S16LE\"\n"
                      << "      audio.rate = " << pipewireSampleRate << "\n"
                      << "      audio.channels = 2\n"
