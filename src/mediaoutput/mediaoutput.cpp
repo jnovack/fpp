@@ -95,20 +95,60 @@ void setVolume(int vol) {
 #ifndef PLATFORM_OSX
     volume = vol;
     float fvol = volume;
-    
+
+    // Detect whether PipeWire is using an audio group (combine-stream).
+    // Audio groups use combine-stream for multi-card output; volume must be
+    // controlled via software on the combine-stream so all group members
+    // attenuate equally.  For direct ALSA sinks (single card), volume goes
+    // through the ALSA hardware mixer for exact curve parity with ALSA mode.
+    bool isAudioGroup = false;
+    std::string pipewireSink;
     if (usePipeWireBackend) {
+        pipewireSink = getSetting("PipeWireSinkName");
+        isAudioGroup = (pipewireSink.find("fpp_group") != std::string::npos);
+    }
+
+    // === ALSA hardware volume ===
+    // For audio groups: pin hardware at 100% (max) so the combine-stream
+    // software volume is the only attenuator.  This is critical because
+    // some cards (bcm2835) have a hardware max above 0 dB (+4 dB) —
+    // PipeWire/WirePlumber defaults to 0 dB, leaving headroom unused and
+    // making PipeWire mode quieter than ALSA mode at FPP 100%.
+    //
+    // For everything else (ALSA mode, PipeWire direct-sink mode): set
+    // hardware volume to the FPP percentage, exactly as legacy ALSA mode
+    // does, preserving the same volume curve and range.
+    if (isAudioGroup) {
+        snprintf(buffer, sizeof(buffer), "amixer set -c %d '%s' -- 100%% >/dev/null 2>&1",
+                 audioOutput, mixerDevice.c_str());
+        LogDebug(VB_MEDIAOUT, "PipeWire audio group: pinning ALSA hardware to max: %s \n", buffer);
+        system(buffer);
+    } else {
+#ifdef PLATFORM_PI
+        if (audioOutput == 0 && audio0Type == "bcm2") {
+            fvol = volume;
+            fvol /= 2;
+            fvol += 50;
+        }
+#endif
+        snprintf(buffer, sizeof(buffer), "amixer set -c %d '%s' -- %.2f%% >/dev/null 2>&1",
+                 audioOutput, mixerDevice.c_str(), fvol);
+        LogDebug(VB_SETTING, "Volume change: %d \n", volume);
+        LogDebug(VB_MEDIAOUT, "Setting ALSA hardware volume: %s \n", buffer);
+        system(buffer);
+    }
+
+    // === PipeWire combine-stream volume (audio groups only) ===
+    // For audio groups, software volume on the combine-stream controls all
+    // group members equally.  wpctl uses cubic mapping (value^3 = linear),
+    // which gives a perceptual curve.  Mute/unmute is handled via wpctl for
+    // true silence at volume 0.
+    if (usePipeWireBackend && isAudioGroup) {
         const bool shouldMute = (volume == 0);
-        std::string pipewireSink = getSetting("PipeWireSinkName");
-        
-        // Use wpctl to control PipeWire volume directly (no pipewire-pulse needed)
-        // wpctl uses cubic volume mapping: 0.43 → linear 0.43^3 ≈ 0.0795
-        // This matches PulseAudio's volume curve, so the perceptual scale is correct
         std::string pwPrefix = "PIPEWIRE_REMOTE=/run/pipewire-fpp/pipewire-0 ";
 
-        // Determine the wpctl target: use node ID if sink name specified, else default
         std::string wpctlTarget = "@DEFAULT_AUDIO_SINK@";
         if (!pipewireSink.empty()) {
-            // Look up node ID by name using pw-cli
             FILE* fp = popen((pwPrefix + "pw-cli ls Node 2>/dev/null | grep -B5 'node.name = \"" 
                 + pipewireSink + "\"' | grep 'id ' | tail -1 | sed 's/.*id \\([0-9]*\\).*/\\1/'").c_str(), "r");
             if (fp) {
@@ -128,63 +168,42 @@ void setVolume(int vol) {
 
         bool wasZero = (lastPipeWireVolume == 0);
         bool isZero = shouldMute;
-        
-        // First call: initialize from actual volume value
+
         if (lastPipeWireVolume == -1) {
-            wasZero = isZero;  // Treat first call as if we're already in that state
+            wasZero = isZero;
         }
 
-        // Use wpctl for volume control (works directly with PipeWire/WirePlumber)
-
         if (isZero && !wasZero) {
-            // Going to zero: mute immediately
             snprintf(buffer, sizeof(buffer),
                  "%s wpctl set-mute %s 1 >/dev/null 2>&1",
                  pwPrefix.c_str(), wpctlTarget.c_str());
-            LogDebug(VB_MEDIAOUT, "Calling wpctl to mute PipeWire: %s \n", buffer);
+            LogDebug(VB_MEDIAOUT, "Muting PipeWire combine-stream: %s \n", buffer);
             system(buffer);
         } else if (!isZero && wasZero) {
-            // Coming from zero: set volume first, then unmute
             snprintf(buffer, sizeof(buffer),
                  "%s sh -c 'wpctl set-volume %s %.4f && wpctl set-mute %s 0' >/dev/null 2>&1",
                  pwPrefix.c_str(), wpctlTarget.c_str(), volFloat, wpctlTarget.c_str());
-            LogDebug(VB_MEDIAOUT, "Calling wpctl to set PipeWire volume and unmute: %s \n", buffer);
+            LogDebug(VB_MEDIAOUT, "Setting PipeWire combine-stream volume and unmuting: %s \n", buffer);
             system(buffer);
         } else if (!isZero) {
-            // Volume change while playing: only adjust volume, don't touch mute
             snprintf(buffer, sizeof(buffer),
                  "%s wpctl set-volume %s %.4f >/dev/null 2>&1",
                  pwPrefix.c_str(), wpctlTarget.c_str(), volFloat);
-            LogDebug(VB_MEDIAOUT, "Calling wpctl to set PipeWire volume: %s \n", buffer);
+            LogDebug(VB_MEDIAOUT, "Setting PipeWire combine-stream volume: %s \n", buffer);
             system(buffer);
         }
-        
-        // Update state after processing
-        lastPipeWireVolume = volume;
-    } else {
-#ifdef PLATFORM_PI
-        // Apply bcm2 audio scaling for ALSA only
-        if (audioOutput == 0 && audio0Type == "bcm2") {
-            fvol = volume;
-            fvol /= 2;
-            fvol += 50;
-        }
-#endif
-        snprintf(buffer, 60, "amixer set -c %d '%s' -- %.2f%% >/dev/null 2>&1",
-                 audioOutput, mixerDevice.c_str(), fvol);
 
-        LogDebug(VB_SETTING, "Volume change: %d \n", volume);
-        LogDebug(VB_MEDIAOUT, "Calling amixer to set the volume: %s \n", buffer);
-        system(buffer);
+        lastPipeWireVolume = volume;
     }
 #else
     MacOSSetVolume(vol);
 #endif
 
     std::unique_lock<std::mutex> lock(mediaOutputLock);
-    // For PipeWire backend, volume is controlled on the PipeWire sink via wpctl.
-    // Don't also set the GStreamer volume element or we get double attenuation.
-    // The GStreamer volume element is still used for per-track volumeAdjust (dB offset).
+    // Volume is controlled via ALSA hardware mixer (all modes) or PipeWire
+    // combine-stream (audio group mode).  Don't also set the GStreamer volume
+    // element or we get double attenuation.  The GStreamer volume element is
+    // still used for per-track volumeAdjust (dB offset).
     if (mediaOutput && !usePipeWireBackend)
         mediaOutput->SetVolume(vol);
 }
