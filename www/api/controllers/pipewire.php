@@ -399,18 +399,23 @@ function GetPipeWireAudioCards()
         if (is_array($pwObjects)) {
             foreach ($pwObjects as $pwObj) {
                 $pwProps = isset($pwObj['info']['props']) ? $pwObj['info']['props'] : null;
-                if (!$pwProps) continue;
+                if (!$pwProps)
+                    continue;
                 $pwClass = isset($pwProps['media.class']) ? $pwProps['media.class'] : '';
-                if ($pwClass !== 'Audio/Sink') continue;
+                if ($pwClass !== 'Audio/Sink')
+                    continue;
                 $pwName = isset($pwProps['node.name']) ? $pwProps['node.name'] : '';
-                if ($pwName === '') continue;
+                if ($pwName === '')
+                    continue;
                 // Strategy 1: WirePlumber-created sinks have alsa.card property
                 $pwAlsaCard = isset($pwProps['alsa.card']) ? strval($pwProps['alsa.card']) : '';
                 if ($pwAlsaCard !== '') {
                     $pwCardNumInt = intval($pwAlsaCard);
                     // Prefer non-fpp_fx sinks (raw card sinks over filter-chain nodes)
-                    if (!isset($pwSinkByAlsaCardNum[$pwCardNumInt]) ||
-                            strpos($pwName, 'fpp_fx') === false) {
+                    if (
+                        !isset($pwSinkByAlsaCardNum[$pwCardNumInt]) ||
+                        strpos($pwName, 'fpp_fx') === false
+                    ) {
                         $pwSinkByAlsaCardNum[$pwCardNumInt] = $pwName;
                     }
                 }
