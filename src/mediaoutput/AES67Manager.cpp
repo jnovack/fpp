@@ -911,14 +911,25 @@ uint16_t AES67Manager::ComputeSAPHash(const AES67Instance& inst) {
 std::string AES67Manager::BuildSDP(const AES67Instance& inst,
                                     const std::string& sourceIP,
                                     const std::string& ptpClockId) {
-    // AES67-compliant SDP — matches fpp_aes67_common.py build_sdp()
-    int sessionId = std::abs((int)std::hash<std::string>{}(inst.name)) % (1 << 30);
+    // AES67-compliant SDP — unique session ID per device + stream.
+    // Combine source IP, stream name, multicast IP, and port so that
+    // different FPP boxes (or different streams on the same box) always
+    // produce distinct o= lines.
+    std::string key = sourceIP + ":" + inst.name + ":" +
+                      inst.multicastIP + ":" + std::to_string(inst.port);
+    // FNV-1a hash → deterministic, stable across restarts, unique per key
+    uint32_t h = 2166136261u;
+    for (char c : key) {
+        h ^= (uint32_t)(unsigned char)c;
+        h *= 16777619u;
+    }
+    int sessionId = (int)(h & 0x3FFFFFFFu);  // 30-bit positive value
 
     std::ostringstream sdp;
     sdp << "v=0\r\n"
         << "o=- " << sessionId << " " << sessionId << " IN IP4 " << sourceIP << "\r\n"
         << "s=" << inst.sessionName << "\r\n"
-        << "c=IN IP4 " << inst.multicastIP << "/" << AES67::SAP_TTL << "\r\n"
+        << "c=IN IP4 " << inst.multicastIP << "/" << AES67::AUDIO_RTP_TTL << "\r\n"
         << "t=0 0\r\n"
         << "m=audio " << inst.port << " RTP/AVP " << AES67::RTP_PAYLOAD_TYPE << "\r\n"
         << "a=rtpmap:" << AES67::RTP_PAYLOAD_TYPE << " L24/"
@@ -1037,11 +1048,22 @@ void AES67Manager::SAPAnnounceLoop() {
         entries.push_back(entry);
     }
 
+    if (entries.empty()) {
+        LogWarn(VB_MEDIAOUT, "AES67 SAP: No SAP-enabled send instances — announcer has nothing to send\n");
+    } else {
+        LogInfo(VB_MEDIAOUT, "AES67 SAP: Announcing %d stream(s) to %s:%d every %ds\n",
+                (int)entries.size(), AES67::SAP_MCAST_ADDRESS, AES67::SAP_PORT,
+                AES67::SAP_ANNOUNCE_INTERVAL_S);
+    }
+
     // Announce loop
     while (m_sapAnnounceRunning.load()) {
         for (const auto& entry : entries) {
-            sendto(sock, entry.announcePacket.data(), entry.announcePacket.size(), 0,
+            ssize_t sent = sendto(sock, entry.announcePacket.data(), entry.announcePacket.size(), 0,
                    (struct sockaddr*)&sapAddr, sizeof(sapAddr));
+            if (sent < 0) {
+                LogErr(VB_MEDIAOUT, "AES67 SAP: sendto failed: %s\n", strerror(errno));
+            }
         }
 
         // Sleep for SAP_ANNOUNCE_INTERVAL_S, checking shutdown flag every second
