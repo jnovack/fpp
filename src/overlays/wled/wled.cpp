@@ -25,6 +25,11 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_audio.h>
 
+#ifdef HAS_GSTREAMER
+#include <gst/gst.h>
+#include <gst/app/gstappsink.h>
+#endif
+
 #include "wled.h"
 
 #include "kiss_fftr.h"
@@ -162,6 +167,13 @@ public:
             SDL_PauseAudioDevice(audioDev, 1);
             SDL_CloseAudioDevice(audioDev);
         }
+#ifdef HAS_GSTREAMER
+        if (gstPipeline) {
+            gst_element_set_state(gstPipeline, GST_STATE_NULL);
+            gst_object_unref(gstPipeline);
+            gstPipeline = nullptr;
+        }
+#endif
     }
     static void InputAudioCallback(WLEDAudioReactiveSoundSource* p, uint8_t* stream, int len) {
         int16_t* data = (int16_t*)stream;
@@ -176,23 +188,95 @@ public:
             float f = data[start + i] / 32768.0f;
             p->inputSamples[i] = data[start + i];
         }
-        /*
-        float sum = 0;
-        float min = 99999;
-        float max = -99999;
-        for (int i = 0; i < numSamples; i++) {
-            sum += data[i];
-            if (data[i] < min) {
-                min = data[i];
-            }
-            if (data[i] > max) {
-                max = data[i];
-            }
-        }
-        printf("Samples: %d  Sum: %0.3f      %0.3f -> %0.3f\n", numSamples, sum, min, max);
-        */
     }
+
+#ifdef HAS_GSTREAMER
+    // Open a PipeWire audio source via GStreamer pipewiresrc.
+    // dev is the PipeWire node.name (e.g. "alsa_input.usb-0d8c_USB_Sound_Device-00.analog-stereo")
+    void openGStreamerCapture(const std::string& dev) {
+        GStreamerOutput::EnsureGStreamerInit();
+
+        // Build pipeline: pipewiresrc target-object=<node> ! audioconvert ! audioresample !
+        //   audio/x-raw,format=S16LE,channels=1,rate=44100 ! appsink name=wledsink
+        std::string pipelineStr =
+            "pipewiresrc target-object=" + dev + " ! audioconvert ! audioresample ! "
+            "audio/x-raw,format=S16LE,channels=1,rate=44100 ! "
+            "appsink name=wledsink max-buffers=2 drop=true";
+
+        GError* error = nullptr;
+        gstPipeline = gst_parse_launch(pipelineStr.c_str(), &error);
+        if (error) {
+            WarningHolder::AddWarning("WLED Sound Reactive - GStreamer pipeline error: " + std::string(error->message));
+            LogErr(VB_MEDIAOUT, "WLED GStreamer capture pipeline error: %s\n", error->message);
+            g_error_free(error);
+            return;
+        }
+
+        GstElement* appsink = gst_bin_get_by_name(GST_BIN(gstPipeline), "wledsink");
+        if (!appsink) {
+            WarningHolder::AddWarning("WLED Sound Reactive - Could not find appsink in pipeline");
+            gst_object_unref(gstPipeline);
+            gstPipeline = nullptr;
+            return;
+        }
+        gst_app_sink_set_emit_signals(GST_APP_SINK(appsink), FALSE);
+        gstAppsink = appsink;
+
+        GstStateChangeReturn ret = gst_element_set_state(gstPipeline, GST_STATE_PLAYING);
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            WarningHolder::AddWarning("WLED Sound Reactive - Could not start GStreamer capture pipeline for: " + dev);
+            LogErr(VB_MEDIAOUT, "WLED GStreamer capture: failed to start pipeline for %s\n", dev.c_str());
+            gst_object_unref(appsink);
+            gstAppsink = nullptr;
+            gst_object_unref(gstPipeline);
+            gstPipeline = nullptr;
+            return;
+        }
+
+        inputSampleRate = 44100;
+        gstCaptureActive = true;
+        LogInfo(VB_MEDIAOUT, "WLED GStreamer capture: opened PipeWire source '%s'\n", dev.c_str());
+    }
+
+    bool pullGStreamerSamples() {
+        if (!gstAppsink)
+            return false;
+
+        GstSample* sample = gst_app_sink_try_pull_sample(GST_APP_SINK(gstAppsink), 0);
+        if (!sample)
+            return false;
+
+        GstBuffer* buffer = gst_sample_get_buffer(sample);
+        GstMapInfo map;
+        if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+            int16_t* data = (int16_t*)map.data;
+            int numSamples = map.size / sizeof(int16_t);
+            int start = 0;
+            if (numSamples > NUM_SAMPLES) {
+                start = numSamples - NUM_SAMPLES;
+                numSamples = NUM_SAMPLES;
+            }
+            inputSamples.fill(0);
+            for (int i = 0; i < numSamples; i++) {
+                inputSamples[i] = data[start + i];
+            }
+            gst_buffer_unmap(buffer, &map);
+        }
+        gst_sample_unref(sample);
+        return true;
+    }
+#endif
+
     void openAudioDevice(const std::string& dev) {
+#ifdef HAS_GSTREAMER
+        // In PipeWire mode, dev is a PipeWire node.name — use GStreamer pipewiresrc
+        std::string audioBackend = getSetting("AudioBackend");
+        if (audioBackend == "pipewire") {
+            openGStreamerCapture(dev);
+            return;
+        }
+#endif
+        // ALSA mode — use SDL capture
         SDL_AudioSpec want;
         SDL_AudioSpec obtained;
 
@@ -210,7 +294,7 @@ public:
         audioDev = SDL_OpenAudioDevice(dev.c_str(), 1, &want, &obtained, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
         if (audioDev < 2) {
             std::string err = SDL_GetError();
-            WarningHolder::AddWarning("WLED Sound Reactive - Could not open Output Audio Device: " + dev + "   Error: " + err);
+            WarningHolder::AddWarning("WLED Sound Reactive - Could not open Audio Input Device: " + dev + "   Error: " + err);
             return;
         }
         SDL_ClearError();
@@ -241,35 +325,35 @@ public:
                 retValue = SDLOutput::GetAudioSamples(&samples[0], NUM_SAMPLES, sampleRate);
             }
         } else if (sourceType == 1) {
-            // Audio Input
+            // Audio Input — GStreamer pipewiresrc or SDL capture
+#ifdef HAS_GSTREAMER
+            if (gstCaptureActive) {
+                retValue = pullGStreamerSamples();
+                if (retValue) {
+                    samples = inputSamples;
+                    sampleRate = inputSampleRate;
+                }
+                return retValue;
+            }
+#endif
             if (audioDev > 0) {
                 samples = inputSamples;
                 sampleRate = inputSampleRate;
                 retValue = true;
             }
         }
-        /*
-            float sum = 0;
-            float min = 999;
-            float max = -999;
-            for (int i = 0; i < NUM_SAMPLES; i++) {
-                sum += inputSamples[i];
-                if (inputSamples[i] < min) {
-                    min = inputSamples[i];
-                }
-                if (inputSamples[i] > max) {
-                    max = inputSamples[i];
-                }
-            }
-            printf("ST:  %d    Sample rate:  %d    Samples: %d  Sum: %0.3f      %0.3f -> 0.3f\n", sourceType, inputSampleRate, NUM_SAMPLES, sum, min,  max);
-        */
         return retValue;
     }
 
     int sourceType = -1;
     int audioDev = 0;
     std::array<float, NUM_SAMPLES> inputSamples;
-    int inputSampleRate;
+    int inputSampleRate = 44100;
+#ifdef HAS_GSTREAMER
+    GstElement* gstPipeline = nullptr;
+    GstElement* gstAppsink = nullptr;
+    bool gstCaptureActive = false;
+#endif
 
 } WLED_SOUND_SOURCE;
 

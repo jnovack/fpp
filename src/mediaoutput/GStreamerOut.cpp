@@ -43,7 +43,7 @@ std::mutex GStreamerOutput::s_sampleMutex;
 
 // One-time GStreamer initialization
 static bool gst_initialized = false;
-static void EnsureGStreamerInit() {
+void GStreamerOutput::EnsureGStreamerInit() {
     if (!gst_initialized) {
         LogWarn(VB_MEDIAOUT, "GStreamer: EnsureGStreamerInit() entered\n");
         // Set PipeWire env vars so pipewiresink can find the FPP PipeWire runtime

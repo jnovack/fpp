@@ -193,9 +193,62 @@ function GetOptions_AudioOutputDevice($fulllist = false)
 function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
 {
 
-    global $SUDO;
+    global $SUDO, $settings;
 
     $AlsaCards = array();
+
+    // In PipeWire mode with fulllist, enumerate PipeWire Audio/Source nodes via pw-dump.
+    // Stored value = node.name (stable PipeWire identifier), display = node.description.
+    if ($fulllist && isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') {
+        if ($allowMedia) {
+            $AlsaCards['-- Playing Media --'] = '-- Playing Media --';
+        }
+        $pwCmd = $SUDO . ' PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp pw-dump 2>/dev/null';
+        $pwJson = shell_exec($pwCmd);
+        if ($pwJson) {
+            $objects = json_decode($pwJson, true);
+            if (is_array($objects)) {
+                // First pass: collect all Audio/Source nodes
+                $sources = array();
+                foreach ($objects as $obj) {
+                    $props = isset($obj['info']['props']) ? $obj['info']['props'] : null;
+                    if (
+                        $props &&
+                        isset($props['media.class']) && $props['media.class'] === 'Audio/Source' &&
+                        isset($props['node.name'])
+                    ) {
+                        $sources[] = array(
+                            'nodeName' => $props['node.name'],
+                            'nodeDesc' => isset($props['node.description']) ? $props['node.description'] : $props['node.name'],
+                            'nodeNick' => isset($props['node.nick']) ? $props['node.nick'] : ''
+                        );
+                    }
+                }
+
+                // Count descriptions to detect duplicates
+                $descCounts = array();
+                foreach ($sources as $src) {
+                    $d = $src['nodeDesc'];
+                    $descCounts[$d] = isset($descCounts[$d]) ? $descCounts[$d] + 1 : 1;
+                }
+
+                // Build labels: always append nick (ALSA card ID) so users
+                // can identify identical hardware across different naming
+                // sources (WirePlumber SPA database vs USB product string).
+                foreach ($sources as $src) {
+                    $label = $src['nodeDesc'];
+                    $nick = $src['nodeNick'];
+                    if ($nick && strpos($label, $nick) === false) {
+                        $label .= ' (' . $nick . ')';
+                    }
+                    $AlsaCards[$label] = $src['nodeName'];
+                }
+            }
+        }
+        return json($AlsaCards);
+    }
+
+    // ALSA mode (or non-fulllist)
     if ($allowMedia) {
         if ($fulllist) {
             $AlsaCards[] = '-- Playing Media --';
@@ -206,7 +259,13 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
     }
 
     if ($fulllist) {
-        exec($SUDO . " arecord -l | grep '^card' | sed -e 's/^card //' -e 's/.*\[\(.*\)\].*\[\(.*\)\]/\\1, \\2/'", $output, $return_val);
+        // Extract ALSA short card name (before '[') + device description (last '[...]').
+        // Using the short name rather than the long description means identical-model cards
+        // are distinguished (e.g. ICUSBAUDIO7D vs ICUSBAUDIO7D_1) via ALSA's own dedup
+        // suffix, which is more stable than volatile card numbers.
+        // awk splits on [] chars: field 1 = "card N: SHORTNAME ", field 2 = "card desc", etc.
+        // Last word of field 1 = ALSA short name; $(NF-1) = last bracketed value = device name.
+        exec($SUDO . " arecord -l | grep '^card' | awk -F'[][]+' '{gsub(/ *\$/, \"\", \$1); split(\$1, a, \" \"); print a[length(a)]\", \"\$(NF-1)}'", $output, $return_val);
     } else {
         exec($SUDO . " arecord -l | grep '^card' | sed -e 's/^card //' -e 's/:[^\[]*\[/:/' -e 's/\].*\[.*\].*//' | uniq", $output, $return_val);
     }
@@ -218,7 +277,17 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
                 $AlsaCards[] = $card;
             } else {
                 $values = explode(':', $card);
-                $AlsaCards[$values[1]] = $values[0];
+                $cardNum = $values[0];
+                $cardName = $values[1];
+                if (isset($AlsaCards[$cardName])) {
+                    // Duplicate name — rename the existing entry to include its card number
+                    $existingNum = $AlsaCards[$cardName];
+                    unset($AlsaCards[$cardName]);
+                    $AlsaCards[$cardName . ' (Card ' . $existingNum . ')'] = $existingNum;
+                    $AlsaCards[$cardName . ' (Card ' . $cardNum . ')'] = $cardNum;
+                } else {
+                    $AlsaCards[$cardName] = $cardNum;
+                }
             }
         }
     }

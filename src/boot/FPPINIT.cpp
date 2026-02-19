@@ -1558,6 +1558,28 @@ void removeDummyInterface() {
 // Resolve ALSA card number to stable card ID (e.g., 3 -> "S3", 0 -> "ICUSBAUDIO7D")
 // Reads /proc/asound/cards: " 3 [S3             ]: USB-Audio - ..."
 // Falls back to the card number as string if not found.
+// Read the USB product name for an ALSA card from sysfs (e.g. "USB Sound Device").
+// Falls back to the ALSA card type name if sysfs is unavailable.
+static std::string getAlsaCardProductName(int cardNum, const std::string& fallback) {
+    std::string devicePath = "/sys/class/sound/card" + std::to_string(cardNum) + "/device";
+    char resolved[PATH_MAX];
+    if (realpath(devicePath.c_str(), resolved)) {
+        // The ALSA device sysfs node points to a USB interface.
+        // The USB product string is in the parent USB device node.
+        std::string parentDir = resolved;
+        auto pos = parentDir.rfind('/');
+        if (pos != std::string::npos) {
+            std::string productFile = parentDir.substr(0, pos) + "/product";
+            std::string product = GetFileContents(productFile);
+            TrimWhiteSpace(product);
+            if (!product.empty()) {
+                return product;
+            }
+        }
+    }
+    return fallback;
+}
+
 static std::string getAlsaCardId(int cardNum) {
     std::string cardsContent = GetFileContents("/proc/asound/cards");
     if (!cardsContent.empty()) {
@@ -1815,8 +1837,37 @@ static void setupAudio() {
                      << "      audio.channels = 2\n"
                      << "      audio.position = [ FL FR ]\n"
                      << "    }\n"
-                     << "  }\n"
-                     << "]\n";
+                     << "  }\n";
+
+        // If this card has capture capability, also create an Audio/Source node.
+        // This is needed because WirePlumber may disable the device entirely
+        // (e.g. duplicate USB cards via 50-fpp-disable-second-icusbaudio7d.conf),
+        // which prevents auto-creation of capture nodes.
+        std::string captureCheck = execAndReturn("/usr/bin/arecord -l 2>/dev/null | grep '^card " + std::to_string(card) + ":'");
+        if (!captureCheck.empty()) {
+            // Build a user-friendly description matching WirePlumber's style.
+            // Read the USB product name from sysfs and append the ALSA card ID
+            // to distinguish duplicate hardware (e.g. "USB Sound Device (ICUSBAUDIO7D_1)").
+            std::string productName = getAlsaCardProductName(card, cardType);
+            std::string sourceDesc = productName + " (" + cardId + ")";
+            printf("FPP - PipeWire source: card %d (%s) has capture, creating Audio/Source node: %s\n",
+                   card, cardId.c_str(), sourceDesc.c_str());
+            pipewireSink << "  { factory = adapter\n"
+                         << "    args = {\n"
+                         << "      factory.name = api.alsa.pcm.source\n"
+                         << "      node.name = \"alsa_input.fpp_card" << card << "\"\n"
+                         << "      node.description = \"" << sourceDesc << "\"\n"
+                         << "      node.nick = \"" << cardId << "\"\n"
+                         << "      media.class = \"Audio/Source\"\n"
+                         << "      api.alsa.path = \"hw:" << cardId << "\"\n"
+                         << "      audio.format = \"S16LE\"\n"
+                         << "      audio.rate = 44100\n"
+                         << "      audio.channels = 1\n"
+                         << "    }\n"
+                         << "  }\n";
+        }
+
+        pipewireSink << "]\n";
         PutFileContents(pipewireSinkConfPath, pipewireSink.str());
     } else if (FileExists(pipewireSinkConfPath)) {
         unlink(pipewireSinkConfPath.c_str());

@@ -46,6 +46,9 @@ public:
     static bool ProcessVideoOverlay(unsigned int msTimestamp);
     static bool GetAudioSamples(float* samples, int numSamples, int& sampleRate);
 
+    // One-time GStreamer + PipeWire env initialization (safe to call repeatedly)
+    static void EnsureGStreamerInit();
+
     // GStreamer-specific
     void SetLoopCount(int loops) { m_loopCount = loops; }
     void SetVolumeAdjustment(int volAdj);
