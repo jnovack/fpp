@@ -653,18 +653,17 @@ function PrintSetting($setting, $callback = '', $options = array(), $plugin = ''
                 //   modalUrl      - URL to load in the modal iframe (required)
                 //   icon          - FontAwesome icon class (e.g. "fas fa-layer-group")
                 //   buttonText    - Text for the button (defaults to description)
-                //   buttonClass   - Bootstrap button class (defaults to "btn-success")
                 //   modalTitle    - Title for the modal dialog (defaults to description)
                 //   modalId       - HTML id for the modal (defaults to setting name + "Dlg")
                 $modalUrl = isset($s['modalUrl']) ? $s['modalUrl'] : '';
                 $icon = isset($s['icon']) ? $s['icon'] : '';
                 $buttonText = isset($s['buttonText']) ? $s['buttonText'] : $s['description'];
-                $buttonClass = isset($s['buttonClass']) ? $s['buttonClass'] : 'btn-success';
                 $modalTitle = isset($s['modalTitle']) ? $s['modalTitle'] : $s['description'];
                 $modalId = isset($s['modalId']) ? $s['modalId'] : $setting . 'Dlg';
+                $modalOnClose = isset($s['modalOnClose']) ? $s['modalOnClose'] : '';
                 $iconHtml = $icon ? "<i class='" . htmlspecialchars($icon) . "'></i> " : '';
 
-                echo "<button class='btn " . htmlspecialchars($buttonClass) . " btn-sm' onclick='OpenSettingModal_" . $setting . "()'>";
+                echo "<button class='buttons' onclick='OpenSettingModal_" . $setting . "()'>";
                 echo $iconHtml . htmlspecialchars($buttonText);
                 echo "</button>";
 
@@ -680,6 +679,9 @@ function PrintSetting($setting, $callback = '', $options = array(), $plugin = ''
                 echo "            dlg.find('.modal-content').css({ 'background': '#fff', 'color': '#212529' });\n";
                 echo "            dlg.find('.modal-body').css({ 'padding': '0', 'overflow': 'hidden' });\n";
                 echo "            dlg.find('.modal-header').css({ 'background': '#fff', 'color': '#212529' });\n";
+                if ($modalOnClose) {
+                    echo "            dlg.one('hidden.bs.modal', function() { " . $modalOnClose . "(); });\n";
+                }
                 echo "        },\n";
                 echo "        buttons: {\n";
                 echo "            Close: function () {\n";

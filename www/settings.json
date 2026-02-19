@@ -789,8 +789,8 @@
 			"modalUrl": "pipewire-audio.php?modal=1",
 			"icon": "fas fa-layer-group",
 			"buttonText": "Configure Audio Groups",
-			"buttonClass": "btn-success",
 			"modalTitle": "PipeWire Audio Output Groups",
+			"modalOnClose": "RefreshPipeWirePrimaryOutput",
 			"platforms": [
 				"!MacOS"
 			]
@@ -803,7 +803,6 @@
 			"modalUrl": "aes67-config.php?modal=1",
 			"icon": "fas fa-broadcast-tower",
 			"buttonText": "Configure AES67 Instances",
-			"buttonClass": "btn-success",
 			"modalTitle": "AES67 Audio-over-IP Instances",
 			"platforms": [
 				"!MacOS"

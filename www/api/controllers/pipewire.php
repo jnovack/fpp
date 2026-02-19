@@ -211,27 +211,10 @@ function ApplyPipeWireAudioGroups()
         // Set as PipeWire default sink
         exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($activeGroup) . " 2>&1");
 
-        // Query the description for this sink (SDL uses descriptions)
-        $sinkDesc = '';
-        exec($SUDO . " " . $env . " pactl list sinks 2>/dev/null", $sinkOutput);
-        $inSink = false;
-        foreach ($sinkOutput as $line) {
-            if (preg_match('/^\s+Name:\s+(.+)/', $line, $m)) {
-                $inSink = (trim($m[1]) === $activeGroup);
-            }
-            if ($inSink && preg_match('/^\s+Description:\s+(.+)/', $line, $m)) {
-                $sinkDesc = trim($m[1]);
-                break;
-            }
-        }
-
-        // Set ForceAudioId so SDL opens the correct device
-        WriteSettingToFile('ForceAudioId', $sinkDesc);
-        // Set PipeWireSinkName so volume control targets the correct sink
+        // Set PipeWireSinkName so volume control targets the correct sink.
+        // ForceAudioId is owned by ALSA mode — do not touch it here;
+        // SDL routing in PipeWire mode is handled by pactl set-default-sink above.
         WriteSettingToFile('PipeWireSinkName', $activeGroup);
-
-        // Tell FPPD to reload settings
-        SendCommand('setSetting,ForceAudioId,' . $sinkDesc);
         SendCommand('setSetting,PipeWireSinkName,' . $activeGroup);
     }
 
@@ -568,7 +551,7 @@ function GetPipeWireAudioCards()
 
 /////////////////////////////////////////////////////////////////////////////
 // POST /api/pipewire/audio/primary-output
-// Set the primary audio output sink for FPP (replaces ForceAudioId UI)
+// Set the primary audio output sink for FPP (PipeWire mode only)
 function SetPipeWirePrimaryOutput()
 {
     global $SUDO, $settings;
@@ -584,9 +567,7 @@ function SetPipeWirePrimaryOutput()
 
     if (empty($sinkName)) {
         // Clear — revert to system default
-        WriteSettingToFile('ForceAudioId', '');
         WriteSettingToFile('PipeWireSinkName', '');
-        SendCommand('setSetting,ForceAudioId,');
         SendCommand('setSetting,PipeWireSinkName,');
         return json(array("status" => "OK", "message" => "Cleared — using system default", "restartRequired" => true));
     }
@@ -594,31 +575,14 @@ function SetPipeWirePrimaryOutput()
     // Set as PipeWire default sink
     exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($sinkName) . " 2>&1");
 
-    // Look up the description for this sink (SDL uses descriptions to identify devices)
-    $sinkDesc = '';
-    $sinkOutput = array();
-    exec($SUDO . " " . $env . " pactl list sinks 2>/dev/null", $sinkOutput);
-    $inSink = false;
-    foreach ($sinkOutput as $line) {
-        if (preg_match('/^\s+Name:\s+(.+)/', $line, $m)) {
-            $inSink = (trim($m[1]) === $sinkName);
-        }
-        if ($inSink && preg_match('/^\s+Description:\s+(.+)/', $line, $m)) {
-            $sinkDesc = trim($m[1]);
-            break;
-        }
-    }
-
-    // Write both settings
-    WriteSettingToFile('ForceAudioId', $sinkDesc);
+    // Write PipeWireSinkName only — ForceAudioId is owned by ALSA mode and must not be
+    // overwritten here; SDL routing in PipeWire mode is handled by pactl set-default-sink.
     WriteSettingToFile('PipeWireSinkName', $sinkName);
-    SendCommand('setSetting,ForceAudioId,' . $sinkDesc);
     SendCommand('setSetting,PipeWireSinkName,' . $sinkName);
 
     return json(array(
         "status" => "OK",
         "sinkName" => $sinkName,
-        "sinkDescription" => $sinkDesc,
         "restartRequired" => true
     ));
 }

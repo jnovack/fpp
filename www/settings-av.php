@@ -140,6 +140,52 @@ PrintSettingGroup('generalAudio');
                     });
                 });
             }
+
+            function RefreshPipeWirePrimaryOutput() {
+                var currentVal = $('#PipeWirePrimaryOutput').val();
+                $.when(
+                    $.ajax({ url: 'api/pipewire/audio/groups', dataType: 'json' }),
+                    $.ajax({ url: 'api/pipewire/audio/cards', dataType: 'json' })
+                ).done(function (groupsResp, cardsResp) {
+                    var groups = (groupsResp[0] && groupsResp[0].groups) ? groupsResp[0].groups : [];
+                    var cards = Array.isArray(cardsResp[0]) ? cardsResp[0] : [];
+
+                    var $sel = $('#PipeWirePrimaryOutput');
+                    $sel.empty().append($('<option>').val('').text('(System Default)'));
+
+                    // Audio Output Groups
+                    var $groupOg = $('<optgroup>').attr('label', 'Audio Output Groups');
+                    groups.forEach(function (g) {
+                        if (!g.members || !g.members.length) return;
+                        var nodeName = 'fpp_group_' + g.name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+                        var cnt = g.members.length;
+                        var label = g.name + (g.enabled ? '' : ' (disabled)')
+                            + ' (' + cnt + ' card' + (cnt !== 1 ? 's' : '') + ')';
+                        $groupOg.append($('<option>').val(nodeName).text(label));
+                    });
+                    if ($groupOg.children().length) $sel.append($groupOg);
+
+                    // Physical Sound Cards (disambiguate duplicate names)
+                    var nameCounts = {};
+                    cards.forEach(function (c) {
+                        if (c.isAES67 || !c.pwNodeName) return;
+                        nameCounts[c.cardName] = (nameCounts[c.cardName] || 0) + 1;
+                    });
+                    var $cardOg = $('<optgroup>').attr('label', 'Physical Sound Cards');
+                    cards.forEach(function (c) {
+                        if (c.isAES67 || !c.pwNodeName) return;
+                        var displayName = c.cardName;
+                        if (nameCounts[c.cardName] > 1 && c.cardId)
+                            displayName += ' [' + c.cardId + ']';
+                        $cardOg.append($('<option>').val(c.pwNodeName).text(displayName));
+                    });
+                    if ($cardOg.children().length) $sel.append($cardOg);
+
+                    // Restore prior selection if it still exists, else fall back to default
+                    var $match = $sel.find('option[value="' + currentVal.replace(/"/g, '\\"') + '"]');
+                    $sel.val($match.length ? currentVal : '');
+                });
+            }
         </script>
 
         <?

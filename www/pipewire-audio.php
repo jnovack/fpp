@@ -39,17 +39,18 @@
         .group-header .group-name-input {
             font-size: 1.1rem;
             font-weight: 600;
-            border: 1px solid transparent;
-            background: transparent;
+            border: 1px solid #ccc;
+            background: white;
             padding: 0.25rem 0.5rem;
-            border-radius: 4px;
+            border-radius: 3px;
             min-width: 300px;
         }
 
         .group-header .group-name-input:focus {
-            border-color: var(--bs-primary, #0d6efd);
-            background: var(--bs-body-bg, #fff);
+            border-color: #007cba;
+            background: white;
             outline: none;
+            box-shadow: 0 0 3px rgba(0, 124, 186, 0.3);
         }
 
         .group-body {
