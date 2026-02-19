@@ -120,6 +120,7 @@ dispatch_post('/pipewire/aes67/instances', 'SaveAES67Instances');
 dispatch_post('/pipewire/aes67/apply', 'ApplyAES67Instances');
 dispatch_get('/pipewire/aes67/status', 'GetAES67Status');
 dispatch_get('/pipewire/aes67/interfaces', 'GetAES67NetworkInterfaces');
+dispatch_get('/pipewire/graph', 'GetPipeWireGraph');
 
 dispatch_get('/playlists', 'playlist_list');
 dispatch_post('/playlists', 'playlist_insert');

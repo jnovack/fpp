@@ -1541,3 +1541,141 @@ function GetAES67NetworkInterfaces()
 // Status: GET /api/pipewire/aes67/status → queries AES67Manager in fppd
 // PTP: GstPtpClock (replaces external ptp4l daemon)
 // SAP: Built-in C++ SAP announcer (replaces fpp_aes67_sap Python daemon)
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/graph
+// Returns the live PipeWire graph as { nodes, ports, links } for the
+// pipeline visualizer page.  Only audio-related nodes are included by
+// default; pass ?all=1 to include everything.
+function GetPipeWireGraph()
+{
+    global $SUDO;
+
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    if (empty($raw)) {
+        return json(array('nodes' => array(), 'ports' => array(), 'links' => array()));
+    }
+
+    $objects = json_decode($raw, true);
+    if (!is_array($objects)) {
+        return json(array('nodes' => array(), 'ports' => array(), 'links' => array()));
+    }
+
+    $showAll = isset($_GET['all']) && $_GET['all'] == '1';
+
+    // Classify audio-related media classes
+    $audioClasses = array(
+        'Audio/Sink',
+        'Audio/Source',
+        'Audio/Duplex',
+        'Stream/Output/Audio',
+        'Stream/Input/Audio',
+        'Video/Source',   // keep for completeness
+    );
+
+    // First pass — collect nodes, ports, links
+    $nodes = array();
+    $ports = array();
+    $links = array();
+    $audioNodeIds = array();   // set of node IDs that are audio-related
+
+    foreach ($objects as $obj) {
+        $type = isset($obj['type']) ? $obj['type'] : '';
+        $info = isset($obj['info']) ? $obj['info'] : array();
+        $props = isset($info['props']) ? $info['props'] : array();
+
+        if ($type === 'PipeWire:Interface:Node') {
+            $mc = isset($props['media.class']) ? $props['media.class'] : '';
+            $name = isset($props['node.name']) ? $props['node.name'] : '';
+            $desc = isset($props['node.description']) ? $props['node.description'] : $name;
+            $nick = isset($props['node.nick']) ? $props['node.nick'] : '';
+            $state = isset($info['state']) ? $info['state'] : '';
+            $factoryName = isset($props['factory.name']) ? $props['factory.name'] : '';
+
+            // Skip non-audio nodes unless ?all=1
+            if (!$showAll) {
+                if (empty($mc) || !in_array($mc, $audioClasses)) {
+                    // Also keep Midi-Bridge? No — skip it.
+                    continue;
+                }
+            }
+
+            $audioNodeIds[$obj['id']] = true;
+
+            $node = array(
+                'id' => $obj['id'],
+                'name' => $name,
+                'description' => $desc,
+                'nick' => $nick,
+                'mediaClass' => $mc,
+                'state' => $state,
+                'factory' => $factoryName,
+                'properties' => array(),
+            );
+
+            // Pick interesting properties for the detail panel
+            $interesting = array(
+                'audio.channels',
+                'audio.format',
+                'audio.rate',
+                'api.alsa.card',
+                'api.alsa.card.name',
+                'api.alsa.pcm.card',
+                'api.alsa.headroom',
+                'api.alsa.period-size',
+                'api.alsa.period-num',
+                'node.latency',
+                'node.group',
+                'node.sync-group',
+                'media.name',
+                'media.type',
+                'stream.is-live',
+                'node.always-process',
+                'application.name',
+                'application.process.binary',
+                'object.path',
+            );
+            foreach ($interesting as $key) {
+                if (isset($props[$key])) {
+                    $node['properties'][$key] = $props[$key];
+                }
+            }
+
+            $nodes[] = $node;
+        } elseif ($type === 'PipeWire:Interface:Port') {
+            $ports[] = array(
+                'id' => $obj['id'],
+                'nodeId' => isset($props['node.id']) ? (int) $props['node.id'] : 0,
+                'name' => isset($props['port.name']) ? $props['port.name'] : '',
+                'direction' => isset($info['direction']) ? $info['direction'] : '',
+                'channel' => isset($props['audio.channel']) ? $props['audio.channel'] : '',
+            );
+        } elseif ($type === 'PipeWire:Interface:Link') {
+            $links[] = array(
+                'id' => $obj['id'],
+                'outputNodeId' => isset($info['output-node-id']) ? (int) $info['output-node-id'] : 0,
+                'outputPortId' => isset($info['output-port-id']) ? (int) $info['output-port-id'] : 0,
+                'inputNodeId' => isset($info['input-node-id']) ? (int) $info['input-node-id'] : 0,
+                'inputPortId' => isset($info['input-port-id']) ? (int) $info['input-port-id'] : 0,
+                'state' => isset($info['state']) ? $info['state'] : '',
+            );
+        }
+    }
+
+    // Filter ports & links to only include those belonging to audio nodes
+    if (!$showAll) {
+        $ports = array_values(array_filter($ports, function ($p) use ($audioNodeIds) {
+            return isset($audioNodeIds[$p['nodeId']]);
+        }));
+        $links = array_values(array_filter($links, function ($l) use ($audioNodeIds) {
+            return isset($audioNodeIds[$l['outputNodeId']]) || isset($audioNodeIds[$l['inputNodeId']]);
+        }));
+    }
+
+    return json(array(
+        'nodes' => array_values($nodes),
+        'ports' => $ports,
+        'links' => $links,
+    ));
+}
