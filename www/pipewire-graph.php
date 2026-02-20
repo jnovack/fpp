@@ -333,9 +333,6 @@
                         parts.push(ms > 0 ? 'delay ' + ms + ' ms' : 'no delay');
                     }
                     if (p['fpp.eq.enabled']) parts.push('EQ on');
-                    if (p['fpp.volume'] !== undefined && p['fpp.volume'] != 100) {
-                        parts.push('vol ' + p['fpp.volume'] + '%');
-                    }
                     return parts.join(' · ') || '';
                 }
 
@@ -932,7 +929,6 @@
                     const propLabels = {
                         'fpp.delay.ms': 'Delay (ms)',
                         'fpp.eq.enabled': 'EQ Enabled',
-                        'fpp.volume': 'Volume (%)',
                         'fpp.group.members': 'Members',
                         'fpp.group.latencyCompensate': 'Latency Compensation'
                     };

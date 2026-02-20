@@ -1737,9 +1737,6 @@ function GetPipeWireGraph()
                         if (isset($mem['eq']['enabled'])) {
                             $node['properties']['fpp.eq.enabled'] = $mem['eq']['enabled'];
                         }
-                        if (isset($mem['volume'])) {
-                            $node['properties']['fpp.volume'] = $mem['volume'];
-                        }
                     }
                 }
                 // Enrich group nodes with member count

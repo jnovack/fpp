@@ -658,8 +658,8 @@
             // Volume control for the group sink
             html += '<div class="volume-slider-container">';
             html += '<label><i class="fas fa-volume-up"></i>' + HelpIcon('Master volume for the entire group combine-sink. This scales the mixed output sent to all member sound cards. Adjusts in real-time without needing to re-apply.') + '</label>';
-            html += '<input type="range" class="form-range" min="0" max="100" value="' + (group.volume || 100) + '" oninput="UpdateGroupVolumeDisplay(this); ScheduleGroupVolume(' + index + ', this.value)">';
-            html += '<span class="volume-value">' + (group.volume || 100) + '%</span>';
+            html += '<input type="range" class="form-range" min="0" max="100" value="' + (group.volume ?? 100) + '" oninput="UpdateGroupVolumeDisplay(this); ScheduleGroupVolume(' + index + ', this.value)">';
+            html += '<span class="volume-value">' + (group.volume ?? 100) + '%</span>';
             html += '</div>';
 
             html += '</div>';
@@ -756,8 +756,8 @@
             html += '</td>';
             html += '<td>';
             html += '<div class="volume-slider-container">';
-            html += '<input type="range" class="form-range" min="0" max="100" value="' + (member.volume || 100) + '" oninput="UpdateGroupVolumeDisplay(this); ScheduleMemberVolume(' + groupIndex + ',' + memberIndex + ', this.value)" style="min-width:80px;">';
-            html += '<span class="volume-value">' + (member.volume || 100) + '%</span>';
+            html += '<input type="range" class="form-range" min="0" max="100" value="' + (member.volume ?? 100) + '" oninput="UpdateGroupVolumeDisplay(this); ScheduleMemberVolume(' + groupIndex + ',' + memberIndex + ', this.value)" style="min-width:80px;">';
+            html += '<span class="volume-value">' + (member.volume ?? 100) + '%</span>';
             html += '</div>';
             html += '</td>';
             html += '<td>';
