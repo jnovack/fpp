@@ -993,13 +993,7 @@ SimpleEventHook {
       return
     end
 
-    -- Block default fallback for FPP input-to-output routing loopback nodes
-    if node_name:match ("^fpp_route_ig%d+_to_og%d+") and has_target then
-      log:info (si, "... FPP route loopback: blocking default fallback for "
-          .. node_name .. ", will retry on rescan")
-      event:stop_processing ()
-      return
-    end
+    -- (Routing loopback nodes removed — combine-stream handles output routing)
   end
 }:register ()
 LUA;
@@ -1362,6 +1356,36 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
         $groupPos = isset($channelPositions[$groupChannels]) ? $channelPositions[$groupChannels] : "[ FL FR ]";
 
         // ── Combine-stream sink for this input group (mix bus) ──
+        //
+        // How this works:
+        //   - combine.mode=sink creates a virtual sink that MIXES all incoming
+        //     streams (fppd, loopback captures, etc. all target this sink)
+        //   - stream.rules match OUTPUT TARGETS: Audio/Sink nodes where the
+        //     mixed audio gets sent TO.  These are the output group sinks.
+        //   - Sources (fppd, loopbacks) connect INTO the sink via target-object.
+        //     They do NOT need stream.rules entries.
+        //
+        // Resolve which output groups this input group routes to:
+        $outputs = isset($ig['outputs']) ? $ig['outputs'] : array();
+        $outputRules = array();
+        foreach ($outputs as $outGroupId) {
+            foreach ($outputGroups as $og) {
+                if (isset($og['id']) && intval($og['id']) === intval($outGroupId)) {
+                    if (!isset($og['enabled']) || !$og['enabled'])
+                        continue;
+                    $ogName = isset($og['name']) ? $og['name'] : 'Group';
+                    $outNodeName = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ogName));
+                    $outputRules[] = array('name' => $outNodeName, 'desc' => $ogName);
+                    break;
+                }
+            }
+        }
+
+        if (empty($outputRules)) {
+            $conf .= "  # Input Group: $groupName (SKIPPED — no output groups routed)\n";
+            continue;
+        }
+
         $conf .= "  # Input Group: $groupName\n";
         $conf .= "  { name = libpipewire-module-combine-stream\n";
         $conf .= "    args = {\n";
@@ -1374,22 +1398,24 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
         $conf .= "      stream.props = {\n";
         $conf .= "        stream.dont-remix = true\n";
         $conf .= "      }\n";
+
+        // stream.rules: match the OUTPUT GROUP sinks to fan audio out to
         $conf .= "      stream.rules = [\n";
-        $conf .= "        { matches = [ { node.name = \"~fpp_loopback_ig{$groupId}_.*\" } ]\n";
-        $conf .= "          actions = { create-stream = { } }\n";
-        $conf .= "        }\n";
-
-        // Also match fppd streams that target this input group
-        foreach ($ig['members'] as $mbr) {
-            if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
-                $streamId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
-                $conf .= "        { matches = [ { node.name = \"$streamId\" } ]\n";
-                $conf .= "          actions = { create-stream = { } }\n";
-                $conf .= "        }\n";
-            }
+        foreach ($outputRules as $rule) {
+            $conf .= "        { matches = [\n";
+            $conf .= "            { media.class = \"Audio/Sink\"\n";
+            $conf .= "              node.name = \"" . $rule['name'] . "\"\n";
+            $conf .= "            }\n";
+            $conf .= "          ]\n";
+            $conf .= "          actions = {\n";
+            $conf .= "            create-stream = {\n";
+            $conf .= "              node.target = \"" . $rule['name'] . "\"\n";
+            $conf .= "            }\n";
+            $conf .= "          }\n";
+            $conf .= "        }\n";
         }
-
         $conf .= "      ]\n";
+
         $conf .= "    }\n";
         $conf .= "  }\n";
 
@@ -1473,41 +1499,8 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
             $conf .= "  }\n";
         }
 
-        // ── Loopback modules to route input group → output groups ──
-        $outputs = isset($ig['outputs']) ? $ig['outputs'] : array();
-        foreach ($outputs as $outGroupId) {
-            // Find the output group by ID to get its node name
-            $outNodeName = '';
-            foreach ($outputGroups as $og) {
-                if (isset($og['id']) && intval($og['id']) === intval($outGroupId)) {
-                    $ogName = isset($og['name']) ? $og['name'] : 'Group';
-                    $outNodeName = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ogName));
-                    break;
-                }
-            }
-            if (empty($outNodeName))
-                continue;
-
-            $routeName = "fpp_route_ig{$groupId}_to_og{$outGroupId}";
-            $routeDesc = "$groupName → " . $ogName;
-
-            $conf .= "  # Route: $routeDesc\n";
-            $conf .= "  { name = libpipewire-module-loopback\n";
-            $conf .= "    args = {\n";
-            $conf .= "      node.name = \"$routeName\"\n";
-            $conf .= "      node.description = \"$routeDesc\"\n";
-            $conf .= "      capture.props = {\n";
-            $conf .= "        node.target = \"$nodeName\"\n";
-            $conf .= "        media.class = Stream/Input/Audio\n";
-            $conf .= "        stream.dont-remix = true\n";
-            $conf .= "      }\n";
-            $conf .= "      playback.props = {\n";
-            $conf .= "        node.target = \"$outNodeName\"\n";
-            $conf .= "        media.class = Stream/Output/Audio\n";
-            $conf .= "      }\n";
-            $conf .= "    }\n";
-            $conf .= "  }\n";
-        }
+        // Output routing is handled by the combine-stream's stream.rules
+        // above — no separate routing loopback modules needed.
     }
 
     $conf .= "]\n";
@@ -2293,12 +2286,7 @@ function GetPipeWireGraph()
                     $node['properties']['fpp.inputGroup.loopback'] = true;
                     $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
                 }
-                // Match route nodes (fpp_route_ig*_to_og*)
-                if (preg_match('/^fpp_route_ig(\d+)_to_og(\d+)/', $nm, $m)) {
-                    $node['properties']['fpp.inputGroup.route'] = true;
-                    $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
-                    $node['properties']['fpp.outputGroup.id'] = intval($m[2]);
-                }
+                // (Routing loopback nodes removed — combine-stream handles output routing)
             }
             unset($node);
         }

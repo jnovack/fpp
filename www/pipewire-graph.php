@@ -310,7 +310,7 @@
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
                 if (nm.startsWith('fpp_input_')) return '#e35d6a'; // input group mix bus
-                if (nm.startsWith('fpp_loopback_ig') || nm.startsWith('fpp_route_ig')) return '#e35d6a'; // input group routing
+                if (nm.startsWith('fpp_loopback_ig')) return '#e35d6a'; // input group routing
                 if (nm.startsWith('fpp_group_')) return '#0d6efd'; // combine-stream group
                 if (nm.startsWith('fpp_fx_') && !nm.endsWith('_out')) return '#6f42c1'; // delay filter sink
                 if (nm.startsWith('output.fpp_group_') ||
@@ -568,7 +568,7 @@
                 // Input groups (mix buses)
                 if (nm.startsWith('fpp_input_')) return 1;
                 if (nm.startsWith('fpp_loopback_ig')) return 1;
-                if (nm.startsWith('fpp_route_ig')) return 1;
+                // (fpp_route removed — combine-stream handles routing)
 
                 // Output group sinks
                 if (nm.startsWith('fpp_group_')) return 2;
