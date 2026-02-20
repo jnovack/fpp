@@ -185,6 +185,52 @@
             color: #28a745;
         }
 
+        .channel-mapping {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-top: 0.35rem;
+            font-size: 0.82rem;
+        }
+
+        .channel-mapping label {
+            font-weight: 500;
+            font-size: 0.82rem;
+            color: var(--bs-secondary-color, #6c757d);
+            margin: 0;
+        }
+
+        .source-state-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            margin-left: 0.35rem;
+            vertical-align: middle;
+        }
+
+        .source-state-badge.state-running {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .source-state-badge.state-idle {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .source-state-badge.state-error,
+        .source-state-badge.state-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .source-info {
+            font-size: 0.78rem;
+            color: var(--bs-secondary-color, #6c757d);
+            margin-top: 0.15rem;
+        }
+
         .output-routing {
             margin-top: 0.75rem;
             padding: 0.75rem;
@@ -264,6 +310,9 @@
                                 status...</span>
                         </div>
                         <div class="toolbar-right">
+                            <button class="buttons btn-outline-secondary btn-sm" onclick="RefreshSources()" title="Refresh capture device list">
+                                <i class="fas fa-redo"></i> Refresh Sources
+                            </button>
                             <button class="buttons btn-outline-success btn-group-action" onclick="AddInputGroup()">
                                 <i class="fas fa-plus"></i> Add Input Group
                             </button>
@@ -317,11 +366,17 @@
         var availableSources = [];
         var availableOutputGroups = [];
         var availableCards = [];
+        var availableAES67Instances = [];
 
         // ─── Init ──────────────────────────────────────────────────────
         $(document).ready(function () {
             CheckPipeWireStatus();
             LoadAll();
+
+            // Auto-refresh source states every 10s for hot-plug detection
+            setInterval(function () {
+                RefreshSources(true);
+            }, 10000);
         });
 
         function CheckPipeWireStatus() {
@@ -343,8 +398,9 @@
             var p1 = $.get('/api/pipewire/audio/input-groups');
             var p2 = $.get('/api/pipewire/audio/sources');
             var p3 = $.get('/api/pipewire/audio/groups');
+            var p4 = $.get('/api/pipewire/aes67/instances');
 
-            $.when(p1, p2, p3).done(function (r1, r2, r3) {
+            $.when(p1, p2, p3, p4).done(function (r1, r2, r3, r4) {
                 inputGroups = r1[0];
                 if (!inputGroups || !inputGroups.inputGroups) {
                     inputGroups = { inputGroups: [] };
@@ -352,6 +408,8 @@
                 availableSources = Array.isArray(r2[0]) ? r2[0] : [];
                 var ogData = r3[0];
                 availableOutputGroups = (ogData && ogData.groups) ? ogData.groups : [];
+                var aesData = r4[0];
+                availableAES67Instances = (aesData && aesData.instances) ? aesData.instances : [];
 
                 RenderAll();
             }).fail(function () {
@@ -360,6 +418,27 @@
                     inputGroups = data || { inputGroups: [] };
                     RenderAll();
                 });
+            });
+        }
+
+        // Refresh capture device states (for hot-plug detection)
+        function RefreshSources(silent) {
+            $.get('/api/pipewire/audio/sources', function (data) {
+                var newSources = Array.isArray(data) ? data : [];
+                var changed = JSON.stringify(newSources) !== JSON.stringify(availableSources);
+                availableSources = newSources;
+                if (changed) {
+                    RenderAll();
+                    if (!silent) {
+                        $.jGrowl('Source list updated.', { theme: 'success' });
+                    }
+                } else if (!silent) {
+                    $.jGrowl('Sources up to date.', { theme: 'info' });
+                }
+            }).fail(function () {
+                if (!silent) {
+                    $.jGrowl('Failed to refresh sources.', { theme: 'danger' });
+                }
             });
         }
 
@@ -466,6 +545,8 @@
 
         function RenderMember(groupIdx, memberIdx, mbr) {
             var type = mbr.type || 'fppd_stream';
+            // Look up the group's channel count for channel mapping
+            var groupChannels = inputGroups.inputGroups[groupIdx].channels || 2;
             var html = '<tr>';
 
             // Type selector
@@ -485,19 +566,58 @@
                 html += '</select>';
             } else if (type === 'capture') {
                 html += '<select class="form-select form-select-sm" style="width:auto;" ' +
-                    'onchange="UpdateMemberField(' + groupIdx + ',' + memberIdx + ',\'cardId\',this.value)">';
+                    'onchange="SelectCaptureDevice(' + groupIdx + ',' + memberIdx + ',this.value); RenderAll();">';
                 html += '<option value="">-- Select capture device --</option>';
                 availableSources.forEach(function (src) {
                     var sel = (mbr.cardId === src.cardId) ? ' selected' : '';
+                    var stateClass = src.state === 'running' ? 'state-running' :
+                        (src.state === 'idle' ? 'state-idle' : 'state-disconnected');
                     html += '<option value="' + EscapeAttr(src.cardId) + '"' + sel + '>' +
                         EscapeHtml(src.description || src.name) +
                         ' (' + src.channels + 'ch)</option>';
                 });
                 html += '</select>';
+
+                // Device state badge
+                if (mbr.cardId) {
+                    var matchedSrc = availableSources.find(function(s) { return s.cardId === mbr.cardId; });
+                    if (matchedSrc) {
+                        var stateLabel = matchedSrc.state || 'unknown';
+                        var stateClass = stateLabel === 'running' ? 'state-running' :
+                            (stateLabel === 'idle' ? 'state-idle' : 'state-disconnected');
+                        html += '<span class="source-state-badge ' + stateClass + '">' + stateLabel + '</span>';
+                        html += '<div class="source-info">' + matchedSrc.channels + 'ch, ' +
+                            matchedSrc.sampleRate + ' Hz</div>';
+                    } else {
+                        html += '<span class="source-state-badge state-disconnected">disconnected</span>';
+                    }
+
+                    // Channel mapping selector (when source channels != group channels)
+                    var srcChannels = matchedSrc ? matchedSrc.channels : 0;
+                    if (srcChannels > 0 && srcChannels !== groupChannels) {
+                        html += RenderChannelMapping(groupIdx, memberIdx, mbr, srcChannels, groupChannels);
+                    }
+                }
             } else if (type === 'aes67_receive') {
-                html += '<input type="text" class="form-control form-control-sm" style="width:180px;" ' +
-                    'placeholder="AES67 instance ID" value="' + EscapeAttr(mbr.instanceId || '') + '" ' +
-                    'onchange="UpdateMemberField(' + groupIdx + ',' + memberIdx + ',\'instanceId\',this.value)">';
+                // Dropdown populated from AES67 receive instances
+                var recvInstances = availableAES67Instances.filter(function(inst) {
+                    return inst.mode === 'receive' && inst.enabled;
+                });
+                if (recvInstances.length > 0) {
+                    html += '<select class="form-select form-select-sm" style="width:auto;" ' +
+                        'onchange="UpdateMemberField(' + groupIdx + ',' + memberIdx + ',\'instanceId\',this.value)">';
+                    html += '<option value="">-- Select AES67 receive --</option>';
+                    recvInstances.forEach(function (inst) {
+                        var sel = (mbr.instanceId == inst.id) ? ' selected' : '';
+                        html += '<option value="' + inst.id + '"' + sel + '>' +
+                            EscapeHtml(inst.name || 'AES67 Receive ' + inst.id) +
+                            ' (' + inst.channels + 'ch)</option>';
+                    });
+                    html += '</select>';
+                } else {
+                    html += '<span style="color:#6c757d;font-size:0.85rem;">' +
+                        'No AES67 receive instances. <a href="aes67-config.php">Configure AES67</a></span>';
+                }
             }
             html += '</td>';
 
@@ -510,7 +630,7 @@
             var vol = mbr.volume !== undefined ? mbr.volume : 100;
             html += '<td>';
             html += '<input type="range" class="volume-slider" min="0" max="100" value="' + vol + '" ' +
-                'oninput="UpdateMemberField(' + groupIdx + ',' + memberIdx + ',\'volume\',parseInt(this.value));' +
+                'oninput="UpdateMemberVolume(' + groupIdx + ',' + memberIdx + ',parseInt(this.value));' +
                 'this.nextElementSibling.textContent=this.value+\'%\'">';
             html += '<span class="volume-value">' + vol + '%</span>';
             html += '</td>';
@@ -596,6 +716,36 @@
             inputGroups.inputGroups[groupIdx].members[memberIdx][field] = value;
         }
 
+        // Debounced real-time volume control
+        var _volumeTimers = {};
+        function UpdateMemberVolume(groupIdx, memberIdx, volume) {
+            var mbr = inputGroups.inputGroups[groupIdx].members[memberIdx];
+            mbr.volume = volume;
+
+            // Don't send real-time API for fppd_stream (no loopback node)
+            if (mbr.type === 'fppd_stream') return;
+
+            // Debounce: only send after 150ms of no further changes
+            var key = groupIdx + '_' + memberIdx;
+            if (_volumeTimers[key]) clearTimeout(_volumeTimers[key]);
+            _volumeTimers[key] = setTimeout(function () {
+                var groupId = inputGroups.inputGroups[groupIdx].id;
+                $.ajax({
+                    url: '/api/pipewire/audio/input-groups/volume',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        groupId: groupId,
+                        memberIndex: memberIdx,
+                        volume: volume
+                    }),
+                    error: function () {
+                        // Silent fail — volume will be applied on next Save & Apply
+                    }
+                });
+            }, 150);
+        }
+
         function ToggleMute(groupIdx, memberIdx) {
             var mbr = inputGroups.inputGroups[groupIdx].members[memberIdx];
             mbr.mute = !mbr.mute;
@@ -612,6 +762,120 @@
                 }
             } else {
                 ig.outputs = ig.outputs.filter(function (id) { return id !== outputGroupId; });
+            }
+        }
+
+        // ─── Capture Device Selection ──────────────────────────────────
+        function SelectCaptureDevice(groupIdx, memberIdx, cardId) {
+            var mbr = inputGroups.inputGroups[groupIdx].members[memberIdx];
+            mbr.cardId = cardId;
+
+            // Auto-populate name from device description
+            if (cardId && !mbr.name) {
+                var src = availableSources.find(function (s) { return s.cardId === cardId; });
+                if (src) {
+                    mbr.name = (src.nick || src.description || cardId).substring(0, 30);
+                }
+            }
+
+            // Clear stale channel mapping when device changes
+            delete mbr.channelMapping;
+        }
+
+        // ─── Channel Mapping ───────────────────────────────────────────
+        var CHANNEL_POSITIONS = {
+            1: ['MONO'],
+            2: ['FL', 'FR'],
+            4: ['FL', 'FR', 'RL', 'RR'],
+            6: ['FL', 'FR', 'FC', 'LFE', 'RL', 'RR'],
+            8: ['FL', 'FR', 'FC', 'LFE', 'RL', 'RR', 'SL', 'SR']
+        };
+
+        function GetChannelMappingPresets(srcCh, grpCh) {
+            // Common mapping presets for different source→group combinations
+            var presets = [];
+            presets.push({ label: 'Default (auto)', value: '' });
+
+            if (srcCh === 1 && grpCh >= 2) {
+                presets.push({
+                    label: 'Mono → Center',
+                    value: JSON.stringify({ sourceChannels: ['MONO'], groupChannels: ['FC'] })
+                });
+                presets.push({
+                    label: 'Mono → Left+Right',
+                    value: JSON.stringify({ sourceChannels: ['MONO'], groupChannels: ['FL', 'FR'] })
+                });
+                presets.push({
+                    label: 'Mono → Left only',
+                    value: JSON.stringify({ sourceChannels: ['MONO'], groupChannels: ['FL'] })
+                });
+                presets.push({
+                    label: 'Mono → Right only',
+                    value: JSON.stringify({ sourceChannels: ['MONO'], groupChannels: ['FR'] })
+                });
+            } else if (srcCh === 2 && grpCh === 1) {
+                presets.push({
+                    label: 'Left only → Mono',
+                    value: JSON.stringify({ sourceChannels: ['FL'], groupChannels: ['MONO'] })
+                });
+                presets.push({
+                    label: 'Right only → Mono',
+                    value: JSON.stringify({ sourceChannels: ['FR'], groupChannels: ['MONO'] })
+                });
+            } else if (srcCh === 2 && grpCh > 2) {
+                presets.push({
+                    label: 'Stereo → Front L+R',
+                    value: JSON.stringify({ sourceChannels: ['FL', 'FR'], groupChannels: ['FL', 'FR'] })
+                });
+                presets.push({
+                    label: 'Stereo → Rear L+R',
+                    value: JSON.stringify({ sourceChannels: ['FL', 'FR'], groupChannels: ['RL', 'RR'] })
+                });
+            } else if (srcCh > grpCh) {
+                // Generic downmix
+                var srcPos = CHANNEL_POSITIONS[srcCh] || [];
+                var grpPos = CHANNEL_POSITIONS[grpCh] || [];
+                if (srcPos.length && grpPos.length) {
+                    presets.push({
+                        label: 'First ' + grpCh + ' channels',
+                        value: JSON.stringify({
+                            sourceChannels: srcPos.slice(0, grpCh),
+                            groupChannels: grpPos
+                        })
+                    });
+                }
+            }
+            return presets;
+        }
+
+        function RenderChannelMapping(groupIdx, memberIdx, mbr, srcChannels, groupChannels) {
+            var html = '<div class="channel-mapping">';
+            html += '<label><i class="fas fa-exchange-alt"></i> Map:</label>';
+
+            var presets = GetChannelMappingPresets(srcChannels, groupChannels);
+            var currentVal = mbr.channelMapping ? JSON.stringify(mbr.channelMapping) : '';
+
+            html += '<select class="form-select form-select-sm" style="width:auto;font-size:0.82rem;" ' +
+                'onchange="UpdateChannelMapping(' + groupIdx + ',' + memberIdx + ',this.value)">';
+            presets.forEach(function (p) {
+                var sel = (p.value === currentVal) ? ' selected' : '';
+                html += '<option value=\'' + EscapeAttr(p.value) + '\'' + sel + '>' + EscapeHtml(p.label) + '</option>';
+            });
+            html += '</select>';
+            html += '</div>';
+            return html;
+        }
+
+        function UpdateChannelMapping(groupIdx, memberIdx, jsonValue) {
+            var mbr = inputGroups.inputGroups[groupIdx].members[memberIdx];
+            if (jsonValue) {
+                try {
+                    mbr.channelMapping = JSON.parse(jsonValue);
+                } catch (e) {
+                    delete mbr.channelMapping;
+                }
+            } else {
+                delete mbr.channelMapping;
             }
         }
 

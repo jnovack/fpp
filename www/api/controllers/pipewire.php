@@ -1256,6 +1256,125 @@ function ApplyPipeWireInputGroups()
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/input-groups/volume
+// Real-time volume control for input group loopback nodes
+// Body: { "groupId": 1, "memberIndex": 0, "volume": 75 }
+// Sets channelmix.volume on the running PipeWire loopback node without restart
+function SetInputGroupMemberVolume()
+{
+    global $SUDO, $settings;
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['groupId']) || !isset($body['memberIndex']) || !isset($body['volume'])) {
+        return json(array("status" => "error", "message" => "Missing groupId, memberIndex, or volume"));
+    }
+
+    $groupId = intval($body['groupId']);
+    $memberIndex = intval($body['memberIndex']);
+    $volumePct = max(0, min(100, intval($body['volume'])));
+    $volumeLinear = round($volumePct / 100.0, 3);
+
+    // Load input groups config to resolve the node name
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    if (!file_exists($configFile)) {
+        return json(array("status" => "error", "message" => "No input groups configured"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    if (!is_array($data) || !isset($data['inputGroups'])) {
+        return json(array("status" => "error", "message" => "Invalid input groups config"));
+    }
+
+    // Find the input group and member
+    $targetGroup = null;
+    foreach ($data['inputGroups'] as $ig) {
+        if (isset($ig['id']) && intval($ig['id']) === $groupId) {
+            $targetGroup = $ig;
+            break;
+        }
+    }
+
+    if (!$targetGroup) {
+        return json(array("status" => "error", "message" => "Input group $groupId not found"));
+    }
+
+    if (!isset($targetGroup['members'][$memberIndex])) {
+        return json(array("status" => "error", "message" => "Member index $memberIndex not found"));
+    }
+
+    $mbr = $targetGroup['members'][$memberIndex];
+    $mbrType = isset($mbr['type']) ? $mbr['type'] : '';
+
+    // fppd_stream members don't have loopback nodes — volume is on the GStreamer pipeline
+    if ($mbrType === 'fppd_stream') {
+        return json(array("status" => "error", "message" => "fppd stream volume is controlled via fppd, not PipeWire loopback"));
+    }
+
+    // Build the expected loopback node name (must match GeneratePipeWireInputGroupsConfig)
+    $groupName = isset($targetGroup['name']) ? $targetGroup['name'] : "Input Group";
+    $mbrName = isset($mbr['name']) ? $mbr['name'] : "Member $memberIndex";
+    $loopbackNodeName = "fpp_loopback_ig{$groupId}_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($mbrName));
+
+    // Find the PipeWire node ID for this loopback
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    if (empty($raw)) {
+        return json(array("status" => "error", "message" => "Cannot connect to PipeWire"));
+    }
+
+    $objects = json_decode($raw, true);
+    if (!is_array($objects)) {
+        return json(array("status" => "error", "message" => "Invalid PipeWire dump"));
+    }
+
+    // Find all nodes that belong to this loopback (capture + playback sides)
+    $nodeIds = array();
+    foreach ($objects as $obj) {
+        $type = isset($obj['type']) ? $obj['type'] : '';
+        if ($type !== 'PipeWire:Interface:Node') continue;
+        $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+        $nm = isset($props['node.name']) ? $props['node.name'] : '';
+        if ($nm === $loopbackNodeName) {
+            $nodeIds[] = $obj['id'];
+        }
+    }
+
+    if (empty($nodeIds)) {
+        return json(array("status" => "error", "message" => "Loopback node '$loopbackNodeName' not found in PipeWire (is it muted or not applied?)"));
+    }
+
+    // Set volume on the playback side using pw-cli set-param
+    // The channelmix.volume prop is on the node's Props param
+    $success = false;
+    foreach ($nodeIds as $nid) {
+        $cmd = $SUDO . " " . $env . " pw-cli set-param $nid Props '{ channelmix.volume: $volumeLinear }' 2>&1";
+        $output = shell_exec($cmd);
+        if (strpos($output, 'Error') === false) {
+            $success = true;
+        }
+    }
+
+    // Also update the saved config for persistence
+    $targetGroup['members'][$memberIndex]['volume'] = $volumePct;
+    foreach ($data['inputGroups'] as &$ig) {
+        if (isset($ig['id']) && intval($ig['id']) === $groupId) {
+            $ig['members'][$memberIndex]['volume'] = $volumePct;
+            break;
+        }
+    }
+    unset($ig);
+    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT));
+
+    return json(array(
+        "status" => $success ? "OK" : "error",
+        "message" => $success ? "Volume set to {$volumePct}% on $loopbackNodeName" : "Failed to set volume on PipeWire node",
+        "nodeName" => $loopbackNodeName,
+        "volume" => $volumePct,
+        "volumeLinear" => $volumeLinear
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // GET /api/pipewire/audio/sources
 // Returns available PipeWire audio capture sources (ALSA Audio/Source nodes)
 function GetPipeWireAudioSources()
@@ -1465,15 +1584,7 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
             $conf .= "      node.name = \"$loopbackName\"\n";
             $conf .= "      node.description = \"$loopbackDesc\"\n";
             $conf .= "      capture.props = {\n";
-
-            // For capture devices, use node.target with a glob/regex pattern
-            if ($mbrType === 'capture') {
-                $cardId = $mbr['cardId'];
-                $conf .= "        node.target = \"$sourceTarget\"\n";
-            } else {
-                $conf .= "        node.target = \"$sourceTarget\"\n";
-            }
-
+            $conf .= "        node.target = \"$sourceTarget\"\n";
             $conf .= "        media.class = Stream/Input/Audio\n";
             $conf .= "        stream.dont-remix = true\n";
 
@@ -1487,6 +1598,11 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
             $conf .= "      playback.props = {\n";
             $conf .= "        node.target = \"$nodeName\"\n";
             $conf .= "        media.class = Stream/Output/Audio\n";
+
+            // Per-member volume via channelmix
+            if ($volume < 0.999) {
+                $conf .= "        channelmix.volume = " . round($volume, 3) . "\n";
+            }
 
             // Channel mapping for the output side
             if (isset($mbr['channelMapping']) && !empty($mbr['channelMapping'])) {

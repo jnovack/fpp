@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-20
 **Branch:** `input-mixing-phase1` (forked from `multi-input-gstreamer`)
-**Status:** In Progress — Phase 1 complete, Phase 2 next
+**Status:** In Progress — Phase 1 & 2 complete, Phase 3 next
 
 ---
 
@@ -341,30 +341,55 @@ with per-source controls.
 
 ### Tasks
 
-- [ ] **2.1** Add API endpoint to enumerate available capture devices
+- [x] **2.1** Add API endpoint to enumerate available capture devices ✅ (implemented in Phase 1)
   - `GET /api/pipewire/audio/sources` — returns ALSA `Audio/Source` nodes from pw-dump
-  - Include card ID, description, available channels, sample rate
-  - Filter out virtual/internal sources (PipeWire monitors etc.)
+  - Include card ID, description, available channels, sample rate, state
+  - Filters out `.monitor` virtual sources
+  - File: `www/api/controllers/pipewire.php` (`GetPipeWireAudioSources()`)
 
-- [ ] **2.2** UI: source device picker in input group member config
-  - Dropdown populated from `/api/pipewire/audio/sources`
-  - Show card name, channel count, current state
-  - Channel mapping selector (mono source → stereo group, etc.)
+- [x] **2.2** UI: source device picker in input group member config ✅
+  - ALSA capture: dropdown populated from `/api/pipewire/audio/sources`
+  - Shows card name, channel count, device state badge (running/idle/disconnected)
+  - Channel mapping selector appears when source channels ≠ group channels
+  - Presets: Mono→Center, Mono→L+R, Mono→L only, Stereo→Front, Stereo→Rear, etc.
+  - AES67 receive: dropdown populated from `/api/pipewire/aes67/instances` (receive mode only)
+  - Auto-populates member name from device description on first selection
+  - File: `www/pipewire-input-mixing.php` (RenderMember, RenderChannelMapping)
 
-- [ ] **2.3** Per-member gain control via filter-chain
-  - Inline biquad gain node in the loopback path for fine volume control
-  - Alternative: use PipeWire stream volume on the loopback node (simpler)
-  - Decision: start with stream volume (pactl), add filter-chain gain if needed
+- [x] **2.3** Per-member gain control ✅
+  - Volume stored in config (0-100) and applied via `channelmix.volume` on loopback playback.props
+  - Real-time volume API: `POST /api/pipewire/audio/input-groups/volume`
+  - Uses `pw-cli set-param <nodeId> Props { channelmix.volume: <linear> }` for live changes
+  - Debounced UI slider (150ms) sends real-time changes without full restart
+  - Also persists to config JSON for next restart
+  - File: `www/api/controllers/pipewire.php` (`SetInputGroupMemberVolume()`)
+  - Route: `www/api/index.php`
 
-- [ ] **2.4** Source monitoring / metering
+- [ ] **2.4** Source monitoring / metering (deferred — nice-to-have)
   - Optionally show input level meter (peak/RMS) per source
   - Use PipeWire peak detection or poll `pw-top` data
-  - Nice-to-have, not blocking
+  - Not blocking
 
-- [ ] **2.5** Handle hot-plug / device removal
-  - If an ALSA capture device is unplugged, the loopback should not crash PipeWire
-  - WirePlumber will handle graceful disconnect; UI should show "disconnected" state
-  - On re-plug, WirePlumber rescans and loopback reconnects automatically
+- [x] **2.5** Handle hot-plug / device removal ✅
+  - WirePlumber handles graceful disconnect and auto-reconnection natively
+  - UI shows device state badge: running (green), idle (yellow), disconnected (red)
+  - "Refresh Sources" button for manual re-poll
+  - Auto-refresh every 10 seconds to detect hot-plug events
+  - Devices no longer in PipeWire show "disconnected" badge
+  - File: `www/pipewire-input-mixing.php` (RefreshSources, auto-refresh timer)
+
+### Implementation Notes (Phase 2)
+
+- **Bug fix (pre-Phase 2):** stream.rules were matching input source names instead of
+  output group sinks. Fixed to match `media.class=Audio/Sink` + `node.name=fpp_group_*`.
+  Routing loopback modules (`fpp_route_ig*`) removed entirely — combine-stream handles
+  output routing natively via stream.rules.
+- **channelmix.volume** chosen over filter-chain gain — simpler, no extra nodes,
+  PipeWire applies it in the channel mixing stage of the loopback
+- **Channel mapping** uses `audio.position` on both capture and playback sides of the
+  loopback module. PipeWire's channel mixer handles the upmix/downmix.
+- **AES67 picker** loads instances from existing `/api/pipewire/aes67/instances` endpoint,
+  filters to `mode=receive` only
 
 ### Testing Criteria
 
@@ -373,6 +398,8 @@ with per-source controls.
 - [ ] Channel mapping (mono → stereo) works correctly
 - [ ] Multiple capture sources can be mixed simultaneously
 - [ ] No audio glitches or xruns during normal operation
+- [ ] Real-time volume slider changes audible level without restart
+- [ ] Device state badges update on hot-plug/removal
 
 ---
 
@@ -617,12 +644,12 @@ const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects',
 - [x] 1.7 WirePlumber hook update
 - [ ] Phase 1 testing complete
 
-### Phase 2 — ALSA Capture Routing
-- [ ] 2.1 Capture device enumeration API
-- [ ] 2.2 Source device picker UI
-- [ ] 2.3 Per-member gain control
-- [ ] 2.4 Source metering (nice-to-have)
-- [ ] 2.5 Hot-plug handling
+### Phase 2 — ALSA Capture Routing ✅ IMPLEMENTED
+- [x] 2.1 Capture device enumeration API (implemented in Phase 1)
+- [x] 2.2 Source device picker UI + channel mapping + AES67 picker
+- [x] 2.3 Per-member gain control (channelmix.volume + real-time API)
+- [ ] 2.4 Source metering (deferred — nice-to-have)
+- [x] 2.5 Hot-plug handling (state badges + auto-refresh)
 - [ ] Phase 2 testing complete
 
 ### Phase 3 — fppd Stream Naming
