@@ -470,21 +470,32 @@
                     }
                 });
 
-                // 3) Loopback sub-nodes: input.fpp_loopback_ig* / output.fpp_loopback_ig* → fpp_loopback_ig*
+                // 3) Loopback sub-nodes: input.fpp_loopback_ig* / output.fpp_loopback_ig* → input group
+                // PipeWire loopback modules create only input.* and output.* nodes (no bare parent).
+                // Absorb both into the input group combine-stream node so the graph shows
+                // ALSA source → Input Group directly without intermediate loopback nodes.
+                // Uses fpp.inputGroup.id enriched by the graph API to match loopback → input group.
                 graphData.nodes.forEach(n => {
-                    if ((n.name.startsWith('input.fpp_loopback_ig') || n.name.startsWith('output.fpp_loopback_ig'))) {
-                        // Strip prefix to find the parent loopback node
-                        let parentName = n.name.replace(/^(input|output)\./, '');
-                        let bestParent = nodesByName[parentName] || null;
-                        if (bestParent) {
-                            absorbed.add(n.id);
-                            nodeIdRemap[n.id] = bestParent.id;
-                            graphData.ports.forEach(p => {
-                                if (p.nodeId === n.id) p.nodeId = bestParent.id;
-                            });
-                            if (n.state === 'running' && bestParent.state !== 'running') {
-                                bestParent.state = n.state;
-                            }
+                    if (!(n.name.startsWith('input.fpp_loopback_ig') || n.name.startsWith('output.fpp_loopback_ig')))
+                        return;
+                    const loopbackGroupId = n.properties && n.properties['fpp.inputGroup.id'];
+                    if (loopbackGroupId === undefined || loopbackGroupId === null) return;
+                    // Find the input group combine-stream node with matching group ID
+                    let igNode = null;
+                    graphData.nodes.forEach(candidate => {
+                        if (candidate.properties && candidate.properties['fpp.inputGroup'] &&
+                            candidate.properties['fpp.inputGroup.id'] === loopbackGroupId) {
+                            igNode = candidate;
+                        }
+                    });
+                    if (igNode) {
+                        absorbed.add(n.id);
+                        nodeIdRemap[n.id] = igNode.id;
+                        graphData.ports.forEach(p => {
+                            if (p.nodeId === n.id) p.nodeId = igNode.id;
+                        });
+                        if (n.state === 'running' && igNode.state !== 'running') {
+                            igNode.state = n.state;
                         }
                     }
                 });

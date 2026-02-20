@@ -2455,14 +2455,16 @@ function GetPipeWireGraph()
                         $slug = 'fpp_input_' . strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $ig['name']));
                         if ($nm === $slug) {
                             $node['properties']['fpp.inputGroup'] = true;
+                            $node['properties']['fpp.inputGroup.id'] = isset($ig['id']) ? intval($ig['id']) : 0;
                             $node['properties']['fpp.inputGroup.members'] = isset($ig['members']) ? count($ig['members']) : 0;
                             $node['properties']['fpp.inputGroup.outputs'] = isset($ig['outputs']) ? count($ig['outputs']) : 0;
                             break;
                         }
                     }
                 }
-                // Match loopback nodes (fpp_loopback_ig*)
-                if (preg_match('/^fpp_loopback_ig(\d+)_/', $nm, $m)) {
+                // Match loopback sub-nodes: input.fpp_loopback_ig* / output.fpp_loopback_ig*
+                // PipeWire loopback creates only these two sub-nodes (no bare parent)
+                if (preg_match('/(?:^|^(?:input|output)\.)fpp_loopback_ig(\d+)_/', $nm, $m)) {
                     $node['properties']['fpp.inputGroup.loopback'] = true;
                     $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
                 }
