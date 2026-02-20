@@ -29,7 +29,7 @@ int StartMediaOutput(const std::string& filename);
 void UpdateMasterMediaPosition(const std::string& filename, float seconds);
 void CloseMediaOutput();
 
-MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::string& videoOut);
+MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::string& videoOut, int streamSlot = 1);
 
 /* If try, filename will be updated with the media filename */
 bool HasVideoForMedia(std::string& filename);

@@ -1222,29 +1222,50 @@ function ApplyPipeWireInputGroups()
         usleep(250000);
     }
 
-    // Update fppd routing: if fppd_stream_1 is a member of an input group,
-    // route fppd's pipewiresink to the input group instead of the output group.
-    $fppdTarget = '';
+    // Update fppd routing: for each fppd_stream_N member of an input group,
+    // route that stream slot's pipewiresink to the input group.
+    // Slot 1 uses PipeWireSinkName (global), slots 2-5 use PipeWireSinkName_N.
+    $slotTargets = array();  // slot => target node name
     foreach ($data['inputGroups'] as $ig) {
         if (!isset($ig['enabled']) || !$ig['enabled'])
             continue;
         if (!isset($ig['members']) || empty($ig['members']))
             continue;
+        $igNodeName = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
         foreach ($ig['members'] as $mbr) {
             if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
-                $igNodeName = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
-                $fppdTarget = $igNodeName;
-                break 2;
+                // Determine which slot this member refers to
+                $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                $slotNum = 1;
+                if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
+                    $slotNum = intval($m[1]);
+                }
+                $slotTargets[$slotNum] = $igNodeName;
             }
         }
     }
 
+    // Set per-slot PipeWireSinkName settings
+    $fppdTarget = isset($slotTargets[1]) ? $slotTargets[1] : '';
     if (!empty($fppdTarget)) {
         // fppd should route to the input group
         $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
         exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($fppdTarget) . " 2>&1");
         WriteSettingToFile('PipeWireSinkName', $fppdTarget);
         SendCommand('setSetting,PipeWireSinkName,' . $fppdTarget);
+    }
+
+    // Set per-slot targets for slots 2-5
+    for ($s = 2; $s <= 5; $s++) {
+        $key = "PipeWireSinkName_$s";
+        if (isset($slotTargets[$s])) {
+            WriteSettingToFile($key, $slotTargets[$s]);
+            SendCommand("setSetting,$key," . $slotTargets[$s]);
+        } else {
+            // Clear per-slot setting — slot will use global PipeWireSinkName
+            WriteSettingToFile($key, '');
+            SendCommand("setSetting,$key,");
+        }
     }
 
     // Resume playback if it was active
@@ -1381,6 +1402,134 @@ function SetInputGroupMemberVolume()
         "volume" => $volumePct,
         "volumeLinear" => $volumeLinear
     ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/stream/volume
+// Set volume on a specific fppd stream slot (1-5).
+// Body: { "slot": 1, "volume": 80 }
+// Uses fppd's own volume control via HTTP command API.
+function SetStreamSlotVolume()
+{
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['slot']) || !isset($body['volume'])) {
+        return json(array("status" => "error", "message" => "Missing slot or volume"));
+    }
+
+    $slot = max(1, min(5, intval($body['slot'])));
+    $volume = max(0, min(100, intval($body['volume'])));
+
+    // Use fppd's volume command — for slot 1 this maps to the global volume
+    // For other slots, fppd must handle per-slot volume via StreamSlotManager
+    $url = "http://127.0.0.1:32322/api/command";
+    $cmd = array(
+        "command" => "Volume Set",
+        "args" => array(strval($volume))
+    );
+
+    // For slot > 1, use the stream-slot-specific endpoint
+    if ($slot > 1) {
+        // Direct PipeWire volume control on the stream node
+        $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+        $nodeName = "fppd_stream_$slot";
+
+        // Find node ID for this stream
+        global $SUDO;
+        $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+        if (!empty($raw)) {
+            $objects = json_decode($raw, true);
+            if (is_array($objects)) {
+                $volumeLinear = round($volume / 100.0, 3);
+                foreach ($objects as $obj) {
+                    $type = isset($obj['type']) ? $obj['type'] : '';
+                    if ($type !== 'PipeWire:Interface:Node') continue;
+                    $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+                    $nm = isset($props['node.name']) ? $props['node.name'] : '';
+                    if ($nm === $nodeName) {
+                        $cmd2 = $SUDO . " " . $env . " pw-cli set-param " . $obj['id'] . " Props '{ channelmix.volume: $volumeLinear }' 2>&1";
+                        shell_exec($cmd2);
+                        return json(array("status" => "OK", "slot" => $slot, "volume" => $volume));
+                    }
+                }
+            }
+        }
+        return json(array("status" => "error", "message" => "Stream node $nodeName not found in PipeWire"));
+    }
+
+    // Slot 1: use fppd's built-in volume command
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($cmd));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+    $result = curl_exec($ch);
+    curl_close($ch);
+
+    return json(array("status" => "OK", "slot" => $slot, "volume" => $volume));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/audio/stream/status
+// Returns status for all 5 stream slots (active/idle, media filename, timing).
+function GetStreamSlotStatus()
+{
+    $result = array();
+
+    // Query fppd status
+    $ch = curl_init("http://127.0.0.1:32322/api/fppd/status");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+    $raw = curl_exec($ch);
+    curl_close($ch);
+
+    $fppStatus = !empty($raw) ? json_decode($raw, true) : array();
+
+    // Build slot status from PipeWire graph
+    global $SUDO;
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $pwRaw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    $pwObjects = !empty($pwRaw) ? json_decode($pwRaw, true) : array();
+
+    for ($slot = 1; $slot <= 5; $slot++) {
+        $nodeName = "fppd_stream_$slot";
+        $nodeDesc = "FPP Media Stream $slot";
+        $slotInfo = array(
+            "slot" => $slot,
+            "nodeName" => $nodeName,
+            "nodeDescription" => $nodeDesc,
+            "status" => "idle",
+            "mediaFilename" => "",
+        );
+
+        // Check if the PipeWire node exists (i.e. stream is active)
+        if (is_array($pwObjects)) {
+            foreach ($pwObjects as $obj) {
+                $type = isset($obj['type']) ? $obj['type'] : '';
+                if ($type !== 'PipeWire:Interface:Node') continue;
+                $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+                $nm = isset($props['node.name']) ? $props['node.name'] : '';
+                if ($nm === $nodeName) {
+                    $slotInfo['status'] = 'playing';
+                    break;
+                }
+            }
+        }
+
+        // Slot 1 gets extra info from fppd status
+        if ($slot === 1 && !empty($fppStatus['media_filename'])) {
+            $slotInfo['status'] = 'playing';
+            $slotInfo['mediaFilename'] = $fppStatus['media_filename'];
+            if (isset($fppStatus['seconds_elapsed']))
+                $slotInfo['secondsElapsed'] = intval($fppStatus['seconds_elapsed']);
+            if (isset($fppStatus['seconds_remaining']))
+                $slotInfo['secondsRemaining'] = intval($fppStatus['seconds_remaining']);
+        }
+
+        $result[] = $slotInfo;
+    }
+
+    return json($result);
 }
 
 /////////////////////////////////////////////////////////////////////////////

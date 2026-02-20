@@ -15,6 +15,7 @@
 
 #include "PlaylistEntryBase.h"
 #include "mediaoutput/mediaoutput.h"
+#include "mediaoutput/StreamSlotManager.h"
 
 class PlaylistEntryMedia : public PlaylistEntryBase {
 public:
@@ -38,6 +39,8 @@ public:
     virtual Json::Value GetMqttStatus(void) override;
 
     std::string GetMediaName(void) { return m_mediaFilename; }
+    int GetStreamSlot(void) { return m_streamSlot; }
+    bool IsBackgroundSlot(void) { return m_streamSlot > 1; }
 
     virtual uint64_t GetLengthInMS() override;
     virtual uint64_t GetElapsedMS() override;
@@ -62,6 +65,8 @@ private:
     std::string m_mediaFilename;
     std::string m_mediaPrefix;
     std::string m_videoOutput;
+    int m_streamSlot;         // stream slot (1-5), default 1
+    MediaOutputStatus* m_slotStatus; // per-slot status pointer
     MediaOutputBase* m_mediaOutput;
     pthread_mutex_t m_mediaOutputLock;
 

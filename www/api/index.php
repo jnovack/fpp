@@ -113,6 +113,8 @@ dispatch_get('/pipewire/audio/input-groups', 'GetPipeWireInputGroups');
 dispatch_post('/pipewire/audio/input-groups', 'SavePipeWireInputGroups');
 dispatch_post('/pipewire/audio/input-groups/apply', 'ApplyPipeWireInputGroups');
 dispatch_post('/pipewire/audio/input-groups/volume', 'SetInputGroupMemberVolume');
+dispatch_post('/pipewire/audio/stream/volume', 'SetStreamSlotVolume');
+dispatch_get('/pipewire/audio/stream/status', 'GetStreamSlotStatus');
 dispatch_post('/pipewire/audio/group/volume', 'SetPipeWireGroupVolume');
 dispatch_post('/pipewire/audio/eq/update', 'UpdatePipeWireEQRealtime');
 dispatch_post('/pipewire/audio/delay/update', 'UpdatePipeWireDelayRealtime');

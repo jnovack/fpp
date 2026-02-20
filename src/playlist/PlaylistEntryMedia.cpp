@@ -39,6 +39,8 @@ PlaylistEntryMedia::PlaylistEntryMedia(Playlist* playlist, PlaylistEntryBase* pa
     m_status(0),
     m_mediaOutput(NULL),
     m_videoOutput("--Default--"),
+    m_streamSlot(1),
+    m_slotStatus(&mediaOutputStatus),
     m_openTime(0),
     m_fileMode("single"),
     m_duration(0),
@@ -92,6 +94,15 @@ int PlaylistEntryMedia::Init(Json::Value& config) {
     if (config.isMember("videoOut")) {
         m_videoOutput = config["videoOut"].asString();
     }
+
+    // Stream slot (1-5), default 1.  Slot > 1 plays on a separate PipeWire stream.
+    if (config.isMember("streamSlot")) {
+        m_streamSlot = config["streamSlot"].asInt();
+        if (m_streamSlot < 1) m_streamSlot = 1;
+        if (m_streamSlot > StreamSlotManager::MAX_SLOTS) m_streamSlot = StreamSlotManager::MAX_SLOTS;
+    }
+    m_slotStatus = StreamSlotManager::Instance().GetStatus(m_streamSlot);
+
     m_pausedTime = -1;
     return PlaylistEntryBase::Init(config);
 }
@@ -103,10 +114,10 @@ int PlaylistEntryMedia::PreparePlay() {
         FinishPlay();
         return 0;
     }
-    mediaOutputStatus.minutesTotal = 0;
-    mediaOutputStatus.secondsTotal = 0;
-    mediaOutputStatus.secondsElapsed = 0;
-    mediaOutputStatus.subSecondsElapsed = 0;
+    m_slotStatus->minutesTotal = 0;
+    m_slotStatus->secondsTotal = 0;
+    m_slotStatus->secondsElapsed = 0;
+    m_slotStatus->subSecondsElapsed = 0;
 
     if (m_fileMode != "single") {
         if (m_files.size()) {
@@ -159,9 +170,9 @@ int PlaylistEntryMedia::StartPlaying(void) {
         return 0;
     }
 
-    float f = mediaOutputStatus.mediaSeconds * 1000;
+    float f = m_slotStatus->mediaSeconds * 1000;
     if (m_duration == 0) {
-        float f = mediaOutputStatus.minutesTotal * 60 + mediaOutputStatus.secondsTotal;
+        float f = m_slotStatus->minutesTotal * 60 + m_slotStatus->secondsTotal;
         f *= 1000;
         m_duration = f;
     }
@@ -243,8 +254,8 @@ uint64_t PlaylistEntryMedia::GetLengthInMS() {
     // asynchronously.  Re-checking here prevents GetElapsedMS()'s
     // "if (f > m_duration)" guard from permanently caching a wrong value
     // (i.e., the elapsed time) before the real duration was known.
-    if (mediaOutputStatus.minutesTotal > 0 || mediaOutputStatus.secondsTotal > 0) {
-        uint64_t d = ((uint64_t)mediaOutputStatus.minutesTotal * 60 + mediaOutputStatus.secondsTotal) * 1000;
+    if (m_slotStatus->minutesTotal > 0 || m_slotStatus->secondsTotal > 0) {
+        uint64_t d = ((uint64_t)m_slotStatus->minutesTotal * 60 + m_slotStatus->secondsTotal) * 1000;
         if (d > m_duration) {
             m_duration = d;
         }
@@ -253,14 +264,14 @@ uint64_t PlaylistEntryMedia::GetLengthInMS() {
 }
 uint64_t PlaylistEntryMedia::GetElapsedMS() {
     if (m_mediaOutput) {
-        float f = mediaOutputStatus.secondsElapsed * 1000;
-        f += mediaOutputStatus.subSecondsElapsed * 10; // subSec is in 1/100th second
+        float f = m_slotStatus->secondsElapsed * 1000;
+        f += m_slotStatus->subSecondsElapsed * 10; // subSec is in 1/100th second
         if (IsPaused()) {
             f = m_pausedStatus.secondsElapsed * 1000;
             f += m_pausedStatus.subSecondsElapsed * 10; // subSec is in 1/100th second
         }
         if (m_duration == 0) {
-            float f = mediaOutputStatus.minutesTotal * 60 + mediaOutputStatus.secondsTotal;
+            float f = m_slotStatus->minutesTotal * 60 + m_slotStatus->secondsTotal;
             f *= 1000;
             m_duration = f;
         }
@@ -284,10 +295,10 @@ int PlaylistEntryMedia::Stop(void) {
     Events::Publish("playlist/media/title", "");
     Events::Publish("playlist/media/artist", "");
 
-    mediaOutputStatus.minutesTotal = 0;
-    mediaOutputStatus.secondsTotal = 0;
-    mediaOutputStatus.secondsElapsed = 0;
-    mediaOutputStatus.subSecondsElapsed = 0;
+    m_slotStatus->minutesTotal = 0;
+    m_slotStatus->secondsTotal = 0;
+    m_slotStatus->secondsElapsed = 0;
+    m_slotStatus->subSecondsElapsed = 0;
 
     return PlaylistEntryBase::Stop();
 }
@@ -342,7 +353,7 @@ int PlaylistEntryMedia::OpenMediaOutput(void) {
         }
     }
 
-    m_mediaOutput = CreateMediaOutput(tmpFile, vOut);
+    m_mediaOutput = CreateMediaOutput(tmpFile, vOut, m_streamSlot);
 
     if (!m_mediaOutput) {
         pthread_mutex_unlock(&m_mediaOutputLock);
@@ -363,7 +374,7 @@ int PlaylistEntryMedia::OpenMediaOutput(void) {
 int PlaylistEntryMedia::CloseMediaOutput(void) {
     LogDebug(VB_PLAYLIST, "PlaylistEntryMedia::CloseMediaOutput()\n");
 
-    mediaOutputStatus.status = MEDIAOUTPUTSTATUS_IDLE;
+    m_slotStatus->status = MEDIAOUTPUTSTATUS_IDLE;
 
     pthread_mutex_lock(&m_mediaOutputLock);
     if (!m_mediaOutput) {
@@ -440,8 +451,9 @@ std::string PlaylistEntryMedia::GetNextRandomFile(void) {
  */
 Json::Value PlaylistEntryMedia::GetConfig(void) {
     Json::Value result = PlaylistEntryBase::GetConfig();
-    MediaOutputStatus status = IsPaused() ? m_pausedStatus : mediaOutputStatus;
+    MediaOutputStatus status = IsPaused() ? m_pausedStatus : *m_slotStatus;
     result["mediaFilename"] = m_mediaFilename;
+    result["streamSlot"] = m_streamSlot;
     if (m_mediaOutput) {
         result["status"] = status.status;
         result["secondsElapsed"] = status.secondsElapsed;
@@ -460,7 +472,7 @@ Json::Value PlaylistEntryMedia::GetConfig(void) {
 
 Json::Value PlaylistEntryMedia::GetMqttStatus(void) {
     Json::Value result = PlaylistEntryBase::GetMqttStatus();
-    MediaOutputStatus status = IsPaused() ? m_pausedStatus : mediaOutputStatus;
+    MediaOutputStatus status = IsPaused() ? m_pausedStatus : *m_slotStatus;
     result["secondsElapsed"] = status.secondsElapsed;
     result["millisecondsElapsed"] = status.secondsElapsed * 1000 + status.subSecondsElapsed * 10;
     result["secondsRemaining"] = status.secondsRemaining;
@@ -473,7 +485,7 @@ Json::Value PlaylistEntryMedia::GetMqttStatus(void) {
 }
 
 void PlaylistEntryMedia::Pause() {
-    m_pausedStatus = mediaOutputStatus;
+    m_pausedStatus = *m_slotStatus;
     m_pausedTime = GetElapsedMS();
     CloseMediaOutput();
     Events::Publish("playlist/media/status", "");
@@ -498,7 +510,7 @@ void PlaylistEntryMedia::Resume() {
             pthread_mutex_unlock(&m_mediaOutputLock);
         }
         m_pausedTime = -1;
-        mediaOutputStatus = m_pausedStatus;
+        *m_slotStatus = m_pausedStatus;
         pthread_mutex_unlock(&m_mediaOutputLock);
     }
 }

@@ -26,6 +26,7 @@
 
 #include "common.h"
 #include "log.h"
+#include "StreamSlotManager.h"
 #include "mediadetails.h"
 #include "settings.h"
 #include "channeloutput/channeloutputthread.h"
@@ -114,9 +115,9 @@ GStreamerOutput::DrmConnectorInfo GStreamerOutput::ResolveDrmConnector(const std
     return info;
 }
 
-GStreamerOutput::GStreamerOutput(const std::string& mediaFilename, MediaOutputStatus* status, const std::string& videoOut)
-    : m_videoOut(videoOut) {
-    LogWarn(VB_MEDIAOUT, "GStreamer: CTOR enter (%s, videoOut=%s)\n", mediaFilename.c_str(), videoOut.c_str());
+GStreamerOutput::GStreamerOutput(const std::string& mediaFilename, MediaOutputStatus* status, const std::string& videoOut, int streamSlot)
+    : m_videoOut(videoOut), m_streamSlot(streamSlot) {
+    LogWarn(VB_MEDIAOUT, "GStreamer: CTOR enter (%s, videoOut=%s, slot=%d)\n", mediaFilename.c_str(), videoOut.c_str(), streamSlot);
     m_mediaFilename = mediaFilename;
     m_mediaOutputStatus = status;
     m_allowSpeedAdjust = (getSettingInt("remoteIgnoreSync") == 0);
@@ -241,11 +242,22 @@ int GStreamerOutput::Start(int msTime) {
 
     LogWarn(VB_MEDIAOUT, "GStreamer: Start() building pipeline...");
     std::string pipelineSinkName = getSetting("PipeWireSinkName");
-    LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s'\n", pipelineSinkName.c_str());
 
-    // Stream identity: fppd_stream_1 (will become per-slot in Phase 4)
-    std::string streamNodeName = "fppd_stream_1";
-    std::string streamNodeDesc = "FPP Media Stream 1";
+    // For multi-stream slots > 1, check for a per-slot PipeWire sink setting.
+    // Format: PipeWireSinkName_2, PipeWireSinkName_3, etc.
+    // If not set, falls back to the global PipeWireSinkName.
+    if (m_streamSlot > 1) {
+        std::string slotSetting = "PipeWireSinkName_" + std::to_string(m_streamSlot);
+        std::string slotSinkName = getSetting(slotSetting.c_str());
+        if (!slotSinkName.empty()) {
+            pipelineSinkName = slotSinkName;
+        }
+    }
+    LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s' (slot %d)\n", pipelineSinkName.c_str(), m_streamSlot);
+
+    // Stream identity: use slot number for PipeWire node naming
+    std::string streamNodeName = StreamSlotManager::GetNodeName(m_streamSlot);
+    std::string streamNodeDesc = StreamSlotManager::GetNodeDescription(m_streamSlot);
 
     std::string sinkStr;
     if (!pipelineSinkName.empty()) {
@@ -704,7 +716,16 @@ int GStreamerOutput::Start(int msTime) {
     }
 
     m_playing = true;
-    m_currentInstance = this;
+
+    // m_currentInstance is used by WLED audio-reactive tap and video overlay.
+    // Slot 1 (primary) always takes priority; secondary slots only claim it
+    // if no other instance is active.
+    if (m_streamSlot == 1 || m_currentInstance == nullptr) {
+        m_currentInstance = this;
+    }
+
+    // Register with StreamSlotManager
+    StreamSlotManager::Instance().SetActiveOutput(m_streamSlot, this);
 
 #ifdef HAS_AES67_GSTREAMER
     // AES67 send pipelines run continuously (always sending to multicast).
@@ -1100,8 +1121,22 @@ int GStreamerOutput::Close(void) {
     }
 
     if (m_currentInstance == this) {
+        // If we're closing the primary (WLED tap) instance, try to hand off
+        // to another active slot (prefer slot 1)
         m_currentInstance = nullptr;
+        for (int s = 1; s <= StreamSlotManager::MAX_SLOTS; s++) {
+            if (s == m_streamSlot) continue;
+            GStreamerOutput* other = StreamSlotManager::Instance().GetActiveOutput(s);
+            if (other && other->m_playing) {
+                m_currentInstance = other;
+                break;
+            }
+        }
     }
+
+    // Deregister from StreamSlotManager
+    StreamSlotManager::Instance().ClearSlot(m_streamSlot);
+
     return 1;
 }
 

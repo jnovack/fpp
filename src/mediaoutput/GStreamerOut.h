@@ -30,7 +30,7 @@ class PixelOverlayModel;
 
 class GStreamerOutput : public MediaOutputBase {
 public:
-    GStreamerOutput(const std::string& mediaFilename, MediaOutputStatus* status, const std::string& videoOut = "");
+    GStreamerOutput(const std::string& mediaFilename, MediaOutputStatus* status, const std::string& videoOut = "", int streamSlot = 1);
     virtual ~GStreamerOutput();
 
     virtual int Start(int msTime = 0) override;
@@ -168,6 +168,8 @@ private:
 
     // Apply playback rate change via GStreamer instant-rate-change seek
     void ApplyRate(float rate);
+
+    int m_streamSlot = 1;  // stream slot number (1-5), determines PipeWire node name
 
     static GStreamerOutput* m_currentInstance;
 };
