@@ -2384,8 +2384,11 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
     $channelPositions = array(
         1 => "[ MONO ]",
         2 => "[ FL FR ]",
+        3 => "[ FL FR FC ]",
         4 => "[ FL FR RL RR ]",
+        5 => "[ FL FR FC RL RR ]",
         6 => "[ FL FR FC LFE RL RR ]",
+        7 => "[ FL FR FC LFE RL RR RC ]",
         8 => "[ FL FR FC LFE RL RR SL SR ]"
     );
 
@@ -2732,16 +2735,22 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
     $channelPositions = array(
         1 => "[ MONO ]",
         2 => "[ FL FR ]",
+        3 => "[ FL FR FC ]",
         4 => "[ FL FR RL RR ]",
+        5 => "[ FL FR FC RL RR ]",
         6 => "[ FL FR FC LFE RL RR ]",
+        7 => "[ FL FR FC LFE RL RR RC ]",
         8 => "[ FL FR FC LFE RL RR SL SR ]"
     );
 
     $channelPositionArrays = array(
         1 => array("MONO"),
         2 => array("FL", "FR"),
+        3 => array("FL", "FR", "FC"),
         4 => array("FL", "FR", "RL", "RR"),
+        5 => array("FL", "FR", "FC", "RL", "RR"),
         6 => array("FL", "FR", "FC", "LFE", "RL", "RR"),
+        7 => array("FL", "FR", "FC", "LFE", "RL", "RR", "RC"),
         8 => array("FL", "FR", "FC", "LFE", "RL", "RR", "SL", "SR")
     );
 
@@ -2910,6 +2919,80 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
     if (!empty($unresolvedCards)) {
         $conf .= "# WARNING: Could not find PipeWire sinks for: " . implode(', ', $unresolvedCards) . "\n";
         $conf .= "# These cards will be skipped from combine groups.\n\n";
+    }
+
+    // ---------------------------------------------------------------
+    // Phase 0: Generate custom ALSA adapter nodes for members that
+    // need more channels than the default WirePlumber/FPP-boot nodes
+    // provide (typically 2ch stereo).  These adapters open the ALSA
+    // device with the correct channel count so all physical outputs
+    // are driven.  The filter-chain playback then targets our custom
+    // adapter instead of the default stereo node.
+    // ---------------------------------------------------------------
+    $customAlsaAdapters = array(); // cardId -> array('nodeName','channels')
+
+    foreach ($groups as $group) {
+        if (!isset($group['enabled']) || !$group['enabled'])
+            continue;
+        if (!isset($group['members']) || empty($group['members']))
+            continue;
+        foreach ($group['members'] as $member) {
+            $memberCh = isset($member['channels']) ? intval($member['channels']) : 2;
+            $cid = isset($member['cardId']) ? $member['cardId'] : '';
+            if (empty($cid) || $memberCh <= 2)
+                continue;
+            // Skip AES67 virtual sinks — they don't use ALSA adapters
+            if (strpos($cid, 'aes67_') === 0)
+                continue;
+            if (!isset($cardNodeMap[$cid]))
+                continue;
+            // Track max channels needed per card (same card in multiple groups)
+            if (!isset($customAlsaAdapters[$cid]) || $memberCh > $customAlsaAdapters[$cid]['channels']) {
+                $cidNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cid));
+                $customAlsaAdapters[$cid] = array(
+                    'nodeName' => 'fpp_alsa_' . $cidNorm,
+                    'channels' => $memberCh
+                );
+            }
+        }
+    }
+
+    if (!empty($customAlsaAdapters)) {
+        // Determine audio sample rate from settings (matches FPPINIT logic)
+        $audioFormat = isset($settings['AudioFormat']) ? intval($settings['AudioFormat']) : 0;
+        if ($audioFormat >= 7) {
+            $alsaRate = 96000;
+        } elseif ($audioFormat >= 4) {
+            $alsaRate = 48000;
+        } else {
+            $alsaRate = 44100;
+        }
+
+        $conf .= "# Custom multi-channel ALSA adapter nodes\n";
+        $conf .= "# These provide the correct channel count for output group members\n";
+        $conf .= "context.objects = [\n";
+        foreach ($customAlsaAdapters as $cid => $info) {
+            $posStr = isset($channelPositions[$info['channels']]) ? $channelPositions[$info['channels']] : "[ FL FR ]";
+            $cardLabel = isset($member['cardName']) ? $member['cardName'] : $cid;
+            $conf .= "  { factory = adapter\n";
+            $conf .= "    args = {\n";
+            $conf .= "      factory.name = api.alsa.pcm.sink\n";
+            $conf .= "      node.name = \"" . $info['nodeName'] . "\"\n";
+            $conf .= "      node.description = \"$cid (" . $info['channels'] . "ch)\"\n";
+            $conf .= "      media.class = \"Audio/Sink\"\n";
+            $conf .= "      api.alsa.path = \"hw:$cid\"\n";
+            $conf .= "      api.alsa.period-size = 1024\n";
+            $conf .= "      api.alsa.headroom = 256\n";
+            $conf .= "      audio.format = \"S16LE\"\n";
+            $conf .= "      audio.rate = $alsaRate\n";
+            $conf .= "      audio.channels = " . $info['channels'] . "\n";
+            $conf .= "      audio.position = $posStr\n";
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+            // Override cardNodeMap so filter-chain targets our multi-channel adapter
+            $cardNodeMap[$cid] = $info['nodeName'];
+        }
+        $conf .= "]\n\n";
     }
 
     // Create modules array: filter-chain modules first, then combine-stream
