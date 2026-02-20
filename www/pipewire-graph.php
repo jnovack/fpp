@@ -310,7 +310,7 @@
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
                 if (nm.startsWith('fpp_input_')) return '#e35d6a'; // input group mix bus
-                if (nm.startsWith('fpp_loopback_ig')) return '#e35d6a'; // input group routing
+                if (nm.startsWith('fpp_loopback_ig') || nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return '#e35d6a'; // input group routing
                 if (nm.startsWith('fpp_group_')) return '#0d6efd'; // combine-stream group
                 if (nm.startsWith('fpp_fx_') && !nm.endsWith('_out')) return '#6f42c1'; // delay filter sink
                 if (nm.startsWith('output.fpp_group_') ||
@@ -470,7 +470,26 @@
                     }
                 });
 
-                // 3) Combine-stream outputs for input groups: output.fpp_input_* → fpp_input_*
+                // 3) Loopback sub-nodes: input.fpp_loopback_ig* / output.fpp_loopback_ig* → fpp_loopback_ig*
+                graphData.nodes.forEach(n => {
+                    if ((n.name.startsWith('input.fpp_loopback_ig') || n.name.startsWith('output.fpp_loopback_ig'))) {
+                        // Strip prefix to find the parent loopback node
+                        let parentName = n.name.replace(/^(input|output)\./, '');
+                        let bestParent = nodesByName[parentName] || null;
+                        if (bestParent) {
+                            absorbed.add(n.id);
+                            nodeIdRemap[n.id] = bestParent.id;
+                            graphData.ports.forEach(p => {
+                                if (p.nodeId === n.id) p.nodeId = bestParent.id;
+                            });
+                            if (n.state === 'running' && bestParent.state !== 'running') {
+                                bestParent.state = n.state;
+                            }
+                        }
+                    }
+                });
+
+                // 4) Combine-stream outputs for input groups: output.fpp_input_* → fpp_input_*
                 graphData.nodes.forEach(n => {
                     if (n.name.startsWith('output.fpp_input_')) {
                         let bestParent = null;
@@ -568,6 +587,7 @@
                 // Input groups (mix buses)
                 if (nm.startsWith('fpp_input_')) return 1;
                 if (nm.startsWith('fpp_loopback_ig')) return 1;
+                if (nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return 1;
                 // (fpp_route removed — combine-stream handles routing)
 
                 // Output group sinks
