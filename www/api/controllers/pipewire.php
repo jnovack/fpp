@@ -229,30 +229,76 @@ function ApplyPipeWireAudioGroups()
         }
     }
 
-    // Find the first enabled group with members and set it as the default
-    // PipeWire sink so FPPD's SDL audio and volume control target it.
+    // Determine the PipeWire sink target for fppd media streams.
+    // If input groups are configured with fppd_stream members, the stream
+    // must target the INPUT GROUP combine-stream (fpp_input_<name>) so audio
+    // flows: media → input group → output group.  Otherwise target the
+    // output group directly.
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
-    $activeGroup = isset($data['activeGroup']) ? $data['activeGroup'] : '';
 
-    // If no explicit active group, use the first enabled group
-    if (empty($activeGroup)) {
-        foreach ($data['groups'] as $group) {
-            if (isset($group['enabled']) && $group['enabled'] && !empty($group['members'])) {
-                $activeGroup = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($group['name']));
-                break;
+    // Check for input groups that claim fppd_stream slots
+    $igSlotTargets = array();  // slot => input-group node name
+    $igFile2 = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    if (file_exists($igFile2)) {
+        $igData2 = json_decode(file_get_contents($igFile2), true);
+        if (is_array($igData2) && isset($igData2['inputGroups'])) {
+            foreach ($igData2['inputGroups'] as $ig) {
+                if (!isset($ig['enabled']) || !$ig['enabled'])
+                    continue;
+                if (!isset($ig['members']) || empty($ig['members']))
+                    continue;
+                $igNodeName2 = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
+                foreach ($ig['members'] as $mbr) {
+                    if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                        $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                        $slotNum = 1;
+                        if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
+                            $slotNum = intval($m[1]);
+                        }
+                        $igSlotTargets[$slotNum] = $igNodeName2;
+                    }
+                }
             }
         }
     }
 
-    if (!empty($activeGroup)) {
-        // Set as PipeWire default sink
-        exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($activeGroup) . " 2>&1");
+    if (!empty($igSlotTargets)) {
+        // Input groups own the stream routing — point each slot at its input group
+        $fppdTarget = isset($igSlotTargets[1]) ? $igSlotTargets[1] : '';
+        if (!empty($fppdTarget)) {
+            exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($fppdTarget) . " 2>&1");
+            WriteSettingToFile('PipeWireSinkName', $fppdTarget);
+            SendCommand('setSetting,PipeWireSinkName,' . $fppdTarget);
+        }
+        for ($s = 2; $s <= 5; $s++) {
+            $key = "PipeWireSinkName_$s";
+            if (isset($igSlotTargets[$s])) {
+                WriteSettingToFile($key, $igSlotTargets[$s]);
+                SendCommand("setSetting,$key," . $igSlotTargets[$s]);
+            }
+        }
+    } else {
+        // No input groups — route directly to an output group (original behaviour)
+        $activeGroup = isset($data['activeGroup']) ? $data['activeGroup'] : '';
 
-        // Set PipeWireSinkName so volume control targets the correct sink.
-        // ForceAudioId is owned by ALSA mode — do not touch it here;
-        // SDL routing in PipeWire mode is handled by pactl set-default-sink above.
-        WriteSettingToFile('PipeWireSinkName', $activeGroup);
-        SendCommand('setSetting,PipeWireSinkName,' . $activeGroup);
+        // If no explicit active group, use the first enabled group
+        if (empty($activeGroup)) {
+            foreach ($data['groups'] as $group) {
+                if (isset($group['enabled']) && $group['enabled'] && !empty($group['members'])) {
+                    $activeGroup = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($group['name']));
+                    break;
+                }
+            }
+        }
+
+        if (!empty($activeGroup)) {
+            // Set as PipeWire default sink
+            exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($activeGroup) . " 2>&1");
+
+            // Set PipeWireSinkName so volume control targets the correct sink.
+            WriteSettingToFile('PipeWireSinkName', $activeGroup);
+            SendCommand('setSetting,PipeWireSinkName,' . $activeGroup);
+        }
     }
 
     // Resume playback if it was active before the restart
@@ -268,7 +314,8 @@ function ApplyPipeWireAudioGroups()
         "status" => "OK",
         "message" => "Audio groups applied, PipeWire restarted"
             . ($wasPlaying ? ", playback resumed" : ""),
-        "activeGroup" => $activeGroup,
+        "activeGroup" => !empty($igSlotTargets) ? (isset($igSlotTargets[1]) ? $igSlotTargets[1] : '') : (isset($activeGroup) ? $activeGroup : ''),
+        "routedViaInputGroup" => !empty($igSlotTargets),
         "restartRequired" => true
     ));
 }
