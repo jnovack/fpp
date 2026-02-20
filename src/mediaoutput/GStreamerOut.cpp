@@ -756,6 +756,34 @@ int GStreamerOutput::Stop(void) {
 #ifdef HAS_AES67_GSTREAMER
         DetachAES67Branches();
 #endif
+
+        // Set shutdown flag to prevent appsink callbacks from doing work
+        // during teardown — without this, the streaming thread can deadlock
+        // with gst_element_set_state(NULL) due to malloc arena locks.
+        m_shutdownFlag.store(true);
+
+        // Disconnect appsink signals BEFORE state change to prevent
+        // callbacks firing during pipeline teardown.
+        if (m_appsink) {
+            if (m_appsinkSignalId > 0) {
+                g_signal_handler_disconnect(m_appsink, m_appsinkSignalId);
+                m_appsinkSignalId = 0;
+            }
+            g_object_set(m_appsink, "emit-signals", FALSE, NULL);
+        }
+        if (m_videoAppsink) {
+            if (m_videoAppsinkSignalId > 0) {
+                g_signal_handler_disconnect(m_videoAppsink, m_videoAppsinkSignalId);
+                m_videoAppsinkSignalId = 0;
+            }
+            g_object_set(m_videoAppsink, "emit-signals", FALSE, NULL);
+        }
+
+        // Remove bus sync handler before state change
+        if (m_bus) {
+            gst_bus_set_sync_handler(m_bus, nullptr, nullptr, nullptr);
+        }
+
         Stopping();
         gst_element_set_state(m_pipeline, GST_STATE_NULL);
         m_playing = false;
@@ -1018,15 +1046,6 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
 int GStreamerOutput::Close(void) {
     LogDebug(VB_MEDIAOUT, "GStreamerOutput::Close()\n");
     if (m_pipeline) {
-        // Detach AES67 zero-hop RTP branches before pipeline teardown
-#ifdef HAS_AES67_GSTREAMER
-        DetachAES67Branches();
-        // AES67 send pipelines run continuously — no pause needed.
-#endif
-
-        // Set shutdown flag FIRST — this prevents OnNewSample/OnNewVideoSample from doing any work
-        m_shutdownFlag.store(true);
-
         // Flush PipeWire filter-chain delay buffers.  Each audio group member
         // has a builtin delay node whose internal ring-buffer retains old
         // audio.  Setting the delay to 0 empties it; restoring the original
@@ -1044,28 +1063,8 @@ int GStreamerOutput::Close(void) {
         }
 #endif
 
-        // Disconnect appsink signals and disable emission BEFORE pipeline state change.
-        // This prevents streaming threads from calling callbacks during teardown,
-        // which can deadlock with gst_element_set_state(NULL) due to malloc arena locks.
-        if (m_appsink) {
-            if (m_appsinkSignalId > 0) {
-                g_signal_handler_disconnect(m_appsink, m_appsinkSignalId);
-                m_appsinkSignalId = 0;
-            }
-            g_object_set(m_appsink, "emit-signals", FALSE, NULL);
-        }
-        if (m_videoAppsink) {
-            if (m_videoAppsinkSignalId > 0) {
-                g_signal_handler_disconnect(m_videoAppsink, m_videoAppsinkSignalId);
-                m_videoAppsinkSignalId = 0;
-            }
-            g_object_set(m_videoAppsink, "emit-signals", FALSE, NULL);
-        }
-
-        // Remove bus sync handler before state change
-        if (m_bus) {
-            gst_bus_set_sync_handler(m_bus, nullptr, nullptr, nullptr);
-        }
+        // Stop() handles shutdown flag, appsink/bus cleanup, AES67 detach,
+        // and the pipeline state change.
         Stop();
 
         // Restore overlay model state if we enabled it
