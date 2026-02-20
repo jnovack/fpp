@@ -775,7 +775,7 @@
 		"PipeWirePrimaryOutput": {
 			"name": "PipeWirePrimaryOutput",
 			"description": "Primary Audio Output",
-			"tip": "Select where FPP sends its audio output when using PipeWire. Choose an Audio Output Group to route audio to multiple sound cards simultaneously, or select an individual card for direct output.",
+			"tip": "Select where FPP sends its audio output when using PipeWire. Choose an Audio Output Group to route audio to multiple sound cards simultaneously, or select an individual card for direct output. Note: When Input Mixing is configured, this setting is overridden — fppd stream routing is managed by the input group configuration instead.",
 			"restart": 2,
 			"default": "",
 			"type": "select",
