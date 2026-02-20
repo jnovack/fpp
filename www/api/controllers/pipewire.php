@@ -139,6 +139,27 @@ function ApplyPipeWireAudioGroups()
     // targets, causing doubled audio.
     InstallWirePlumberFppLinkingHook($SUDO);
 
+    // Stop fppd playback before restarting PipeWire to avoid race conditions
+    // where WirePlumber creates rogue links to orphaned streams during the
+    // service restart window.
+    $wasPlaying = false;
+    $resumePlaylist = '';
+    $resumeRepeat = false;
+    $statusJson = @file_get_contents('http://localhost:32322/fppd/status');
+    if ($statusJson !== false) {
+        $status = json_decode($statusJson, true);
+        if (is_array($status) && isset($status['status']) && $status['status'] == 1) {
+            $wasPlaying = true;
+            $cp = isset($status['current_playlist']) ? $status['current_playlist'] : array();
+            $resumePlaylist = isset($cp['playlist']) ? $cp['playlist'] : '';
+            $resumeRepeat = isset($cp['count']) && $cp['count'] === '0';  // 0 = infinite repeat
+            // Stop playback immediately
+            @file_get_contents('http://localhost:32322/command/Stop%20Now');
+            // Wait for fppd to release PipeWire streams
+            usleep(500000);
+        }
+    }
+
     // Restart PipeWire services to apply (order matters — pulse depends on pipewire socket)
     exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
     usleep(500000);
@@ -218,9 +239,19 @@ function ApplyPipeWireAudioGroups()
         SendCommand('setSetting,PipeWireSinkName,' . $activeGroup);
     }
 
+    // Resume playback if it was active before the restart
+    if ($wasPlaying && !empty($resumePlaylist)) {
+        // Small delay to ensure PipeWire pipeline is fully linked
+        usleep(500000);
+        $repeat = $resumeRepeat ? 'true' : 'false';
+        @file_get_contents('http://localhost:32322/command/Start%20Playlist/'
+            . rawurlencode($resumePlaylist) . '/' . $repeat);
+    }
+
     return json(array(
         "status" => "OK",
-        "message" => "Audio groups applied, PipeWire restarted",
+        "message" => "Audio groups applied, PipeWire restarted"
+            . ($wasPlaying ? ", playback resumed" : ""),
         "activeGroup" => $activeGroup,
         "restartRequired" => true
     ));
@@ -1671,6 +1702,62 @@ function GetPipeWireGraph()
         $links = array_values(array_filter($links, function ($l) use ($audioNodeIds) {
             return isset($audioNodeIds[$l['outputNodeId']]) || isset($audioNodeIds[$l['inputNodeId']]);
         }));
+    }
+
+    // Enrich delay/effect nodes with audio group config (delay, EQ, volume)
+    global $settings;
+    $groupsFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+    if (file_exists($groupsFile)) {
+        $groupsCfg = json_decode(file_get_contents($groupsFile), true);
+        if (is_array($groupsCfg) && isset($groupsCfg['groups'])) {
+            // Build lookup: normalised cardId → member config
+            $memberLookup = array(); // 'g{groupId}_{cardId}' → member
+            $groupLookup = array();  // groupId → group
+            foreach ($groupsCfg['groups'] as $group) {
+                $gid = $group['id'];
+                $groupLookup[$gid] = $group;
+                if (isset($group['members'])) {
+                    foreach ($group['members'] as $member) {
+                        $cid = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $member['cardId']));
+                        $key = 'g' . $gid . '_' . $cid;
+                        $memberLookup[$key] = $member;
+                    }
+                }
+            }
+            // Match delay nodes (fpp_fx_g{N}_{cardId}) to their member config
+            foreach ($nodes as &$node) {
+                $nm = $node['name'];
+                if (preg_match('/^fpp_fx_g(\d+)_(.+?)(_out)?$/', $nm, $m)) {
+                    $key = 'g' . $m[1] . '_' . $m[2];
+                    if (isset($memberLookup[$key])) {
+                        $mem = $memberLookup[$key];
+                        if (isset($mem['delayMs'])) {
+                            $node['properties']['fpp.delay.ms'] = $mem['delayMs'];
+                        }
+                        if (isset($mem['eq']['enabled'])) {
+                            $node['properties']['fpp.eq.enabled'] = $mem['eq']['enabled'];
+                        }
+                        if (isset($mem['volume'])) {
+                            $node['properties']['fpp.volume'] = $mem['volume'];
+                        }
+                    }
+                }
+                // Enrich group nodes with member count
+                if (preg_match('/^fpp_group_/', $nm)) {
+                    // Find the group by matching the slugified name
+                    foreach ($groupsCfg['groups'] as $group) {
+                        $slug = 'fpp_group_' . strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $group['name']));
+                        if ($nm === $slug && isset($group['members'])) {
+                            $node['properties']['fpp.group.members'] = count($group['members']);
+                            if (isset($group['latencyCompensate'])) {
+                                $node['properties']['fpp.group.latencyCompensate'] = $group['latencyCompensate'];
+                            }
+                        }
+                    }
+                }
+            }
+            unset($node);
+        }
     }
 
     return json(array(

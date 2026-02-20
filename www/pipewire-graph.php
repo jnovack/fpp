@@ -102,6 +102,13 @@
             fill: rgba(255, 255, 255, 0.8);
         }
 
+        .pw-node-meta {
+            font-size: 9px;
+            pointer-events: none;
+            fill: rgba(255, 255, 255, 0.65);
+            font-style: italic;
+        }
+
         /* ── Ports ────────────────────────────────────────────── */
         .pw-port circle {
             r: 5;
@@ -262,8 +269,6 @@
                             ALSA Output</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#dc3545"></span>
                             AES67 / App</span>
-                        <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#20c997"></span>
-                            Source</span>
                     </div>
                 </div>
 
@@ -294,7 +299,8 @@
             'use strict';
 
             // ── Constants ─────────────────────────────────────────────────
-            const NODE_W = 220, NODE_H_BASE = 40, PORT_R = 5, PORT_SPACING = 18;
+            const NODE_W = 220, NODE_H_BASE = 52, PORT_R = 5, PORT_SPACING = 18;
+            const PORT_Y_START = 44; // below the 3-line text area
             const PADDING = { top: 40, left: 60, colGap: 100, rowGap: 30 };
 
             // Colour mapping by node role
@@ -311,6 +317,55 @@
                 if (mc === 'Stream/Output/Audio') return '#fd7e14'; // stream
                 if (mc === 'Audio/Sink') return '#198754'; // other sink
                 return '#6c757d';
+            }
+
+            // Build a short metadata string for the third line of each node
+            function nodeMetaText(n) {
+                const p = n.properties || {};
+                const nm = n.name || '';
+                const mc = n.mediaClass || '';
+
+                // Delay / effect nodes
+                if (nm.startsWith('fpp_fx_')) {
+                    const parts = [];
+                    if (p['fpp.delay.ms'] !== undefined) {
+                        const ms = p['fpp.delay.ms'];
+                        parts.push(ms > 0 ? 'delay ' + ms + ' ms' : 'no delay');
+                    }
+                    if (p['fpp.eq.enabled']) parts.push('EQ on');
+                    if (p['fpp.volume'] !== undefined && p['fpp.volume'] != 100) {
+                        parts.push('vol ' + p['fpp.volume'] + '%');
+                    }
+                    return parts.join(' · ') || '';
+                }
+
+                // Audio group nodes
+                if (nm.startsWith('fpp_group_')) {
+                    const parts = [];
+                    if (p['fpp.group.members']) parts.push(p['fpp.group.members'] + ' members');
+                    if (p['fpp.group.latencyCompensate']) parts.push('latency comp');
+                    return parts.join(' · ') || '';
+                }
+
+                // ALSA sinks / sources
+                if (mc.startsWith('Audio/') && nm.startsWith('alsa_')) {
+                    const parts = [];
+                    if (p['audio.format']) parts.push(p['audio.format']);
+                    if (p['audio.rate']) parts.push((p['audio.rate'] / 1000).toFixed(1) + ' kHz');
+                    if (p['audio.channels']) parts.push(p['audio.channels'] + ' ch');
+                    if (p['api.alsa.headroom']) parts.push('headroom ' + p['api.alsa.headroom']);
+                    return parts.join(' · ') || '';
+                }
+
+                // Streams (fppd, AES67)
+                if (mc.includes('Stream/')) {
+                    const parts = [];
+                    if (p['audio.channels']) parts.push(p['audio.channels'] + ' ch');
+                    if (p['application.name']) parts.push(p['application.name']);
+                    return parts.join(' · ') || '';
+                }
+
+                return '';
             }
 
             // ── State ─────────────────────────────────────────────────────
@@ -542,7 +597,7 @@
                 // Helper: compute node heights for Y positions
                 function nodeHeight(n) {
                     const pc = portsPerNode[n.id] || { in: 0, out: 0 };
-                    return Math.max(NODE_H_BASE, Math.max(pc.in, pc.out, 1) * PORT_SPACING + 16);
+                    return Math.max(NODE_H_BASE, PORT_Y_START + Math.max(pc.in, pc.out, 1) * PORT_SPACING + 4);
                 }
 
                 // Helper: compute temporary Y centers based on current order
@@ -651,13 +706,13 @@
                     ins.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x,
-                            y: n._y + 14 + i * PORT_SPACING + PORT_SPACING / 2
+                            y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
                         };
                     });
                     outs.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x + n._w,
-                            y: n._y + 14 + i * PORT_SPACING + PORT_SPACING / 2
+                            y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
                         };
                     });
                 });
@@ -729,6 +784,12 @@
                     .attr('x', 10).attr('y', 30)
                     .text(d => d.mediaClass || '');
 
+                // Metadata line (delay, format, etc.)
+                nodeGroups.append('text')
+                    .attr('class', 'pw-node-meta')
+                    .attr('x', 10).attr('y', 41)
+                    .text(d => nodeMetaText(d));
+
                 // ── Input ports (left side) ───────────────
                 graphData.nodes.forEach(n => {
                     const ins = nodePortsIn[n.id] || [];
@@ -745,7 +806,7 @@
                     const outs = nodePortsOut[n.id] || [];
 
                     ins.forEach((p, i) => {
-                        const py = 14 + i * PORT_SPACING + PORT_SPACING / 2;
+                        const py = PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2;
                         g.append('circle')
                             .attr('class', 'pw-port-dot')
                             .attr('cx', 0).attr('cy', py)
@@ -761,7 +822,7 @@
                     });
 
                     outs.forEach((p, i) => {
-                        const py = 14 + i * PORT_SPACING + PORT_SPACING / 2;
+                        const py = PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2;
                         g.append('circle')
                             .attr('class', 'pw-port-dot')
                             .attr('cx', n._w).attr('cy', py)
@@ -829,13 +890,13 @@
                     ins.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x,
-                            y: n._y + 14 + i * PORT_SPACING + PORT_SPACING / 2
+                            y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
                         };
                     });
                     outs.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x + n._w,
-                            y: n._y + 14 + i * PORT_SPACING + PORT_SPACING / 2
+                            y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
                         };
                     });
                 });
@@ -868,8 +929,18 @@
 
                 if (d.properties && Object.keys(d.properties).length) {
                     html += '<tr><td colspan="2"><hr class="my-1"></td></tr>';
+                    const propLabels = {
+                        'fpp.delay.ms': 'Delay (ms)',
+                        'fpp.eq.enabled': 'EQ Enabled',
+                        'fpp.volume': 'Volume (%)',
+                        'fpp.group.members': 'Members',
+                        'fpp.group.latencyCompensate': 'Latency Compensation'
+                    };
                     for (const [k, v] of Object.entries(d.properties)) {
-                        html += row(k, v);
+                        const label = propLabels[k] || k;
+                        let val = v;
+                        if (typeof v === 'boolean') val = v ? 'Yes' : 'No';
+                        html += row(label, val);
                     }
                 }
 
