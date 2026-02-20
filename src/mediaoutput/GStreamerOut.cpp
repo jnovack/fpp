@@ -243,9 +243,15 @@ int GStreamerOutput::Start(int msTime) {
     std::string pipelineSinkName = getSetting("PipeWireSinkName");
     LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s'\n", pipelineSinkName.c_str());
 
+    // Stream identity: fppd_stream_1 (will become per-slot in Phase 4)
+    std::string streamNodeName = "fppd_stream_1";
+    std::string streamNodeDesc = "FPP Media Stream 1";
+
     std::string sinkStr;
     if (!pipelineSinkName.empty()) {
-        sinkStr = "pipewiresink name=pwsink target-object=" + pipelineSinkName;
+        sinkStr = "pipewiresink name=pwsink target-object=" + pipelineSinkName
+            + " stream-properties=\"props,node.name=" + streamNodeName
+            + ",node.description=" + streamNodeDesc + "\"";
     } else {
         sinkStr = "autoaudiosink";
     }
@@ -275,6 +281,13 @@ int GStreamerOutput::Start(int msTime) {
         if (!pipelineSinkName.empty()) {
             sink = gst_element_factory_make("pipewiresink", "pwsink");
             g_object_set(sink, "target-object", pipelineSinkName.c_str(), NULL);
+            // Set stream identity so PipeWire shows a meaningful node name
+            GstStructure* props = gst_structure_new("props",
+                "node.name", G_TYPE_STRING, streamNodeName.c_str(),
+                "node.description", G_TYPE_STRING, streamNodeDesc.c_str(),
+                NULL);
+            g_object_set(sink, "stream-properties", props, NULL);
+            gst_structure_free(props);
         } else {
             sink = gst_element_factory_make("autoaudiosink", "audiosink");
         }
@@ -427,6 +440,13 @@ int GStreamerOutput::Start(int msTime) {
         if (!pipelineSinkName.empty()) {
             sink = gst_element_factory_make("pipewiresink", "pwsink");
             g_object_set(sink, "target-object", pipelineSinkName.c_str(), NULL);
+            // Set stream identity so PipeWire shows a meaningful node name
+            GstStructure* props = gst_structure_new("props",
+                "node.name", G_TYPE_STRING, streamNodeName.c_str(),
+                "node.description", G_TYPE_STRING, streamNodeDesc.c_str(),
+                NULL);
+            g_object_set(sink, "stream-properties", props, NULL);
+            gst_structure_free(props);
         } else {
             sink = gst_element_factory_make("autoaudiosink", "audiosink");
         }

@@ -560,9 +560,14 @@
             // Source selector
             html += '<td>';
             if (type === 'fppd_stream') {
+                var curSrc = mbr.sourceId || 'fppd_stream_1';
                 html += '<select class="form-select form-select-sm" style="width:auto;" ' +
                     'onchange="UpdateMemberField(' + groupIdx + ',' + memberIdx + ',\'sourceId\',this.value)">';
-                html += '<option value="fppd_stream_1"' + ((mbr.sourceId || 'fppd_stream_1') === 'fppd_stream_1' ? ' selected' : '') + '>fppd_stream_1 (default)</option>';
+                for (var si = 1; si <= 5; si++) {
+                    var val = 'fppd_stream_' + si;
+                    var lbl = 'FPP Media Stream ' + si + (si === 1 ? ' (default)' : '');
+                    html += '<option value="' + val + '"' + (curSrc === val ? ' selected' : '') + '>' + lbl + '</option>';
+                }
                 html += '</select>';
             } else if (type === 'capture') {
                 html += '<select class="form-select form-select-sm" style="width:auto;" ' +

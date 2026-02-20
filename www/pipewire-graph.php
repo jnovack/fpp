@@ -144,6 +144,12 @@
             stroke: #dc3545;
         }
 
+        .pw-link.not-running {
+            stroke: #6c757d;
+            stroke-dasharray: 4 4;
+            opacity: 0.4;
+        }
+
         /* ── Detail panel ─────────────────────────────────────── */
         #pw-detail-panel {
             position: absolute;
@@ -318,6 +324,7 @@
                 if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return '#198754'; // ALSA hw output
                 if (mc === 'Audio/Source') return '#20c997'; // source
                 if (mc === 'Stream/Input/Audio') return '#dc3545'; // app capture (AES67)
+                if (nm.startsWith('fppd_stream_')) return '#fd7e14'; // fppd media stream
                 if (mc === 'Stream/Output/Audio') return '#fd7e14'; // stream
                 if (mc === 'Audio/Sink') return '#198754'; // other sink
                 return '#6c757d';
@@ -366,7 +373,19 @@
                     return parts.join(' · ') || '';
                 }
 
-                // Streams (fppd, AES67)
+                // fppd media streams
+                if (nm.startsWith('fppd_stream_')) {
+                    const parts = [];
+                    if (p['fpp.stream.slot']) parts.push('slot ' + p['fpp.stream.slot']);
+                    if (p['fpp.stream.target']) {
+                        const t = p['fpp.stream.target'].replace(/^fpp_input_/, '').replace(/_/g, ' ');
+                        parts.push('→ ' + t);
+                    }
+                    if (p['fpp.stream.virtual']) parts.push('(inactive)');
+                    return parts.join(' · ') || '';
+                }
+
+                // Streams (AES67, other)
                 if (mc.includes('Stream/')) {
                     const parts = [];
                     if (p['audio.channels']) parts.push(p['audio.channels'] + ' ch');
@@ -851,12 +870,27 @@
                         .on('drag', dragged)
                         .on('end', dragEnded));
 
+                // Set opacity for virtual/inactive nodes
+                nodeGroups.style('opacity', d => {
+                    const p = d.properties || {};
+                    return p['fpp.stream.virtual'] ? 0.45 : 1.0;
+                });
+
                 // Background rect
                 nodeGroups.append('rect')
                     .attr('width', d => d._w)
                     .attr('height', d => d._h)
                     .attr('fill', d => nodeColor(d))
-                    .attr('stroke', d => d3.color(nodeColor(d)).darker(0.6));
+                    .attr('stroke', d => {
+                        const p = d.properties || {};
+                        return p['fpp.stream.virtual']
+                            ? '#6c757d'
+                            : d3.color(nodeColor(d)).darker(0.6);
+                    })
+                    .attr('stroke-dasharray', d => {
+                        const p = d.properties || {};
+                        return p['fpp.stream.virtual'] ? '6 3' : null;
+                    });
 
                 // State indicator (small circle top-right)
                 nodeGroups.append('circle')

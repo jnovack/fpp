@@ -421,30 +421,33 @@ input group member. **All existing behaviour is preserved.**
 
 ### Tasks
 
-- [ ] **3.1** Add `node.name` to GStreamer pipewiresink stream-properties
-  - File: `src/mediaoutput/GStreamerOut.cpp` (~line 243)
-  - Add: `node.name=fppd_stream_1,node.description=FPP Media Stream 1`
-  - Default stream ID: `fppd_stream_1` (hardcoded for now)
-  - Rebuild fppd
+- [x] **3.1** Add `node.name` to GStreamer pipewiresink stream-properties
+  - File: `src/mediaoutput/GStreamerOut.cpp`
+  - Added `stream-properties` with `node.name=fppd_stream_1,node.description=FPP Media Stream 1`
+  - All 3 pipeline paths updated: audio-only (parse_launch), video overlay, HDMI
+  - Uses `GstStructure` for manual factory_make paths, inline for parse_launch
 
-- [ ] **3.2** Update `ApplyPipeWireAudioGroups()` routing logic
-  - If input groups exist and fppd_stream_1 is a member of an input group:
-    set `PipeWireSinkName` to the input group's node name
-  - If no input groups: set `PipeWireSinkName` to the output group (unchanged)
-  - This determines what fppd's `pipewiresink target-object` connects to
+- [x] **3.2** Update `ApplyPipeWireAudioGroups()` routing logic
+  - Already implemented in Phase 2: sets `PipeWireSinkName` to input group
+  - When no input groups: continues to use output group (unchanged)
 
-- [ ] **3.3** Update AES67Manager recv pipeline naming
-  - Add explicit `node.name=aes67_<instance>_recv` (already done, verify)
-  - Ensure the name matches what input group config references
+- [x] **3.3** Update AES67Manager recv pipeline naming
+  - Verified: already sets `node.name=aes67_<instance>_recv` in recv pipeline
+  - Names match what input group config references
 
-- [ ] **3.4** Update graph visualiser classification
+- [x] **3.4** Update graph visualiser classification & virtual stream nodes
   - `classifyColumn()`: `fppd_stream_*` → column 0 (Input Sources)
-  - Currently shows as `fppd` — will now show as `fppd_stream_1`
-  - Node description: "FPP Media Stream 1"
+  - Node description: "FPP Media Stream N"
+  - **Virtual placeholders**: Graph API injects 5 fppd stream slot nodes;
+    inactive slots appear greyed out with dashed borders
+  - Virtual links show configured routing to input groups/output groups
+  - Live nodes replace their virtual counterparts with full opacity
+  - `nodeMetaText()` shows slot number, target routing, and active/inactive state
+  - Input mixing UI: stream slot selector expanded to 5 options
 
-- [ ] **3.5** Update WirePlumber hook
-  - Add `fppd_stream_*` pattern to the linking hook if needed
-  - Ensure fppd streams don't get rogue default-target links when input groups are active
+- [x] **3.5** Update WirePlumber hook
+  - Added `fppd_stream_*` pattern to blocking hook
+  - Prevents rogue default-target links when input group isn't ready yet
 
 ### Testing Criteria
 
@@ -652,12 +655,12 @@ const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects',
 - [x] 2.5 Hot-plug handling (state badges + auto-refresh)
 - [ ] Phase 2 testing complete
 
-### Phase 3 — fppd Stream Naming
-- [ ] 3.1 Add node.name to GStreamer pipewiresink
-- [ ] 3.2 Update routing logic for input groups
-- [ ] 3.3 AES67 recv naming verification
-- [ ] 3.4 Visualiser classification update
-- [ ] 3.5 WirePlumber hook update
+### Phase 3 — fppd Stream Naming ✅ IMPLEMENTED
+- [x] 3.1 Add node.name to GStreamer pipewiresink
+- [x] 3.2 Update routing logic for input groups (done in Phase 2)
+- [x] 3.3 AES67 recv naming verification
+- [x] 3.4 Visualiser classification + virtual stream placeholders
+- [x] 3.5 WirePlumber hook update
 - [ ] Phase 3 testing complete
 
 ### Phase 4 — Multiple fppd Streams

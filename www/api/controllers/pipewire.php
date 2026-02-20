@@ -993,6 +993,15 @@ SimpleEventHook {
       return
     end
 
+    -- Block default fallback for fppd stream nodes with explicit target
+    -- (prevents routing to wrong default sink when input group isn't ready)
+    if node_name:match ("^fppd_stream_%d+") and has_target then
+      log:info (si, "... FPP media stream: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
     -- (Routing loopback nodes removed — combine-stream handles output routing)
   end
 }:register ()
@@ -2442,8 +2451,9 @@ function GetPipeWireGraph()
         }
     }
 
-    // Enrich input group nodes with config data
+    // Enrich input group nodes with config data + inject virtual fppd stream placeholders
     $igFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $igCfg = null;
     if (file_exists($igFile)) {
         $igCfg = json_decode(file_get_contents($igFile), true);
         if (is_array($igCfg) && isset($igCfg['inputGroups'])) {
@@ -2471,6 +2481,141 @@ function GetPipeWireGraph()
                 // (Routing loopback nodes removed — combine-stream handles output routing)
             }
             unset($node);
+        }
+    }
+
+    // ── Inject virtual fppd media stream placeholder nodes ──
+    // Always show all 5 fppd stream slots so the graph reveals configured
+    // routing even when nothing is playing.  Live nodes replace their
+    // virtual counterparts; inactive slots appear with state "not-running".
+    $FPPD_STREAM_COUNT = 5;
+    // Build a set of live fppd_stream_N node names
+    $liveFppdStreams = array();
+    foreach ($nodes as $node) {
+        if (preg_match('/^fppd_stream_(\d+)$/', $node['name'])) {
+            $liveFppdStreams[$node['name']] = true;
+        }
+    }
+    // Build lookup: which input group each fppd stream slot is configured for
+    $fppdStreamTargets = array(); // streamName => igSlug
+    if ($igCfg && isset($igCfg['inputGroups'])) {
+        foreach ($igCfg['inputGroups'] as $ig) {
+            if (!isset($ig['enabled']) || !$ig['enabled'])
+                continue;
+            if (!isset($ig['members']))
+                continue;
+            $igSlug = 'fpp_input_' . strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $ig['name']));
+            foreach ($ig['members'] as $mbr) {
+                if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                    $sid = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                    $fppdStreamTargets[$sid] = $igSlug;
+                }
+            }
+        }
+    }
+    // Determine the PipeWireSinkName (output group target when no input groups)
+    $defaultTarget = '';
+    if (empty($fppdStreamTargets)) {
+        $defaultTarget = ReadSettingFromFile('PipeWireSinkName');
+    }
+
+    // Virtual node IDs start above any real PipeWire ID
+    $maxId = 0;
+    foreach ($nodes as $n) { if ($n['id'] > $maxId) $maxId = $n['id']; }
+    foreach ($ports as $p) { if ($p['id'] > $maxId) $maxId = $p['id']; }
+    foreach ($links as $l) { if ($l['id'] > $maxId) $maxId = $l['id']; }
+    $virtualId = $maxId + 10000;
+
+    for ($i = 1; $i <= $FPPD_STREAM_COUNT; $i++) {
+        $streamName = "fppd_stream_$i";
+        if (isset($liveFppdStreams[$streamName])) {
+            // Live node exists — enrich it with routing info
+            foreach ($nodes as &$node) {
+                if ($node['name'] === $streamName) {
+                    $node['properties']['fpp.stream.slot'] = $i;
+                    if (isset($fppdStreamTargets[$streamName])) {
+                        $node['properties']['fpp.stream.target'] = $fppdStreamTargets[$streamName];
+                    }
+                    break;
+                }
+            }
+            unset($node);
+            continue;
+        }
+
+        // Determine target for virtual link
+        $target = '';
+        if (isset($fppdStreamTargets[$streamName])) {
+            $target = $fppdStreamTargets[$streamName];
+        } elseif ($i === 1 && !empty($defaultTarget)) {
+            $target = $defaultTarget;
+        }
+
+        // Create virtual node
+        $vNodeId = $virtualId++;
+        $nodes[] = array(
+            'id' => $vNodeId,
+            'name' => $streamName,
+            'description' => "FPP Media Stream $i",
+            'nick' => '',
+            'mediaClass' => 'Stream/Output/Audio',
+            'state' => 'not-running',
+            'factory' => 'virtual',
+            'properties' => array(
+                'fpp.stream.slot' => $i,
+                'fpp.stream.virtual' => true,
+                'fpp.stream.target' => $target,
+                'audio.channels' => 2,
+            ),
+        );
+        // Create virtual FL/FR output ports
+        $portFL = $virtualId++;
+        $portFR = $virtualId++;
+        $ports[] = array('id' => $portFL, 'nodeId' => $vNodeId, 'name' => 'output_FL', 'direction' => 'output', 'channel' => 'FL');
+        $ports[] = array('id' => $portFR, 'nodeId' => $vNodeId, 'name' => 'output_FR', 'direction' => 'output', 'channel' => 'FR');
+
+        // Create virtual links to the target node if it exists
+        if (!empty($target)) {
+            // Find the target node's input ports
+            $targetNodeId = null;
+            foreach ($nodes as $tn) {
+                if ($tn['name'] === $target) {
+                    $targetNodeId = $tn['id'];
+                    break;
+                }
+            }
+            if ($targetNodeId !== null) {
+                // Find FL/FR input ports on target
+                $targetPortFL = null;
+                $targetPortFR = null;
+                foreach ($ports as $p) {
+                    if ($p['nodeId'] === $targetNodeId && $p['direction'] === 'input') {
+                        $ch = preg_replace('/^(playback|capture|input|output)_/', '', $p['name']);
+                        if ($ch === 'FL' && !$targetPortFL) $targetPortFL = $p['id'];
+                        if ($ch === 'FR' && !$targetPortFR) $targetPortFR = $p['id'];
+                    }
+                }
+                if ($targetPortFL) {
+                    $links[] = array(
+                        'id' => $virtualId++,
+                        'outputNodeId' => $vNodeId,
+                        'outputPortId' => $portFL,
+                        'inputNodeId' => $targetNodeId,
+                        'inputPortId' => $targetPortFL,
+                        'state' => 'not-running',
+                    );
+                }
+                if ($targetPortFR) {
+                    $links[] = array(
+                        'id' => $virtualId++,
+                        'outputNodeId' => $vNodeId,
+                        'outputPortId' => $portFR,
+                        'inputNodeId' => $targetNodeId,
+                        'inputPortId' => $targetPortFR,
+                        'state' => 'not-running',
+                    );
+                }
+            }
         }
     }
 
