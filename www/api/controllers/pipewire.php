@@ -18,6 +18,49 @@
 require_once '../commandsocket.php';
 
 /////////////////////////////////////////////////////////////////////////////
+// Helper: Stop fppd playback with a timeout to prevent deadlocks.
+// Returns array('wasPlaying' => bool, 'playlist' => string, 'repeat' => bool)
+// Uses stream context timeout so PHP doesn't hang if fppd's HTTP handler
+// blocks during GStreamer pipeline teardown.
+function StopFppdPlaybackSafe($timeoutSec = 3) {
+    $result = array('wasPlaying' => false, 'playlist' => '', 'repeat' => false);
+
+    $ctx = stream_context_create(array('http' => array('timeout' => $timeoutSec)));
+    $statusJson = @file_get_contents('http://localhost:32322/fppd/status', false, $ctx);
+    if ($statusJson === false)
+        return $result;
+
+    $status = json_decode($statusJson, true);
+    if (!is_array($status) || !isset($status['status']) || $status['status'] != 1)
+        return $result;
+
+    $result['wasPlaying'] = true;
+    $cp = isset($status['current_playlist']) ? $status['current_playlist'] : array();
+    $result['playlist'] = isset($cp['playlist']) ? $cp['playlist'] : '';
+    $result['repeat']   = isset($cp['count']) && $cp['count'] === '0';
+
+    // Stop playback with timeout — if fppd hangs during GStreamer teardown
+    // the context timeout prevents PHP from blocking forever.
+    @file_get_contents('http://localhost:32322/command/Stop%20Now', false, $ctx);
+
+    // Wait for fppd to release PipeWire streams
+    usleep(500000);
+
+    return $result;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Send a setting to fppd, tolerating a non-responsive daemon.
+// Writes to the settings file (always works) then best-effort sends via
+// the command socket (1-second timeout built into SendCommand).
+function SetFppdSetting($key, $value) {
+    WriteSettingToFile($key, $value);
+    // SendCommand may fail if fppd is deadlocked/restarting — that's OK
+    // because fppd will read the setting from the file on next pipeline start.
+    @SendCommand("setSetting,$key,$value");
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // GET /api/pipewire/audio/groups
 function GetPipeWireAudioGroups()
 {
@@ -157,22 +200,65 @@ function ApplyPipeWireAudioGroups()
 
     // Stop fppd playback before restarting PipeWire to avoid race conditions
     // where WirePlumber creates rogue links to orphaned streams during the
-    // service restart window.
-    $wasPlaying = false;
-    $resumePlaylist = '';
-    $resumeRepeat = false;
-    $statusJson = @file_get_contents('http://localhost:32322/fppd/status');
-    if ($statusJson !== false) {
-        $status = json_decode($statusJson, true);
-        if (is_array($status) && isset($status['status']) && $status['status'] == 1) {
-            $wasPlaying = true;
-            $cp = isset($status['current_playlist']) ? $status['current_playlist'] : array();
-            $resumePlaylist = isset($cp['playlist']) ? $cp['playlist'] : '';
-            $resumeRepeat = isset($cp['count']) && $cp['count'] === '0';  // 0 = infinite repeat
-            // Stop playback immediately
-            @file_get_contents('http://localhost:32322/command/Stop%20Now');
-            // Wait for fppd to release PipeWire streams
-            usleep(500000);
+    // service restart window.  Uses timeout to prevent deadlock if fppd's
+    // GStreamer teardown blocks on PipeWire.
+    $playbackState = StopFppdPlaybackSafe(3);
+    $wasPlaying = $playbackState['wasPlaying'];
+    $resumePlaylist = $playbackState['playlist'];
+    $resumeRepeat = $playbackState['repeat'];
+
+    // Determine the PipeWire sink target BEFORE restarting PipeWire.
+    // Write settings to file now so fppd reads them when it creates new
+    // pipelines — even if fppd's command socket is temporarily unresponsive.
+    $igSlotTargets = array();
+    $igFile2 = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    if (file_exists($igFile2)) {
+        $igData2 = json_decode(file_get_contents($igFile2), true);
+        if (is_array($igData2) && isset($igData2['inputGroups'])) {
+            foreach ($igData2['inputGroups'] as $ig) {
+                if (!isset($ig['enabled']) || !$ig['enabled'])
+                    continue;
+                if (!isset($ig['members']) || empty($ig['members']))
+                    continue;
+                $igNodeName2 = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
+                foreach ($ig['members'] as $mbr) {
+                    if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                        $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                        $slotNum = 1;
+                        if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
+                            $slotNum = intval($m[1]);
+                        }
+                        $igSlotTargets[$slotNum] = $igNodeName2;
+                    }
+                }
+            }
+        }
+    }
+
+    // Write PipeWireSinkName to file BEFORE PipeWire restart
+    if (!empty($igSlotTargets)) {
+        $fppdTarget = isset($igSlotTargets[1]) ? $igSlotTargets[1] : '';
+        if (!empty($fppdTarget)) {
+            WriteSettingToFile('PipeWireSinkName', $fppdTarget);
+        }
+        for ($s = 2; $s <= 5; $s++) {
+            $key = "PipeWireSinkName_$s";
+            if (isset($igSlotTargets[$s])) {
+                WriteSettingToFile($key, $igSlotTargets[$s]);
+            }
+        }
+    } else {
+        $activeGroup = isset($data['activeGroup']) ? $data['activeGroup'] : '';
+        if (empty($activeGroup)) {
+            foreach ($data['groups'] as $group) {
+                if (isset($group['enabled']) && $group['enabled'] && !empty($group['members'])) {
+                    $activeGroup = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($group['name']));
+                    break;
+                }
+            }
+        }
+        if (!empty($activeGroup)) {
+            WriteSettingToFile('PipeWireSinkName', $activeGroup);
         }
     }
 
@@ -229,85 +315,34 @@ function ApplyPipeWireAudioGroups()
         }
     }
 
-    // Determine the PipeWire sink target for fppd media streams.
-    // If input groups are configured with fppd_stream members, the stream
-    // must target the INPUT GROUP combine-stream (fpp_input_<name>) so audio
-    // flows: media → input group → output group.  Otherwise target the
-    // output group directly.
+    // Set PipeWire default sink and push setting to fppd (best-effort)
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
-
-    // Check for input groups that claim fppd_stream slots
-    $igSlotTargets = array();  // slot => input-group node name
-    $igFile2 = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
-    if (file_exists($igFile2)) {
-        $igData2 = json_decode(file_get_contents($igFile2), true);
-        if (is_array($igData2) && isset($igData2['inputGroups'])) {
-            foreach ($igData2['inputGroups'] as $ig) {
-                if (!isset($ig['enabled']) || !$ig['enabled'])
-                    continue;
-                if (!isset($ig['members']) || empty($ig['members']))
-                    continue;
-                $igNodeName2 = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
-                foreach ($ig['members'] as $mbr) {
-                    if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
-                        $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
-                        $slotNum = 1;
-                        if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
-                            $slotNum = intval($m[1]);
-                        }
-                        $igSlotTargets[$slotNum] = $igNodeName2;
-                    }
-                }
-            }
-        }
-    }
-
     if (!empty($igSlotTargets)) {
-        // Input groups own the stream routing — point each slot at its input group
         $fppdTarget = isset($igSlotTargets[1]) ? $igSlotTargets[1] : '';
         if (!empty($fppdTarget)) {
             exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($fppdTarget) . " 2>&1");
-            WriteSettingToFile('PipeWireSinkName', $fppdTarget);
-            SendCommand('setSetting,PipeWireSinkName,' . $fppdTarget);
+            SetFppdSetting('PipeWireSinkName', $fppdTarget);
         }
         for ($s = 2; $s <= 5; $s++) {
             $key = "PipeWireSinkName_$s";
             if (isset($igSlotTargets[$s])) {
-                WriteSettingToFile($key, $igSlotTargets[$s]);
-                SendCommand("setSetting,$key," . $igSlotTargets[$s]);
+                SetFppdSetting($key, $igSlotTargets[$s]);
             }
         }
     } else {
-        // No input groups — route directly to an output group (original behaviour)
-        $activeGroup = isset($data['activeGroup']) ? $data['activeGroup'] : '';
-
-        // If no explicit active group, use the first enabled group
-        if (empty($activeGroup)) {
-            foreach ($data['groups'] as $group) {
-                if (isset($group['enabled']) && $group['enabled'] && !empty($group['members'])) {
-                    $activeGroup = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($group['name']));
-                    break;
-                }
-            }
-        }
-
         if (!empty($activeGroup)) {
-            // Set as PipeWire default sink
             exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($activeGroup) . " 2>&1");
-
-            // Set PipeWireSinkName so volume control targets the correct sink.
-            WriteSettingToFile('PipeWireSinkName', $activeGroup);
-            SendCommand('setSetting,PipeWireSinkName,' . $activeGroup);
+            SetFppdSetting('PipeWireSinkName', $activeGroup);
         }
     }
 
     // Resume playback if it was active before the restart
     if ($wasPlaying && !empty($resumePlaylist)) {
-        // Small delay to ensure PipeWire pipeline is fully linked
         usleep(500000);
         $repeat = $resumeRepeat ? 'true' : 'false';
+        $ctx = stream_context_create(array('http' => array('timeout' => 5)));
         @file_get_contents('http://localhost:32322/command/Start%20Playlist/'
-            . rawurlencode($resumePlaylist) . '/' . $repeat);
+            . rawurlencode($resumePlaylist) . '/' . $repeat, false, $ctx);
     }
 
     return json(array(
@@ -1253,20 +1288,46 @@ function ApplyPipeWireInputGroups()
     // Update WirePlumber hook to include input group patterns
     InstallWirePlumberFppLinkingHook($SUDO);
 
-    // Stop fppd playback before restarting PipeWire
-    $wasPlaying = false;
-    $resumePlaylist = '';
-    $resumeRepeat = false;
-    $statusJson = @file_get_contents('http://localhost:32322/fppd/status');
-    if ($statusJson !== false) {
-        $status = json_decode($statusJson, true);
-        if (is_array($status) && isset($status['status']) && $status['status'] == 1) {
-            $wasPlaying = true;
-            $cp = isset($status['current_playlist']) ? $status['current_playlist'] : array();
-            $resumePlaylist = isset($cp['playlist']) ? $cp['playlist'] : '';
-            $resumeRepeat = isset($cp['count']) && $cp['count'] === '0';
-            @file_get_contents('http://localhost:32322/command/Stop%20Now');
-            usleep(500000);
+    // Stop fppd playback before restarting PipeWire (with timeout protection)
+    $playbackState = StopFppdPlaybackSafe(3);
+    $wasPlaying = $playbackState['wasPlaying'];
+    $resumePlaylist = $playbackState['playlist'];
+    $resumeRepeat = $playbackState['repeat'];
+
+    // Build slot targets and write settings to file BEFORE PipeWire restart.
+    // fppd reads PipeWireSinkName from settings file when creating new
+    // pipelines, so this ensures the correct target even if fppd's command
+    // socket is temporarily unresponsive.
+    $slotTargets = array();
+    foreach ($data['inputGroups'] as $ig) {
+        if (!isset($ig['enabled']) || !$ig['enabled'])
+            continue;
+        if (!isset($ig['members']) || empty($ig['members']))
+            continue;
+        $igNodeName = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
+        foreach ($ig['members'] as $mbr) {
+            if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                $slotNum = 1;
+                if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
+                    $slotNum = intval($m[1]);
+                }
+                $slotTargets[$slotNum] = $igNodeName;
+            }
+        }
+    }
+
+    // Write PipeWireSinkName to file BEFORE PipeWire restart
+    $fppdTarget = isset($slotTargets[1]) ? $slotTargets[1] : '';
+    if (!empty($fppdTarget)) {
+        WriteSettingToFile('PipeWireSinkName', $fppdTarget);
+    }
+    for ($s = 2; $s <= 5; $s++) {
+        $key = "PipeWireSinkName_$s";
+        if (isset($slotTargets[$s])) {
+            WriteSettingToFile($key, $slotTargets[$s]);
+        } else {
+            WriteSettingToFile($key, '');
         }
     }
 
@@ -1286,49 +1347,18 @@ function ApplyPipeWireInputGroups()
         usleep(250000);
     }
 
-    // Update fppd routing: for each fppd_stream_N member of an input group,
-    // route that stream slot's pipewiresink to the input group.
-    // Slot 1 uses PipeWireSinkName (global), slots 2-5 use PipeWireSinkName_N.
-    $slotTargets = array();  // slot => target node name
-    foreach ($data['inputGroups'] as $ig) {
-        if (!isset($ig['enabled']) || !$ig['enabled'])
-            continue;
-        if (!isset($ig['members']) || empty($ig['members']))
-            continue;
-        $igNodeName = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
-        foreach ($ig['members'] as $mbr) {
-            if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
-                // Determine which slot this member refers to
-                $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
-                $slotNum = 1;
-                if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
-                    $slotNum = intval($m[1]);
-                }
-                $slotTargets[$slotNum] = $igNodeName;
-            }
-        }
-    }
-
-    // Set per-slot PipeWireSinkName settings
-    $fppdTarget = isset($slotTargets[1]) ? $slotTargets[1] : '';
+    // Set PipeWire default sink and push setting to fppd (best-effort)
     if (!empty($fppdTarget)) {
-        // fppd should route to the input group
         $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
         exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($fppdTarget) . " 2>&1");
-        WriteSettingToFile('PipeWireSinkName', $fppdTarget);
-        SendCommand('setSetting,PipeWireSinkName,' . $fppdTarget);
+        SetFppdSetting('PipeWireSinkName', $fppdTarget);
     }
-
-    // Set per-slot targets for slots 2-5
     for ($s = 2; $s <= 5; $s++) {
         $key = "PipeWireSinkName_$s";
         if (isset($slotTargets[$s])) {
-            WriteSettingToFile($key, $slotTargets[$s]);
-            SendCommand("setSetting,$key," . $slotTargets[$s]);
+            SetFppdSetting($key, $slotTargets[$s]);
         } else {
-            // Clear per-slot setting — slot will use global PipeWireSinkName
-            WriteSettingToFile($key, '');
-            SendCommand("setSetting,$key,");
+            SetFppdSetting($key, '');
         }
     }
 
@@ -1336,8 +1366,9 @@ function ApplyPipeWireInputGroups()
     if ($wasPlaying && !empty($resumePlaylist)) {
         usleep(500000);
         $repeat = $resumeRepeat ? 'true' : 'false';
+        $ctx = stream_context_create(array('http' => array('timeout' => 5)));
         @file_get_contents('http://localhost:32322/command/Start%20Playlist/'
-            . rawurlencode($resumePlaylist) . '/' . $repeat);
+            . rawurlencode($resumePlaylist) . '/' . $repeat, false, $ctx);
     }
 
     return json(array(
