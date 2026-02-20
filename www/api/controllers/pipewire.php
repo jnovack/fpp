@@ -975,10 +975,27 @@ SimpleEventHook {
       return
     end
 
+    -- Block default fallback for FPP routing hub combine-stream outputs (post-effects)
+    if node_name:match ("^output%.fpp_route_ig_") then
+      log:info (si, "... FPP routing hub output: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
     -- Block default fallback for FPP filter-chain outputs with explicit target
     -- (prevents linking back to combine sink when target isn't ready yet)
     if node_name:match ("^fpp_fx_g%d+_.*_out$") and has_target then
       log:info (si, "... FPP filter-chain output: blocking default fallback for "
+          .. node_name .. ", target: " .. tostring (si_props ["node.target"])
+          .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP input group filter-chain outputs with explicit target
+    if node_name:match ("^fpp_fx_ig_%d+_out$") and has_target then
+      log:info (si, "... FPP input group EQ output: blocking default fallback for "
           .. node_name .. ", target: " .. tostring (si_props ["node.target"])
           .. ", will retry on rescan")
       event:stop_processing ()
@@ -1533,6 +1550,599 @@ function GetStreamSlotStatus()
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/audio/routing
+// Returns the full routing matrix: input groups × output groups with per-path settings
+function GetRoutingMatrix()
+{
+    global $settings;
+
+    $inputGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $outputGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+
+    $inputGroups = array();
+    if (file_exists($inputGroupsFile)) {
+        $data = json_decode(file_get_contents($inputGroupsFile), true);
+        if (is_array($data) && isset($data['inputGroups'])) {
+            $inputGroups = $data['inputGroups'];
+        }
+    }
+
+    $outputGroups = array();
+    if (file_exists($outputGroupsFile)) {
+        $data = json_decode(file_get_contents($outputGroupsFile), true);
+        if (is_array($data) && isset($data['groups'])) {
+            $outputGroups = $data['groups'];
+        }
+    }
+
+    // Build matrix
+    $matrix = array();
+    foreach ($inputGroups as $ig) {
+        if (!isset($ig['enabled']) || !$ig['enabled'])
+            continue;
+        $igId = isset($ig['id']) ? intval($ig['id']) : 0;
+        $outputs = isset($ig['outputs']) ? $ig['outputs'] : array();
+        $routing = isset($ig['routing']) ? $ig['routing'] : array();
+        $hasEffects = isset($ig['effects']['eq']['enabled']) && $ig['effects']['eq']['enabled']
+            && isset($ig['effects']['eq']['bands']) && !empty($ig['effects']['eq']['bands']);
+
+        $paths = array();
+        foreach ($outputGroups as $og) {
+            if (!isset($og['enabled']) || !$og['enabled'])
+                continue;
+            $ogId = isset($og['id']) ? intval($og['id']) : 0;
+            $connected = in_array($ogId, $outputs);
+            $pathKey = strval($ogId);
+            $volume = 100;
+            $mute = false;
+            if (isset($routing[$pathKey])) {
+                $volume = isset($routing[$pathKey]['volume']) ? intval($routing[$pathKey]['volume']) : 100;
+                $mute = isset($routing[$pathKey]['mute']) && $routing[$pathKey]['mute'];
+            }
+            $paths[] = array(
+                'outputGroupId' => $ogId,
+                'outputGroupName' => isset($og['name']) ? $og['name'] : 'Group ' . $ogId,
+                'connected' => $connected,
+                'volume' => $volume,
+                'mute' => $mute
+            );
+        }
+
+        $matrix[] = array(
+            'inputGroupId' => $igId,
+            'inputGroupName' => isset($ig['name']) ? $ig['name'] : 'Input ' . $igId,
+            'channels' => isset($ig['channels']) ? intval($ig['channels']) : 2,
+            'hasEffects' => $hasEffects,
+            'effects' => isset($ig['effects']) ? $ig['effects'] : array(),
+            'paths' => $paths
+        );
+    }
+
+    return json(array(
+        'inputGroups' => array_map(function ($ig) {
+            return array(
+                'id' => isset($ig['id']) ? intval($ig['id']) : 0,
+                'name' => isset($ig['name']) ? $ig['name'] : '',
+                'enabled' => isset($ig['enabled']) && $ig['enabled']
+            );
+        }, $inputGroups),
+        'outputGroups' => array_map(function ($og) {
+            return array(
+                'id' => isset($og['id']) ? intval($og['id']) : 0,
+                'name' => isset($og['name']) ? $og['name'] : '',
+                'enabled' => isset($og['enabled']) && $og['enabled']
+            );
+        }, $outputGroups),
+        'matrix' => $matrix
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/routing
+// Save routing matrix (per-path volume, mute, connections)
+// Body: { "routes": [{ "inputGroupId": 1, "outputGroupId": 2, "connected": true, "volume": 80, "mute": false }] }
+function SaveRoutingMatrix()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['routes'])) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Missing routes array"));
+    }
+
+    if (!file_exists($configFile)) {
+        return json(array("status" => "error", "message" => "No input groups configured"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    if (!is_array($data) || !isset($data['inputGroups'])) {
+        return json(array("status" => "error", "message" => "Invalid input groups config"));
+    }
+
+    // Group routes by input group
+    $routesByIg = array();
+    foreach ($body['routes'] as $route) {
+        $igId = intval($route['inputGroupId']);
+        if (!isset($routesByIg[$igId])) {
+            $routesByIg[$igId] = array();
+        }
+        $routesByIg[$igId][] = $route;
+    }
+
+    // Update each input group's outputs and routing
+    foreach ($data['inputGroups'] as &$ig) {
+        $igId = isset($ig['id']) ? intval($ig['id']) : 0;
+        if (!isset($routesByIg[$igId]))
+            continue;
+
+        $outputs = array();
+        $routing = array();
+        foreach ($routesByIg[$igId] as $route) {
+            $ogId = intval($route['outputGroupId']);
+            $connected = isset($route['connected']) && $route['connected'];
+            $volume = isset($route['volume']) ? max(0, min(100, intval($route['volume']))) : 100;
+            $mute = isset($route['mute']) && $route['mute'];
+
+            if ($connected) {
+                $outputs[] = $ogId;
+            }
+            // Always store per-path settings (even if not connected, preserve volume)
+            $routing[strval($ogId)] = array('volume' => $volume, 'mute' => $mute);
+        }
+
+        $ig['outputs'] = $outputs;
+        $ig['routing'] = $routing;
+    }
+    unset($ig);
+
+    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    GenerateBackupViaAPI('Routing matrix was modified.');
+
+    return json(array("status" => "OK", "message" => "Routing matrix saved"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/routing/volume
+// Real-time per-path volume adjustment
+// Body: { "inputGroupId": 1, "outputGroupId": 2, "volume": 75 }
+function SetRoutingPathVolume()
+{
+    global $SUDO, $settings;
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['inputGroupId']) || !isset($body['outputGroupId']) || !isset($body['volume'])) {
+        return json(array("status" => "error", "message" => "Missing inputGroupId, outputGroupId, or volume"));
+    }
+
+    $igId = intval($body['inputGroupId']);
+    $ogId = intval($body['outputGroupId']);
+    $volumePct = max(0, min(100, intval($body['volume'])));
+    $volumeLinear = round($volumePct / 100.0, 3);
+
+    // Load configs to resolve node names
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $outputGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+
+    if (!file_exists($configFile) || !file_exists($outputGroupsFile)) {
+        return json(array("status" => "error", "message" => "Config files not found"));
+    }
+
+    $igData = json_decode(file_get_contents($configFile), true);
+    $ogData = json_decode(file_get_contents($outputGroupsFile), true);
+
+    // Find input group
+    $igName = '';
+    $hasEffects = false;
+    foreach ($igData['inputGroups'] as $ig) {
+        if (intval($ig['id']) === $igId) {
+            $igName = isset($ig['name']) ? $ig['name'] : '';
+            $hasEffects = isset($ig['effects']['eq']['enabled']) && $ig['effects']['eq']['enabled']
+                && isset($ig['effects']['eq']['bands']) && !empty($ig['effects']['eq']['bands']);
+            break;
+        }
+    }
+
+    // Find output group node name
+    $ogNodeName = '';
+    foreach ($ogData['groups'] as $og) {
+        if (intval($og['id']) === $ogId) {
+            $ogName = isset($og['name']) ? $og['name'] : 'Group';
+            $ogNodeName = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ogName));
+            break;
+        }
+    }
+
+    if (empty($ogNodeName)) {
+        return json(array("status" => "error", "message" => "Output group not found"));
+    }
+
+    // The combine-stream that routes to output groups is either:
+    // - fpp_input_<name> (no effects) or fpp_route_ig_<id> (with effects)
+    $routingNodeName = $hasEffects ? "fpp_route_ig_$igId"
+        : "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($igName));
+
+    // Find the internal combine-stream output that targets this output group
+    // The internal stream name pattern: <combine_name>.<target_name>
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    if (empty($raw)) {
+        return json(array("status" => "error", "message" => "Cannot connect to PipeWire"));
+    }
+
+    $objects = json_decode($raw, true);
+    if (!is_array($objects)) {
+        return json(array("status" => "error", "message" => "Invalid PipeWire dump"));
+    }
+
+    // Find nodes that belong to the routing combine-stream and target this output group
+    $success = false;
+    foreach ($objects as $obj) {
+        if (!isset($obj['type']) || $obj['type'] !== 'PipeWire:Interface:Node')
+            continue;
+        $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+        $nm = isset($props['node.name']) ? $props['node.name'] : '';
+        $target = isset($props['node.target']) ? $props['node.target'] : '';
+
+        // Match internal stream: node.name starts with routing node name and targets output group
+        if (($nm === $routingNodeName || strpos($nm, $routingNodeName . '.') === 0)
+            && $target === $ogNodeName
+        ) {
+            $cmd = $SUDO . " " . $env . " pw-cli set-param " . $obj['id'] . " Props '{ channelmix.volume: $volumeLinear }' 2>&1";
+            $output = shell_exec($cmd);
+            if (strpos($output, 'Error') === false) {
+                $success = true;
+            }
+        }
+    }
+
+    // Also update saved config for persistence
+    foreach ($igData['inputGroups'] as &$ig) {
+        if (intval($ig['id']) === $igId) {
+            if (!isset($ig['routing'])) $ig['routing'] = array();
+            $pathKey = strval($ogId);
+            if (!isset($ig['routing'][$pathKey])) $ig['routing'][$pathKey] = array();
+            $ig['routing'][$pathKey]['volume'] = $volumePct;
+            break;
+        }
+    }
+    unset($ig);
+    file_put_contents($configFile, json_encode($igData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    return json(array(
+        "status" => $success ? "OK" : "warning",
+        "message" => $success ? "Route volume set to {$volumePct}%" : "Volume saved but real-time update may need Apply",
+        "volume" => $volumePct
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/audio/routing/presets
+// List saved routing presets
+function GetRoutingPresets()
+{
+    global $settings;
+    $presetsDir = $settings['mediaDirectory'] . "/config/routing-presets";
+    $presets = array();
+
+    if (is_dir($presetsDir)) {
+        $files = glob($presetsDir . "/*.json");
+        foreach ($files as $file) {
+            $name = basename($file, '.json');
+            $data = json_decode(file_get_contents($file), true);
+            $presets[] = array(
+                'name' => $name,
+                'description' => isset($data['description']) ? $data['description'] : '',
+                'created' => date('Y-m-d H:i:s', filemtime($file))
+            );
+        }
+    }
+
+    return json(array('presets' => $presets));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/routing/presets
+// Save current routing config as a preset
+// Body: { "name": "Christmas Show", "description": "..." }
+function SaveRoutingPreset()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $presetsDir = $settings['mediaDirectory'] . "/config/routing-presets";
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['name']) || empty(trim($body['name']))) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Missing preset name"));
+    }
+
+    $name = preg_replace('/[^a-zA-Z0-9_ -]/', '', trim($body['name']));
+    if (empty($name)) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Invalid preset name"));
+    }
+
+    if (!file_exists($configFile)) {
+        return json(array("status" => "error", "message" => "No input groups configured"));
+    }
+
+    // Create presets directory
+    if (!is_dir($presetsDir)) {
+        mkdir($presetsDir, 0775, true);
+    }
+
+    // Read current config and extract routing data
+    $data = json_decode(file_get_contents($configFile), true);
+    $preset = array(
+        'name' => $name,
+        'description' => isset($body['description']) ? $body['description'] : '',
+        'savedAt' => date('Y-m-d H:i:s'),
+        'routing' => array()
+    );
+
+    if (is_array($data) && isset($data['inputGroups'])) {
+        foreach ($data['inputGroups'] as $ig) {
+            $igId = isset($ig['id']) ? intval($ig['id']) : 0;
+            $preset['routing'][] = array(
+                'inputGroupId' => $igId,
+                'inputGroupName' => isset($ig['name']) ? $ig['name'] : '',
+                'outputs' => isset($ig['outputs']) ? $ig['outputs'] : array(),
+                'routing' => isset($ig['routing']) ? $ig['routing'] : array(),
+                'effects' => isset($ig['effects']) ? $ig['effects'] : array()
+            );
+        }
+    }
+
+    $presetFile = $presetsDir . "/" . $name . ".json";
+    file_put_contents($presetFile, json_encode($preset, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    GenerateBackupViaAPI("Routing preset '$name' saved.");
+
+    return json(array("status" => "OK", "message" => "Preset '$name' saved", "name" => $name));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/routing/presets/load
+// Load a routing preset and apply it to current input groups
+// Body: { "name": "Christmas Show" }
+function LoadRoutingPreset()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $presetsDir = $settings['mediaDirectory'] . "/config/routing-presets";
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['name'])) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Missing preset name"));
+    }
+
+    $name = preg_replace('/[^a-zA-Z0-9_ -]/', '', trim($body['name']));
+    $presetFile = $presetsDir . "/" . $name . ".json";
+
+    if (!file_exists($presetFile)) {
+        http_response_code(404);
+        return json(array("status" => "error", "message" => "Preset '$name' not found"));
+    }
+
+    if (!file_exists($configFile)) {
+        return json(array("status" => "error", "message" => "No input groups configured"));
+    }
+
+    $preset = json_decode(file_get_contents($presetFile), true);
+    $data = json_decode(file_get_contents($configFile), true);
+
+    if (!is_array($preset) || !isset($preset['routing']) || !is_array($data) || !isset($data['inputGroups'])) {
+        return json(array("status" => "error", "message" => "Invalid preset or config data"));
+    }
+
+    // Apply preset routing to matching input groups (by ID)
+    $applied = 0;
+    foreach ($preset['routing'] as $presetIg) {
+        $presetIgId = intval($presetIg['inputGroupId']);
+        foreach ($data['inputGroups'] as &$ig) {
+            if (intval($ig['id']) === $presetIgId) {
+                $ig['outputs'] = $presetIg['outputs'];
+                $ig['routing'] = $presetIg['routing'];
+                if (isset($presetIg['effects'])) {
+                    $ig['effects'] = $presetIg['effects'];
+                }
+                $applied++;
+                break;
+            }
+        }
+        unset($ig);
+    }
+
+    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    GenerateBackupViaAPI("Routing preset '$name' loaded.");
+
+    return json(array(
+        "status" => "OK",
+        "message" => "Preset '$name' loaded ($applied groups updated). Apply to activate.",
+        "applied" => $applied,
+        "needsApply" => true
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// DELETE /api/pipewire/audio/routing/presets/:name
+// Delete a routing preset
+function DeleteRoutingPreset()
+{
+    global $settings;
+    $presetsDir = $settings['mediaDirectory'] . "/config/routing-presets";
+
+    $name = params('name');
+    if (empty($name)) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Missing preset name"));
+    }
+
+    $name = preg_replace('/[^a-zA-Z0-9_ -]/', '', trim($name));
+    $presetFile = $presetsDir . "/" . $name . ".json";
+
+    if (!file_exists($presetFile)) {
+        http_response_code(404);
+        return json(array("status" => "error", "message" => "Preset '$name' not found"));
+    }
+
+    unlink($presetFile);
+    return json(array("status" => "OK", "message" => "Preset '$name' deleted"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/input-groups/effects
+// Save input group effects config (EQ)
+// Body: { "groupId": 1, "effects": { "eq": { "enabled": true, "bands": [...] } } }
+function SaveInputGroupEffects()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['groupId']) || !isset($body['effects'])) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Missing groupId or effects"));
+    }
+
+    if (!file_exists($configFile)) {
+        return json(array("status" => "error", "message" => "No input groups configured"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    $groupId = intval($body['groupId']);
+    $found = false;
+
+    foreach ($data['inputGroups'] as &$ig) {
+        if (intval($ig['id']) === $groupId) {
+            $ig['effects'] = $body['effects'];
+            $found = true;
+            break;
+        }
+    }
+    unset($ig);
+
+    if (!$found) {
+        return json(array("status" => "error", "message" => "Input group $groupId not found"));
+    }
+
+    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    GenerateBackupViaAPI("Input group effects updated.");
+
+    return json(array("status" => "OK", "message" => "Effects saved. Apply to activate.", "needsApply" => true));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/input-groups/eq/update
+// Real-time EQ adjustment on input group filter-chain
+// Body: { "groupId": 1, "band": 0, "freq": 1000, "gain": 3, "q": 1.4 }
+function UpdateInputGroupEQRealtime()
+{
+    global $SUDO, $settings;
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['groupId']) || !isset($body['band'])) {
+        return json(array("status" => "error", "message" => "Missing groupId or band"));
+    }
+
+    $groupId = intval($body['groupId']);
+    $bandIdx = intval($body['band']);
+    $fxNodeName = "fpp_fx_ig_" . $groupId;
+
+    // Find the filter-chain node ID
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    if (empty($raw)) {
+        return json(array("status" => "error", "message" => "Cannot connect to PipeWire"));
+    }
+
+    $objects = json_decode($raw, true);
+    $nodeId = null;
+    if (is_array($objects)) {
+        foreach ($objects as $obj) {
+            if (!isset($obj['type']) || $obj['type'] !== 'PipeWire:Interface:Node')
+                continue;
+            $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+            $nm = isset($props['node.name']) ? $props['node.name'] : '';
+            if ($nm === $fxNodeName) {
+                $nodeId = $obj['id'];
+                break;
+            }
+        }
+    }
+
+    if ($nodeId === null) {
+        return json(array("status" => "error", "message" => "Filter-chain node '$fxNodeName' not found. Apply input groups first."));
+    }
+
+    // Load input group config to get channel count
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $igChannels = 2;
+    if (file_exists($configFile)) {
+        $data = json_decode(file_get_contents($configFile), true);
+        if (is_array($data) && isset($data['inputGroups'])) {
+            foreach ($data['inputGroups'] as $ig) {
+                if (intval($ig['id']) === $groupId) {
+                    $igChannels = isset($ig['channels']) ? intval($ig['channels']) : 2;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Set EQ params on all channels for this band
+    $channelLabels = array("l", "r", "c", "lfe", "rl", "rr", "sl", "sr");
+    $numCh = min($igChannels, count($channelLabels));
+    $success = true;
+
+    for ($ch = 0; $ch < $numCh; $ch++) {
+        $chLabel = $channelLabels[$ch];
+        $paramName = "eq_{$chLabel}_{$bandIdx}";
+
+        if (isset($body['freq'])) {
+            $cmd = $SUDO . " " . $env . " pw-cli set-param $nodeId Props '{ \"$paramName:Freq\": " . floatval($body['freq']) . " }' 2>&1";
+            $output = shell_exec($cmd);
+            if (strpos($output, 'Error') !== false) $success = false;
+        }
+        if (isset($body['gain'])) {
+            $cmd = $SUDO . " " . $env . " pw-cli set-param $nodeId Props '{ \"$paramName:Gain\": " . floatval($body['gain']) . " }' 2>&1";
+            $output = shell_exec($cmd);
+            if (strpos($output, 'Error') !== false) $success = false;
+        }
+        if (isset($body['q'])) {
+            $cmd = $SUDO . " " . $env . " pw-cli set-param $nodeId Props '{ \"$paramName:Q\": " . floatval($body['q']) . " }' 2>&1";
+            $output = shell_exec($cmd);
+            if (strpos($output, 'Error') !== false) $success = false;
+        }
+    }
+
+    // Also save to config for persistence
+    if (file_exists($configFile)) {
+        $data = json_decode(file_get_contents($configFile), true);
+        foreach ($data['inputGroups'] as &$ig) {
+            if (intval($ig['id']) === $groupId) {
+                if (isset($ig['effects']['eq']['bands'][$bandIdx])) {
+                    if (isset($body['freq'])) $ig['effects']['eq']['bands'][$bandIdx]['freq'] = floatval($body['freq']);
+                    if (isset($body['gain'])) $ig['effects']['eq']['bands'][$bandIdx]['gain'] = floatval($body['gain']);
+                    if (isset($body['q'])) $ig['effects']['eq']['bands'][$bandIdx]['q'] = floatval($body['q']);
+                }
+                break;
+            }
+        }
+        unset($ig);
+        file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    return json(array(
+        "status" => $success ? "OK" : "error",
+        "message" => $success ? "EQ band $bandIdx updated" : "Some EQ params failed to update"
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // GET /api/pipewire/audio/sources
 // Returns available PipeWire audio capture sources (ALSA Audio/Source nodes)
 function GetPipeWireAudioSources()
@@ -1687,15 +2297,32 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
         //
         // Resolve which output groups this input group routes to:
         $outputs = isset($ig['outputs']) ? $ig['outputs'] : array();
+        $routing = isset($ig['routing']) ? $ig['routing'] : array();
         $outputRules = array();
         foreach ($outputs as $outGroupId) {
+            // Check per-path routing settings
+            $pathKey = strval($outGroupId);
+            $pathVolume = 100;
+            $pathMute = false;
+            if (isset($routing[$pathKey])) {
+                $pathVolume = isset($routing[$pathKey]['volume']) ? intval($routing[$pathKey]['volume']) : 100;
+                $pathMute = isset($routing[$pathKey]['mute']) && $routing[$pathKey]['mute'];
+            }
+            // Skip muted paths
+            if ($pathMute) continue;
+
             foreach ($outputGroups as $og) {
                 if (isset($og['id']) && intval($og['id']) === intval($outGroupId)) {
                     if (!isset($og['enabled']) || !$og['enabled'])
                         continue;
                     $ogName = isset($og['name']) ? $og['name'] : 'Group';
                     $outNodeName = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ogName));
-                    $outputRules[] = array('name' => $outNodeName, 'desc' => $ogName);
+                    $outputRules[] = array(
+                        'name' => $outNodeName,
+                        'desc' => $ogName,
+                        'volume' => $pathVolume,
+                        'ogId' => intval($outGroupId)
+                    );
                     break;
                 }
             }
@@ -1706,38 +2333,180 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
             continue;
         }
 
-        $conf .= "  # Input Group: $groupName\n";
-        $conf .= "  { name = libpipewire-module-combine-stream\n";
-        $conf .= "    args = {\n";
-        $conf .= "      combine.mode = sink\n";
-        $conf .= "      node.name = \"$nodeName\"\n";
-        $conf .= "      node.description = \"$groupName\"\n";
-        $conf .= "      combine.props = {\n";
-        $conf .= "        audio.position = $groupPos\n";
-        $conf .= "      }\n";
-        $conf .= "      stream.props = {\n";
-        $conf .= "        stream.dont-remix = true\n";
-        $conf .= "      }\n";
+        // Check if input group has effects (EQ) enabled
+        $hasEffects = isset($ig['effects']['eq']['enabled']) && $ig['effects']['eq']['enabled']
+            && isset($ig['effects']['eq']['bands']) && !empty($ig['effects']['eq']['bands']);
 
-        // stream.rules: match the OUTPUT GROUP sinks to fan audio out to
-        $conf .= "      stream.rules = [\n";
-        foreach ($outputRules as $rule) {
+        $channelLabels = array("l", "r", "c", "lfe", "rl", "rr", "sl", "sr");
+        $numCh = min($groupChannels, count($channelLabels));
+
+        // Helper: generate stream.rules block for output groups with per-path volume
+        $generateOutputRules = function ($rules) use (&$conf) {
+            $conf .= "      stream.rules = [\n";
+            foreach ($rules as $rule) {
+                $volLinear = round($rule['volume'] / 100.0, 3);
+                $conf .= "        { matches = [\n";
+                $conf .= "            { media.class = \"Audio/Sink\"\n";
+                $conf .= "              node.name = \"" . $rule['name'] . "\"\n";
+                $conf .= "            }\n";
+                $conf .= "          ]\n";
+                $conf .= "          actions = {\n";
+                $conf .= "            create-stream = {\n";
+                $conf .= "              node.target = \"" . $rule['name'] . "\"\n";
+                if ($volLinear < 0.999) {
+                    $conf .= "              channelmix.volume = $volLinear\n";
+                }
+                $conf .= "            }\n";
+                $conf .= "          }\n";
+                $conf .= "        }\n";
+            }
+            $conf .= "      ]\n";
+        };
+
+        if ($hasEffects) {
+            // ── Architecture with effects ──
+            // Input sources → combine-stream(input group) → filter-chain(EQ) → routing combine-stream → output groups
+            $fxNodeName = "fpp_fx_ig_" . $groupId;
+            $fxOutName = $fxNodeName . "_out";
+            $routeNodeName = "fpp_route_ig_" . $groupId;
+
+            // 1. Filter-chain for EQ processing
+            $bands = $ig['effects']['eq']['bands'];
+            $fxDesc = "EQ: $groupName";
+
+            $conf .= "  # Input Group EQ: $groupName\n";
+            $conf .= "  { name = libpipewire-module-filter-chain\n";
+            $conf .= "    args = {\n";
+            $conf .= "      node.description = \"$fxDesc\"\n";
+            $conf .= "      filter.graph = {\n";
+            $conf .= "        nodes = [\n";
+
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                foreach ($bands as $bi => $band) {
+                    $type = isset($band['type']) ? $band['type'] : 'bq_peaking';
+                    $freq = floatval(isset($band['freq']) ? $band['freq'] : 1000);
+                    $gain = floatval(isset($band['gain']) ? $band['gain'] : 0);
+                    $q = floatval(isset($band['q']) ? $band['q'] : 1.0);
+                    $conf .= "          { type = builtin label = $type name = eq_{$chLabel}_{$bi} control = { \"Freq\" = $freq \"Q\" = $q \"Gain\" = $gain } }\n";
+                }
+            }
+
+            $conf .= "        ]\n";
+
+            // Links: chain EQ bands in series per channel
+            $conf .= "        links = [\n";
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                for ($bi = 1; $bi < count($bands); $bi++) {
+                    $prevBi = $bi - 1;
+                    $conf .= "          { output = \"eq_{$chLabel}_{$prevBi}:Out\" input = \"eq_{$chLabel}_{$bi}:In\" }\n";
+                }
+            }
+            $conf .= "        ]\n";
+
+            // Inputs: first EQ band of each channel
+            $conf .= "        inputs = [";
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                $conf .= " \"eq_{$chLabel}_0:In\"";
+            }
+            $conf .= " ]\n";
+
+            // Outputs: last EQ band of each channel
+            $conf .= "        outputs = [";
+            $lastBi = count($bands) - 1;
+            for ($ch = 0; $ch < $numCh; $ch++) {
+                $chLabel = $channelLabels[$ch];
+                $conf .= " \"eq_{$chLabel}_{$lastBi}:Out\"";
+            }
+            $conf .= " ]\n";
+
+            $conf .= "      }\n"; // filter.graph
+
+            $conf .= "      capture.props = {\n";
+            $conf .= "        node.name = \"$fxNodeName\"\n";
+            $conf .= "        media.class = Audio/Sink\n";
+            $conf .= "        audio.channels = $numCh\n";
+            $conf .= "        audio.position = $groupPos\n";
+            $conf .= "      }\n";
+            $conf .= "      playback.props = {\n";
+            $conf .= "        node.name = \"$fxOutName\"\n";
+            $conf .= "        node.passive = true\n";
+            $conf .= "        node.target = \"$routeNodeName\"\n";
+            $conf .= "        stream.dont-remix = true\n";
+            $conf .= "        audio.channels = $numCh\n";
+            $conf .= "        audio.position = $groupPos\n";
+            $conf .= "      }\n";
+
+            $conf .= "    }\n"; // args
+            $conf .= "  }\n";
+
+            // 2. Routing combine-stream (post-effects fan-out to output groups)
+            $conf .= "  # Routing hub (post-EQ): $groupName\n";
+            $conf .= "  { name = libpipewire-module-combine-stream\n";
+            $conf .= "    args = {\n";
+            $conf .= "      combine.mode = sink\n";
+            $conf .= "      node.name = \"$routeNodeName\"\n";
+            $conf .= "      node.description = \"$groupName (Routing)\"\n";
+            $conf .= "      combine.props = {\n";
+            $conf .= "        audio.position = $groupPos\n";
+            $conf .= "      }\n";
+            $conf .= "      stream.props = {\n";
+            $conf .= "        stream.dont-remix = true\n";
+            $conf .= "      }\n";
+            $generateOutputRules($outputRules);
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+
+            // 3. Main combine-stream routes to filter-chain only
+            $conf .= "  # Input Group: $groupName (→ EQ → Routing)\n";
+            $conf .= "  { name = libpipewire-module-combine-stream\n";
+            $conf .= "    args = {\n";
+            $conf .= "      combine.mode = sink\n";
+            $conf .= "      node.name = \"$nodeName\"\n";
+            $conf .= "      node.description = \"$groupName\"\n";
+            $conf .= "      combine.props = {\n";
+            $conf .= "        audio.position = $groupPos\n";
+            $conf .= "      }\n";
+            $conf .= "      stream.props = {\n";
+            $conf .= "        stream.dont-remix = true\n";
+            $conf .= "      }\n";
+            $conf .= "      stream.rules = [\n";
             $conf .= "        { matches = [\n";
             $conf .= "            { media.class = \"Audio/Sink\"\n";
-            $conf .= "              node.name = \"" . $rule['name'] . "\"\n";
+            $conf .= "              node.name = \"$fxNodeName\"\n";
             $conf .= "            }\n";
             $conf .= "          ]\n";
             $conf .= "          actions = {\n";
             $conf .= "            create-stream = {\n";
-            $conf .= "              node.target = \"" . $rule['name'] . "\"\n";
+            $conf .= "              node.target = \"$fxNodeName\"\n";
             $conf .= "            }\n";
             $conf .= "          }\n";
             $conf .= "        }\n";
-        }
-        $conf .= "      ]\n";
+            $conf .= "      ]\n";
+            $conf .= "    }\n";
+            $conf .= "  }\n";
 
-        $conf .= "    }\n";
-        $conf .= "  }\n";
+        } else {
+            // ── Direct routing (no effects) ──
+            // Input sources → combine-stream → output groups
+            $conf .= "  # Input Group: $groupName\n";
+            $conf .= "  { name = libpipewire-module-combine-stream\n";
+            $conf .= "    args = {\n";
+            $conf .= "      combine.mode = sink\n";
+            $conf .= "      node.name = \"$nodeName\"\n";
+            $conf .= "      node.description = \"$groupName\"\n";
+            $conf .= "      combine.props = {\n";
+            $conf .= "        audio.position = $groupPos\n";
+            $conf .= "      }\n";
+            $conf .= "      stream.props = {\n";
+            $conf .= "        stream.dont-remix = true\n";
+            $conf .= "      }\n";
+            $generateOutputRules($outputRules);
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+        }
 
         // ── Loopback modules for each capture/AES67 member ──
         foreach ($ig['members'] as $mi => $mbr) {
@@ -2625,6 +3394,16 @@ function GetPipeWireGraph()
                 // PipeWire loopback creates only these two sub-nodes (no bare parent)
                 if (preg_match('/(?:^|^(?:input|output)\.)fpp_loopback_ig(\d+)_/', $nm, $m)) {
                     $node['properties']['fpp.inputGroup.loopback'] = true;
+                    $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
+                }
+                // Match routing hub nodes (post-effects fan-out)
+                if (preg_match('/^fpp_route_ig_(\d+)$/', $nm, $m)) {
+                    $node['properties']['fpp.routingHub'] = true;
+                    $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
+                }
+                // Match input group EQ filter-chain nodes
+                if (preg_match('/^fpp_fx_ig_(\d+)(_out)?$/', $nm, $m)) {
+                    $node['properties']['fpp.inputGroup.eq'] = true;
                     $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
                 }
                 // (Routing loopback nodes removed — combine-stream handles output routing)

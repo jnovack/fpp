@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-20
 **Branch:** `input-mixing-phase1` (forked from `multi-input-gstreamer`)
-**Status:** In Progress — Phases 1–4 complete, Phase 5 next
+**Status:** Complete — Phases 1–5 implemented
 
 ---
 
@@ -525,32 +525,76 @@ fppd
 
 ## 9. Phase 5 — Advanced Routing & Matrix UI
 
-**Goal:** Full routing matrix, multiple output groups, input group effects.
+**Goal:** Full routing matrix, per-path volume/mute, input group effects, presets, live mixing.
+
+### Design
+
+```
+Input Groups  ─── [volume/mute per path] ──→  Output Groups
+     │                                              │
+     └── (optional EQ) ──→ routing hub ─────────────┘
+```
+
+**Architecture with effects:**
+```
+Sources → combine-stream(fpp_input_<name>) → filter-chain(fpp_fx_ig_<id>)
+  → combine-stream(fpp_route_ig_<id>, stream.rules with channelmix.volume) → output groups
+```
+
+**Architecture without effects (direct routing):**
+```
+Sources → combine-stream(fpp_input_<name>, stream.rules with channelmix.volume) → output groups
+```
 
 ### Tasks
 
-- [ ] **5.1** Routing matrix UI
+- [x] **5.1** Routing matrix UI (`pipewire-routing-matrix.php`)
   - Grid view: input groups (rows) × output groups (columns)
-  - Checkbox + volume per routing path
-  - Visual representation of the full signal flow
+  - Per-cell: checkbox (connected), volume slider, mute button
+  - Settings menu entry with modal support
+  - Link from input-mixing page to routing matrix
 
-- [ ] **5.2** Per-routing-path volume
-  - Individual volume control on each input→output route
-  - Implemented via loopback volume or filter-chain gain
+- [x] **5.2** Per-routing-path volume
+  - `channelmix.volume` in combine-stream `stream.rules` `create-stream` action
+  - Per-path `routing` config in input groups JSON: `{ "<ogId>": { volume, mute } }`
+  - Real-time adjustment via `pw-cli set-param` on internal combine-stream nodes
+  - API: `POST /api/pipewire/audio/routing/volume`
+  - Muted paths skipped during config generation
 
-- [ ] **5.3** Input group effects
-  - Optional EQ/compression on the input group's mixed output
-  - Before routing to output groups
-  - Reuse filter-chain generation from output groups
+- [x] **5.3** Input group effects (EQ)
+  - Optional `filter-chain` module with biquad EQ per input group
+  - Config schema: `ig.effects.eq.enabled`, `ig.effects.eq.bands[]`
+  - When effects enabled: combine-stream → filter-chain → routing combine-stream → output groups
+  - When effects disabled: combine-stream → output groups (direct)
+  - Real-time EQ adjustment via `pw-cli set-param`
+  - API: `POST /api/pipewire/audio/input-groups/effects` (save)
+  - API: `POST /api/pipewire/audio/input-groups/eq/update` (real-time)
+  - WirePlumber hook updated for `fpp_fx_ig_*` and `fpp_route_ig_*` patterns
 
-- [ ] **5.4** Group templates / presets
-  - Save/load routing configurations
-  - "Christmas Show", "Background Music", "PA Announcement" presets
+- [x] **5.4** Group templates / presets
+  - Save/load routing configurations (outputs, routing, effects)
+  - Stored in `<media>/config/routing-presets/<name>.json`
+  - API: `GET/POST /api/pipewire/audio/routing/presets`
+  - API: `POST /api/pipewire/audio/routing/presets/load`
+  - API: `DELETE /api/pipewire/audio/routing/presets/:name`
+  - UI integrated into routing matrix page
 
-- [ ] **5.5** Live mixing controls
-  - Real-time fader adjustments without Save & Apply
-  - WebSocket or polling-based UI updates
-  - PipeWire param changes via `pw-cli set-param`
+- [x] **5.5** Live mixing controls
+  - Real-time per-path volume via debounced slider → `pw-cli set-param`
+  - Real-time EQ band adjustment (freq/gain/Q) without Save & Apply
+  - Dirty indicator shows unsaved changes
+  - Save & Apply button regenerates PipeWire config and restarts
+
+### Testing Criteria
+
+- [ ] Routing matrix shows all input group × output group combinations
+- [ ] Per-path volume slider adjusts volume in real time
+- [ ] Mute button silences specific routing paths
+- [ ] EQ can be enabled per input group with real-time band adjustment
+- [ ] Saving a preset captures all routing + effects configuration
+- [ ] Loading a preset restores routing and effects
+- [ ] Save & Apply regenerates PipeWire config with per-path volumes
+- [ ] Graph visualizer shows routing hub and EQ nodes when effects are active
 
 ---
 
@@ -674,9 +718,9 @@ const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects',
 - [ ] Phase 4 testing complete
 
 ### Phase 5 — Advanced Routing
-- [ ] 5.1 Routing matrix UI
-- [ ] 5.2 Per-routing-path volume
-- [ ] 5.3 Input group effects
-- [ ] 5.4 Group templates / presets
-- [ ] 5.5 Live mixing controls
+- [x] 5.1 Routing matrix UI
+- [x] 5.2 Per-routing-path volume
+- [x] 5.3 Input group effects
+- [x] 5.4 Group templates / presets
+- [x] 5.5 Live mixing controls
 - [ ] Phase 5 testing complete

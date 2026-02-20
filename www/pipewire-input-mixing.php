@@ -322,6 +322,9 @@
                             <button class="buttons btn-outline-primary" onclick="ApplyInputGroups()">
                                 <i class="fas fa-sync"></i> Save &amp; Apply
                             </button>
+                            <a class="buttons btn-outline-secondary" href="pipewire-routing-matrix.php" title="Open Routing Matrix">
+                                <i class="fas fa-th"></i> Routing Matrix
+                            </a>
                         </div>
                     </div>
 
@@ -517,18 +520,29 @@
 
             // Output routing
             html += '<div class="output-routing">';
-            html += '<label><i class="fas fa-arrow-right"></i> Route to Output Groups:</label>';
+            html += '<label><i class="fas fa-arrow-right"></i> Route to Output Groups: ';
+            html += '<a href="pipewire-routing-matrix.php" style="font-size:0.8rem;font-weight:normal;" title="Open Routing Matrix for per-path volume control">';
+            html += '<i class="fas fa-th"></i> Matrix View</a></label>';
             html += '<div>';
             var outputs = ig.outputs || [];
+            var routing = ig.routing || {};
             if (availableOutputGroups.length > 0) {
                 availableOutputGroups.forEach(function (og) {
                     if (!og.enabled) return;
                     var checked = outputs.indexOf(og.id) !== -1;
-                    html += '<div class="form-check">';
+                    var pathVol = routing[String(og.id)] ? (routing[String(og.id)].volume || 100) : 100;
+                    var pathMute = routing[String(og.id)] ? (routing[String(og.id)].mute || false) : false;
+                    html += '<div class="form-check" style="display:inline-flex;align-items:center;gap:4px;">';
                     html += '<input class="form-check-input" type="checkbox" ' +
                         (checked ? 'checked' : '') +
                         ' onchange="ToggleOutput(' + idx + ', ' + og.id + ', this.checked)">';
                     html += '<label class="form-check-label">' + EscapeHtml(og.name || 'Group ' + og.id) + '</label>';
+                    if (checked && pathVol < 100) {
+                        html += ' <small class="text-muted">(' + pathVol + '%)</small>';
+                    }
+                    if (pathMute) {
+                        html += ' <small class="text-danger"><i class="fas fa-volume-mute"></i></small>';
+                    }
                     html += '</div>';
                 });
             } else {

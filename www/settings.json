@@ -810,6 +810,19 @@
 				"!MacOS"
 			]
 		},
+		"PipeWireRoutingMatrix": {
+			"name": "PipeWireRoutingMatrix",
+			"description": "Audio Routing Matrix",
+			"tip": "Visual routing matrix showing all input group to output group connections with per-path volume, mute, effects, and presets.",
+			"type": "modal",
+			"modalUrl": "pipewire-routing-matrix.php?modal=1",
+			"icon": "fas fa-th",
+			"buttonText": "Open Routing Matrix",
+			"modalTitle": "Audio Routing Matrix",
+			"platforms": [
+				"!MacOS"
+			]
+		},
 		"PipeWireAES67Config": {
 			"name": "PipeWireAES67Config",
 			"description": "AES67 Audio-over-IP",
