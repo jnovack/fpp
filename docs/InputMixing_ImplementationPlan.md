@@ -324,11 +324,11 @@ context.modules = [
 
 ### Testing Criteria
 
-- [ ] Input group appears as a node in the PipeWire graph
-- [ ] ALSA capture source audio routes through input group to output group and out speakers
-- [ ] Volume slider adjusts input member level in real-time
-- [ ] Mute toggle silences individual input
-- [ ] Graph visualiser shows correct routing with 5 columns
+- [x] Input group appears as a node in the PipeWire graph
+- [x] ALSA capture source audio routes through input group to output group and out speakers
+- [x] Volume slider adjusts input member level in real-time
+- [x] Mute toggle silences individual input
+- [x] Graph visualiser shows correct routing with 5 columns
 - [ ] Removing all input groups reverts to direct fppd → output group routing
 - [ ] Save & Apply with active playback stops/resumes correctly
 
@@ -393,12 +393,12 @@ with per-source controls.
 
 ### Testing Criteria
 
-- [ ] USB sound card line-in audio appears in output group mix
+- [x] USB sound card line-in audio appears in output group mix
 - [ ] Unplugging/replugging capture device recovers automatically
 - [ ] Channel mapping (mono → stereo) works correctly
-- [ ] Multiple capture sources can be mixed simultaneously
+- [x] Multiple capture sources can be mixed simultaneously
 - [ ] No audio glitches or xruns during normal operation
-- [ ] Real-time volume slider changes audible level without restart
+- [x] Real-time volume slider changes audible level without restart
 - [ ] Device state badges update on hot-plug/removal
 
 ---
@@ -451,11 +451,11 @@ input group member. **All existing behaviour is preserved.**
 
 ### Testing Criteria
 
-- [ ] fppd audio output appears as "FPP Media Stream 1" (`fppd_stream_1`) in graph
-- [ ] Audio plays correctly through output group (no regression)
-- [ ] All existing playlist functionality works identically
+- [x] fppd audio output appears as "FPP Media Stream 1" (`fppd_stream_1`) in graph
+- [x] Audio plays correctly through output group (no regression)
+- [x] All existing playlist functionality works identically
 - [ ] Volume control via `@DEFAULT_AUDIO_SINK@` still works
-- [ ] Graph visualiser correctly classifies the named stream
+- [x] Graph visualiser correctly classifies the named stream
 
 ---
 
@@ -475,41 +475,81 @@ fppd
 
 ### Tasks
 
-- [ ] **4.1** Refactor `GStreamerOutput` to support multiple instances
-  - Currently a singleton — refactor to allow N instances with unique IDs
-  - Each instance gets: `fppd_stream_<N>`, its own GStreamer pipeline, its own volume
-  - Pool size configurable (default: 4 slots)
+- [x] **4.1** Refactor `GStreamerOutput` to support multiple instances ✅
+  - New `StreamSlotManager` singleton manages up to 5 simultaneous slots (`MAX_SLOTS = 5`)
+  - Each instance gets: `fppd_stream_<N>`, its own GStreamer pipeline, its own `MediaOutputStatus`
+  - `GStreamerOutput` constructor accepts `int streamSlot` parameter (default: 1)
+  - Per-slot PipeWire sink names: slot 1 uses `PipeWireSinkName`, slots 2–5 use `PipeWireSinkName_<N>`
+  - File: `src/mediaoutput/StreamSlotManager.h`, `src/mediaoutput/StreamSlotManager.cpp` (new)
   - File: `src/mediaoutput/GStreamerOut.h`, `src/mediaoutput/GStreamerOut.cpp`
 
-- [ ] **4.2** Add stream slot parameter to playlist media entries
-  - `PlaylistEntryMedia` gets an optional `slot` field (default: 1)
+- [x] **4.2** Add stream slot parameter to playlist media entries ✅
+  - `PlaylistEntryMedia` gets `m_streamSlot` field (default: 1), `m_slotStatus` pointer
+  - `GetStreamSlot()` and `IsBackgroundSlot()` helper methods
   - File: `src/playlist/PlaylistEntryMedia.h`, `src/playlist/PlaylistEntryMedia.cpp`
-  - Playlist JSON: `{ "type": "media", "mediaName": "song.mp3", "slot": 1 }`
+  - Playlist JSON: `{ "type": "media", "mediaName": "song.mp3", "streamSlot": 1 }`
 
-- [ ] **4.3** Per-stream volume control
-  - Each `pipewiresink` has its own volume element in the GStreamer pipeline
-  - Per-stream volume API: `POST /api/pipewire/audio/stream/<N>/volume`
-  - Or use PipeWire stream volume via `pactl set-sink-input-volume`
+- [x] **4.3** Per-stream volume control ✅
+  - `StreamSlotManager::SetSlotVolume()` dispatches to active `GStreamerOutput::SetVolume()`
+  - Slot 1 uses fppd's global volume; slots 2–5 go through `StreamSlotManager`
+  - API: `POST /api/pipewire/audio/stream/volume` with `{ "slot": N, "volume": V }`
+  - File: `www/api/controllers/pipewire.php`, `www/api/index.php`
 
-- [ ] **4.4** Multi-stream playlist scheduling
-  - Allow playlist entries to specify which stream slot to use
-  - Entries on different slots can overlap (crossfade, background music + announcements)
-  - Scheduler changes in `src/playlist/Playlist.cpp`
+- [x] **4.4** Multi-stream playlist scheduling ✅
+  - `ProcessBackgroundSlots()` called from playlist process loop to manage concurrent slots
+  - `StopAllSlots()` called during playlist stop for clean shutdown
+  - Entries on different slots overlap (background music + announcements)
+  - File: `src/playlist/Playlist.cpp`, `src/mediaoutput/StreamSlotManager.cpp`
 
-- [ ] **4.5** Update playlist editor UI
-  - Stream slot selector per playlist entry
-  - Visual indication of which slot each entry uses
-  - File: `www/playlist.php`, `www/js/fpp.js`
+- [x] **4.5** Update playlist editor UI ✅
+  - `streamSlot` field added to both `media` and `both` entry types in `playlistEntryTypes.json`
+  - Slot selector (1–5) per playlist entry
+  - File: `www/playlistEntryTypes.json`
 
-- [ ] **4.6** WLED audio-reactive tap
-  - Currently tapped via `appsink` on the single pipeline
-  - With multiple streams, decide: tap stream 1 only? Mix? Configurable?
-  - Simplest: always tap stream 1 (default, backward compatible)
+- [x] **4.6** WLED audio-reactive tap ✅
+  - `static GStreamerOutput* m_currentInstance` tracks which slot is active for WLED
+  - Slot 1 always takes priority for `m_currentInstance` (backward compatible)
+  - Secondary slots only claim it if no other instance is active
+  - On `Close()`, hands off to another active slot if available
+  - `OnNewSample()` and `ProcessVideoOverlay()` use `m_currentInstance`
+  - File: `src/mediaoutput/GStreamerOut.h`, `src/mediaoutput/GStreamerOut.cpp`
 
-- [ ] **4.7** Status API updates
-  - `GET /api/fppd/status` should report per-stream status
-  - Current song, elapsed time, state per stream slot
+- [x] **4.7** Status API updates ✅
+  - `GET /api/fppd/status` includes `streamSlots` array from `StreamSlotManager::GetAllSlotsStatus()`
+  - Per-slot: song, elapsed time, state, active/inactive
   - Backward compatible: `current_song` field remains, reports stream 1
+  - PHP endpoint: `GET /api/pipewire/audio/stream/status`
+  - File: `src/httpAPI.cpp`, `www/api/controllers/pipewire.php`, `www/api/index.php`
+
+### Implementation Notes (Phase 4)
+
+- **StreamSlotManager** — new singleton in `src/mediaoutput/StreamSlotManager.{h,cpp}`,
+  manages a fixed pool of 5 slots. Each slot tracks its active `GStreamerOutput*` and
+  per-slot `MediaOutputStatus`. Thread-safe with `std::recursive_mutex`.
+- **GStreamerOutput constructor** accepts `int streamSlot` (default 1). On `Start()`,
+  registers with `StreamSlotManager`; on `Close()`, deregisters. Slot number determines
+  PipeWire node name (`fppd_stream_1` … `fppd_stream_5`) and sink setting key.
+- **m_currentInstance** — static pointer for WLED audio-reactive appsink tap. Slot 1
+  always has priority. On close, ownership transfers to the next active slot.
+- **playlistEntryTypes.json** — `streamSlot` field added to `media` (line 511) and
+  `both` (line 788) entry types. Default value: 1.
+- **Files added:** `StreamSlotManager.h`, `StreamSlotManager.cpp`
+- **Files changed:** `GStreamerOut.h`, `GStreamerOut.cpp`, `PlaylistEntryMedia.h`,
+  `PlaylistEntryMedia.cpp`, `Playlist.cpp`, `httpAPI.cpp`, `pipewire.php`, `index.php`,
+  `playlistEntryTypes.json`
+
+### Post-Implementation Bug Fixes
+
+| Bug | Root Cause | Fix | Commit |
+| --- | --- | --- | --- |
+| **Self-deadlock in StreamSlotManager** | `std::mutex` couldn't handle re-entrant calls from `Start()`→`Stop()` within the same lock | Changed to `std::recursive_mutex` | `0b764171` |
+| **`Stop()` deadlock** | Appsink/bus callbacks held the lock while `gst_element_set_state(NULL)` tried to drain them | Clean up appsink and bus *before* state change | `370dfa57` |
+| **PipeWire audio groups not robust across reboots** | USB card names changed across reboots, breaking input group config references | Boot-time card resolution + regeneration script for `96-fpp-input-groups.conf` | `3675b7a6` |
+| **Input group mute/volume not working in real-time** | `ToggleMute()` didn't send API call; mute flag didn't persist correctly | Send `POST /api/pipewire/audio/input-groups/volume` with `mute` flag; preserve saved volume on mute | `4da04d7a` |
+| **Routing matrix page missing header** | Used `common/menuBody.inc` instead of FPP standard `menu.inc` pattern; `AudioPipeWire` setting check was wrong | Restructured to standard FPP page layout; changed check to `AudioBackend === 'pipewire'` | `7bda3e18` |
+| **Graph showed fppd stream routing to wrong input group** | `$fppdStreamTargets` map was single-value, last group overwrote previous | Changed to array-of-targets so all group assignments are preserved | `40819271` |
+| **Songs skipping without playing (5s stall)** | Same overwrite bug in `ApplyPipeWireAudioGroups` and `ApplyPipeWireInputGroupsConfig` — last input group wrote `PipeWireSinkName` to a non-existent node | First-wins semantics: `if (!isset($slotTargets[$slotNum]))` | `e00bb6e1` |
+| **Volume/mute API returned "loopback node not found"** | PipeWire loopback modules create only `input.NAME` and `output.NAME` sub-nodes (no bare parent) | Match all three name variants: bare, `input.` prefix, `output.` prefix | `54eb4abf` |
 
 ### Testing Criteria
 
@@ -587,7 +627,7 @@ Sources → combine-stream(fpp_input_<name>, stream.rules with channelmix.volume
 
 ### Testing Criteria
 
-- [ ] Routing matrix shows all input group × output group combinations
+- [x] Routing matrix shows all input group × output group combinations
 - [ ] Per-path volume slider adjusts volume in real time
 - [ ] Mute button silences specific routing paths
 - [ ] EQ can be enabled per input group with real-time band adjustment
@@ -717,10 +757,20 @@ const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects',
 - [x] 4.7 Status API updates (streamSlots in fppd status + PHP status endpoint)
 - [ ] Phase 4 testing complete
 
-### Phase 5 — Advanced Routing
+### Phase 5 — Advanced Routing ✅ IMPLEMENTED
 - [x] 5.1 Routing matrix UI
 - [x] 5.2 Per-routing-path volume
 - [x] 5.3 Input group effects
 - [x] 5.4 Group templates / presets
 - [x] 5.5 Live mixing controls
 - [ ] Phase 5 testing complete
+
+### Post-Implementation Bug Fixes ✅
+- [x] StreamSlotManager self-deadlock (`recursive_mutex`) — `0b764171`
+- [x] `Stop()` deadlock (appsink/bus cleanup before state change) — `370dfa57`
+- [x] Boot robustness (USB card resolution + regeneration) — `3675b7a6`
+- [x] Mute/volume real-time control + persistence — `4da04d7a`
+- [x] Routing matrix page structure + AudioBackend check — `7bda3e18`
+- [x] Graph multi-target (fppd stream → multiple input groups) — `40819271`
+- [x] PipeWireSinkName first-wins overwrite fix — `e00bb6e1`
+- [x] Loopback sub-node matching (`input.`/`output.` prefixes) — `54eb4abf`
