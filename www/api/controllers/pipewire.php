@@ -1488,13 +1488,17 @@ function SetInputGroupMemberVolume()
     }
 
     // Find all nodes that belong to this loopback (capture + playback sides)
+    // PipeWire loopback modules create sub-nodes named input.NAME and output.NAME
+    // (there is no bare parent node), so we match both patterns.
     $nodeIds = array();
     foreach ($objects as $obj) {
         $type = isset($obj['type']) ? $obj['type'] : '';
         if ($type !== 'PipeWire:Interface:Node') continue;
         $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
         $nm = isset($props['node.name']) ? $props['node.name'] : '';
-        if ($nm === $loopbackNodeName) {
+        if ($nm === $loopbackNodeName ||
+            $nm === 'input.' . $loopbackNodeName ||
+            $nm === 'output.' . $loopbackNodeName) {
             $nodeIds[] = $obj['id'];
         }
     }
