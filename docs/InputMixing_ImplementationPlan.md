@@ -1,8 +1,8 @@
 # FPP Input Mixing & Multi-Stream Architecture — Implementation Plan
 
 **Created:** 2026-02-20
-**Branch:** `gstreamer-media-experiment` (fork before implementation)
-**Status:** Planning
+**Branch:** `input-mixing-phase1` (forked from `multi-input-gstreamer`)
+**Status:** In Progress — Phase 1 complete, Phase 2 next
 
 ---
 
@@ -221,41 +221,64 @@ added as an input group member.
 
 ### Tasks
 
-- [ ] **1.1** Create API endpoints for input group CRUD
+- [x] **1.1** Create API endpoints for input group CRUD ✅
   - `GET /api/pipewire/audio/input-groups` — list all input groups
   - `POST /api/pipewire/audio/input-groups` — save input groups config
   - `POST /api/pipewire/audio/input-groups/apply` — generate config & restart PipeWire
+  - `GET /api/pipewire/audio/sources` — enumerate ALSA capture devices (pw-dump)
   - File: `www/api/controllers/pipewire.php`
-  - File: `www/api/index.php` (route registration)
+  - File: `www/api/index.php` (4 new routes registered)
 
-- [ ] **1.2** Create `GeneratePipeWireInputGroupsConfig()` function
-  - Generate `libpipewire-module-combine-stream` for each input group (sink mode)
-  - Generate `libpipewire-module-loopback` for each member to route source → input group
-  - Per-member volume control via loopback `capture.props` volume or inline filter-chain
-  - Write to `/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf`
-  - Cache copy in `<media>/config/pipewire-input-groups.conf`
+- [x] **1.2** Create `GeneratePipeWireInputGroupsConfig()` function ✅
+  - Generates `libpipewire-module-combine-stream` per input group (sink mode)
+  - Generates `libpipewire-module-loopback` per capture/AES67 member (source → group)
+  - Generates `libpipewire-module-loopback` per output routing (group → output group)
+  - fppd_stream members handled via combine-stream `stream.rules` match (no loopback)
+  - Per-member volume via loopback props (0-100 → 0.0-1.0)
+  - Muted members skip loopback creation entirely
+  - Written to `/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf`
+  - Cached in `<media>/config/pipewire-input-groups.conf`
 
-- [ ] **1.3** Update `ApplyPipeWireAudioGroups()` to also regenerate input group config
-  - Ensure input group config is written before output group config (96 < 97)
-  - Apply stop/restart playback protection (already implemented)
+- [x] **1.3** Update `ApplyPipeWireAudioGroups()` to also regenerate input group config ✅
+  - Input group config regenerated in sync when output groups are applied
+  - 96 < 97 ordering maintained
+  - `ApplyPipeWireInputGroups()` also updates fppd routing target when
+    fppd_stream_1 is a member of an input group
 
-- [ ] **1.4** Create input mixing UI page: `www/pipewire-input-mixing.php`
-  - Mixing desk layout with vertical fader strips per input source
-  - Volume slider, mute button, input source selector per member
-  - Output group routing selector (multi-select: which output groups to feed)
-  - Enumerate available sources: fppd streams, ALSA capture devices, AES67 receivers
-  - Save & Apply button
+- [x] **1.4** Create input mixing UI page: `www/pipewire-input-mixing.php` ✅
+  - Mixing desk layout with member rows per input group
+  - Per-member: type selector (fppd_stream/capture/aes67_receive),
+    source picker, name label, volume slider, mute toggle, remove button
+  - Output group routing: checkbox per enabled output group
+  - Loads data in parallel: input groups, capture sources, output groups
+  - Save & Apply buttons with jGrowl feedback
+  - Modal mode support (`?modal=1`)
 
-- [ ] **1.5** Add menu entry for input mixing page
-  - Add to navigation under Content or Status menu
+- [x] **1.5** Add menu entry for input mixing page ✅
+  - Added `PipeWireInputMixing` to `settings.json` as modal type
+  - Appears in PipeWire Audio section alongside Audio Groups and AES67
+  - Listed under `AudioBackend` → `pipewire` children
 
-- [ ] **1.6** Update graph API to handle input group nodes
-  - Enrich `fpp_input_*` nodes with member count, volume from config
-  - Enrich loopback nodes with source info
+- [x] **1.6** Update graph API to handle input group nodes ✅
+  - `GetPipeWireGraph()` enriches `fpp_input_*` nodes with:
+    `fpp.inputGroup`, `fpp.inputGroup.members`, `fpp.inputGroup.outputs`
+  - Enriches `fpp_loopback_ig*` with `fpp.inputGroup.loopback`, `.id`
+  - Enriches `fpp_route_ig*_to_og*` with route metadata
 
-- [ ] **1.7** Update WirePlumber hook to cover input group nodes
-  - Block default-target fallback for `fpp_input_*` and loopback nodes
-  - Prevent rogue linking during PipeWire restart
+- [x] **1.7** Update WirePlumber hook to cover input group nodes ✅
+  - Blocks default-target fallback for `output.fpp_input_*` (combine outputs)
+  - Blocks fallback for `fpp_loopback_ig*` (source routing loopbacks)
+  - Blocks fallback for `fpp_route_ig*_to_og*` (group-to-group routes)
+
+### Implementation Notes (Phase 1)
+
+- **Commit:** `2c3ba3c4` on branch `input-mixing-phase1`
+- **Visualiser expanded to 5 columns:** Input Sources → Input Groups → Output Groups → Effects → HW Outputs
+- **Node merging** added for `output.fpp_input_*` (same pattern as `output.fpp_group_*`)
+- **Legend** updated with Input Group entry (#e35d6a)
+- **Barycenter layout** sweeps updated from 4→5 columns
+- **Files changed:** pipewire.php (+549), index.php (+4), pipewire-graph.php (+60/-20),
+  pipewire-input-mixing.php (+691 new), settings.json (+15)
 
 ### PipeWire Config Generation Detail
 
@@ -305,7 +328,7 @@ context.modules = [
 - [ ] ALSA capture source audio routes through input group to output group and out speakers
 - [ ] Volume slider adjusts input member level in real-time
 - [ ] Mute toggle silences individual input
-- [ ] Graph visualiser shows correct routing with 6 columns
+- [ ] Graph visualiser shows correct routing with 5 columns
 - [ ] Removing all input groups reverts to direct fppd → output group routing
 - [ ] Save & Apply with active playback stops/resumes correctly
 
@@ -584,14 +607,14 @@ const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects',
 
 ## 12. Progress Tracking
 
-### Phase 1 — Input Group Config & PipeWire Generation
-- [ ] 1.1 API endpoints for input group CRUD
-- [ ] 1.2 PipeWire config generation (combine-stream + loopback)
-- [ ] 1.3 Integrate with apply/restart flow
-- [ ] 1.4 Input mixing UI page
-- [ ] 1.5 Menu entry
-- [ ] 1.6 Graph API enrichment
-- [ ] 1.7 WirePlumber hook update
+### Phase 1 — Input Group Config & PipeWire Generation ✅ IMPLEMENTED
+- [x] 1.1 API endpoints for input group CRUD
+- [x] 1.2 PipeWire config generation (combine-stream + loopback)
+- [x] 1.3 Integrate with apply/restart flow
+- [x] 1.4 Input mixing UI page
+- [x] 1.5 Menu entry (settings.json modal)
+- [x] 1.6 Graph API enrichment
+- [x] 1.7 WirePlumber hook update
 - [ ] Phase 1 testing complete
 
 ### Phase 2 — ALSA Capture Routing
