@@ -785,7 +785,9 @@ int GStreamerOutput::Stop(void) {
         }
 
         Stopping();
+        LogDebug(VB_MEDIAOUT, "GStreamerOutput::Stop() - setting pipeline to NULL\n");
         gst_element_set_state(m_pipeline, GST_STATE_NULL);
+        LogDebug(VB_MEDIAOUT, "GStreamerOutput::Stop() - pipeline NULL complete\n");
         m_playing = false;
         if (m_mediaOutputStatus) {
             m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;

@@ -44,7 +44,7 @@ MediaOutputStatus* StreamSlotManager::GetStatus(int slot) {
 
 void StreamSlotManager::SetActiveOutput(int slot, GStreamerOutput* output) {
     if (slot < 1 || slot > MAX_SLOTS) return;
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_slots[slot - 1].activeOutput = output;
     if (output) {
         m_slots[slot - 1].mediaFilename = output->m_mediaFilename;
@@ -55,13 +55,13 @@ void StreamSlotManager::SetActiveOutput(int slot, GStreamerOutput* output) {
 
 GStreamerOutput* StreamSlotManager::GetActiveOutput(int slot) {
     if (slot < 1 || slot > MAX_SLOTS) return nullptr;
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     return m_slots[slot - 1].activeOutput;
 }
 
 void StreamSlotManager::ClearSlot(int slot) {
     if (slot < 1 || slot > MAX_SLOTS) return;
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_slots[slot - 1].activeOutput = nullptr;
     m_slots[slot - 1].mediaFilename.clear();
     m_slots[slot - 1].isBackground = false;
@@ -80,7 +80,7 @@ std::string StreamSlotManager::GetNodeDescription(int slot) {
 bool StreamSlotManager::SetSlotVolume(int slot, int volume) {
 #ifdef HAS_GSTREAMER
     if (slot < 1 || slot > MAX_SLOTS) return false;
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     GStreamerOutput* output = m_slots[slot - 1].activeOutput;
     if (output) {
         output->SetVolume(volume);
@@ -92,7 +92,7 @@ bool StreamSlotManager::SetSlotVolume(int slot, int volume) {
 
 Json::Value StreamSlotManager::GetAllSlotsStatus() {
     Json::Value result(Json::arrayValue);
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (int i = 0; i < MAX_SLOTS; i++) {
         Json::Value slotJson;
         slotJson["slot"] = i + 1;
@@ -121,7 +121,7 @@ Json::Value StreamSlotManager::GetAllSlotsStatus() {
 }
 
 int StreamSlotManager::ActiveSlotCount() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     int count = 0;
     for (int i = 0; i < MAX_SLOTS; i++) {
         if (m_slots[i].activeOutput) count++;
@@ -131,7 +131,7 @@ int StreamSlotManager::ActiveSlotCount() {
 
 void StreamSlotManager::StopAllSlots() {
 #ifdef HAS_GSTREAMER
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (int i = 0; i < MAX_SLOTS; i++) {
         if (m_slots[i].activeOutput) {
             LogInfo(VB_MEDIAOUT, "StreamSlotManager: stopping slot %d\n", i + 1);
@@ -149,7 +149,7 @@ void StreamSlotManager::StopAllSlots() {
 
 void StreamSlotManager::ProcessBackgroundSlots() {
 #ifdef HAS_GSTREAMER
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (int i = 1; i < MAX_SLOTS; i++) {  // skip slot 1 (managed by playlist)
         if (m_slots[i].activeOutput && m_slots[i].isBackground) {
             m_slots[i].activeOutput->Process();

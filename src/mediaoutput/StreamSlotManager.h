@@ -87,5 +87,5 @@ private:
     };
 
     std::array<SlotState, MAX_SLOTS> m_slots;
-    std::mutex m_mutex;
+    std::recursive_mutex m_mutex;
 };
