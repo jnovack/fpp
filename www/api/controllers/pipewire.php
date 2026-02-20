@@ -2293,6 +2293,22 @@ function GetPipeWireGraph()
             $state = isset($info['state']) ? $info['state'] : '';
             $factoryName = isset($props['factory.name']) ? $props['factory.name'] : '';
 
+            // Fix unhelpful descriptions: GStreamer pipewiresrc/pipewiresink nodes
+            // inherit the process name ("fppd") as their description.
+            // Use node.name to build a better label for known FPP stream nodes.
+            if ($desc === 'fppd' || $desc === $name) {
+                // AES67 send/receive: aes67_<name>_send → "AES67: <name> (send)"
+                if (preg_match('/^aes67_(.+)_(send|recv)$/', $name, $m)) {
+                    $aesLabel = str_replace('_', ' ', $m[1]);
+                    $aesLabel = ucwords($aesLabel);
+                    $desc = "AES67: $aesLabel (" . $m[2] . ")";
+                }
+                // fppd stream: fppd_stream_N → "FPP Media Stream N"
+                elseif (preg_match('/^fppd_stream_(\d+)$/', $name, $m)) {
+                    $desc = "FPP Media Stream " . $m[1];
+                }
+            }
+
             // Skip non-audio nodes unless ?all=1
             if (!$showAll) {
                 if (empty($mc) || !in_array($mc, $audioClasses)) {
