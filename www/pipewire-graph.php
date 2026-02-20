@@ -475,6 +475,12 @@
                 // Absorb both into the input group combine-stream node so the graph shows
                 // ALSA source → Input Group directly without intermediate loopback nodes.
                 // Uses fpp.inputGroup.id enriched by the graph API to match loopback → input group.
+                //
+                // Unlike other merges we do NOT remap loopback ports to the parent;
+                // instead we build a portId remap so links are redirected to the
+                // input group's own ports.  The orphaned loopback ports are cleaned
+                // up by the orphan-port filter later.
+                const portIdRemap = {};
                 graphData.nodes.forEach(n => {
                     if (!(n.name.startsWith('input.fpp_loopback_ig') || n.name.startsWith('output.fpp_loopback_ig')))
                         return;
@@ -491,9 +497,31 @@
                     if (igNode) {
                         absorbed.add(n.id);
                         nodeIdRemap[n.id] = igNode.id;
-                        graphData.ports.forEach(p => {
-                            if (p.nodeId === n.id) p.nodeId = igNode.id;
+                        // Build port-to-port mapping by channel name so links
+                        // get redirected to the input group's own ports.
+                        const myPorts = graphData.ports.filter(p => p.nodeId === n.id);
+                        const igPorts = graphData.ports.filter(p => p.nodeId === igNode.id);
+                        myPorts.forEach((mp, idx) => {
+                            // Strip common prefixes (playback_, capture_, input_, output_)
+                            const ch = mp.name.replace(/^(playback|capture|input|output)_/, '');
+                            let match = igPorts.find(ip => {
+                                const igCh = ip.name.replace(/^(playback|capture|input|output)_/, '');
+                                return igCh === ch && ip.direction === mp.direction;
+                            });
+                            // Fallback: match by index among same-direction ports
+                            if (!match) {
+                                const sameDirPorts = igPorts.filter(ip => ip.direction === mp.direction);
+                                const myIdx = myPorts.filter(p => p.direction === mp.direction).indexOf(mp);
+                                if (myIdx >= 0 && myIdx < sameDirPorts.length) {
+                                    match = sameDirPorts[myIdx];
+                                }
+                            }
+                            if (match) {
+                                portIdRemap[mp.id] = match.id;
+                            }
                         });
+                        // Do NOT remap ports (p.nodeId stays as the loopback's id)
+                        // — orphan-port filter will remove them.
                         if (n.state === 'running' && igNode.state !== 'running') {
                             igNode.state = n.state;
                         }
@@ -527,10 +555,12 @@
                 // Remove absorbed nodes
                 graphData.nodes = graphData.nodes.filter(n => !absorbed.has(n.id));
 
-                // Update links to reference parent nodes
+                // Update links to reference parent nodes (and remap loopback portIds)
                 graphData.links.forEach(l => {
                     if (nodeIdRemap[l.outputNodeId]) l.outputNodeId = nodeIdRemap[l.outputNodeId];
                     if (nodeIdRemap[l.inputNodeId]) l.inputNodeId = nodeIdRemap[l.inputNodeId];
+                    if (portIdRemap[l.outputPortId]) l.outputPortId = portIdRemap[l.outputPortId];
+                    if (portIdRemap[l.inputPortId]) l.inputPortId = portIdRemap[l.inputPortId];
                 });
 
                 // Remove self-links that result from merging

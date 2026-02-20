@@ -790,7 +790,7 @@
 			"type": "modal",
 			"modalUrl": "pipewire-audio.php?modal=1",
 			"icon": "fas fa-layer-group",
-			"buttonText": "Configure Audio Groups",
+			"buttonText": "Configure Output Audio Groups",
 			"modalTitle": "PipeWire Audio Output Groups",
 			"modalOnClose": "RefreshPipeWirePrimaryOutput",
 			"platforms": [
