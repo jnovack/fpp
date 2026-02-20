@@ -257,7 +257,10 @@ function ApplyPipeWireAudioGroups()
                         if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
                             $slotNum = intval($m[1]);
                         }
-                        $igSlotTargets[$slotNum] = $igNodeName2;
+                        // First input group wins — it's the primary target for this slot
+                        if (!isset($igSlotTargets[$slotNum])) {
+                            $igSlotTargets[$slotNum] = $igNodeName2;
+                        }
                     }
                 }
             }
@@ -1341,7 +1344,10 @@ function ApplyPipeWireInputGroups()
                 if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
                     $slotNum = intval($m[1]);
                 }
-                $slotTargets[$slotNum] = $igNodeName;
+                // First input group wins — it's the primary target for this slot
+                if (!isset($slotTargets[$slotNum])) {
+                    $slotTargets[$slotNum] = $igNodeName;
+                }
             }
         }
     }
