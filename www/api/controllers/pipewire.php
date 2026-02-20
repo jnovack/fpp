@@ -121,6 +121,22 @@ function ApplyPipeWireAudioGroups()
     // Ensure directory exists
     exec($SUDO . " /bin/mkdir -p /etc/pipewire/pipewire.conf.d");
 
+    // Also regenerate input group config (96-) so it stays in sync
+    $igFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    if (file_exists($igFile)) {
+        $igData = json_decode(file_get_contents($igFile), true);
+        if (is_array($igData) && isset($igData['inputGroups']) && !empty($igData['inputGroups'])) {
+            $igConf = GeneratePipeWireInputGroupsConfig($igData['inputGroups'], $data['groups']);
+            $igConfPath = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
+            $igTmpFile = tempnam(sys_get_temp_dir(), 'fpp_pw_ig_');
+            file_put_contents($igTmpFile, $igConf);
+            exec($SUDO . " cp " . escapeshellarg($igTmpFile) . " " . escapeshellarg($igConfPath));
+            exec($SUDO . " chmod 644 " . escapeshellarg($igConfPath));
+            unlink($igTmpFile);
+            file_put_contents($settings['mediaDirectory'] . "/config/pipewire-input-groups.conf", $igConf);
+        }
+    }
+
     // Write via temp file + sudo cp (directory is root-owned)
     $confPath = "/etc/pipewire/pipewire.conf.d/97-fpp-audio-groups.conf";
     $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_pw_');
@@ -943,9 +959,17 @@ SimpleEventHook {
     local has_target = si_props ["node.target"] ~= nil or
                        si_props ["target.object"] ~= nil
 
-    -- Block default fallback for FPP combine-stream outputs
+    -- Block default fallback for FPP output group combine-stream outputs
     if node_name:match ("^output%.fpp_group_") then
       log:info (si, "... FPP combine output: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP input group combine-stream outputs
+    if node_name:match ("^output%.fpp_input_") then
+      log:info (si, "... FPP input group output: blocking default fallback for "
           .. node_name .. ", will retry on rescan")
       event:stop_processing ()
       return
@@ -957,6 +981,22 @@ SimpleEventHook {
       log:info (si, "... FPP filter-chain output: blocking default fallback for "
           .. node_name .. ", target: " .. tostring (si_props ["node.target"])
           .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP input group loopback nodes with explicit target
+    if node_name:match ("^fpp_loopback_ig%d+_") and has_target then
+      log:info (si, "... FPP input loopback: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP input-to-output routing loopback nodes
+    if node_name:match ("^fpp_route_ig%d+_to_og%d+") and has_target then
+      log:info (si, "... FPP route loopback: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
       event:stop_processing ()
       return
     end
@@ -1001,6 +1041,478 @@ WPCONF;
     exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($wpConfPath));
     exec($SUDO . " chmod 644 " . escapeshellarg($wpConfPath));
     unlink($tmpFile);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+//  INPUT GROUPS (MIX BUSES)
+/////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/audio/input-groups
+function GetPipeWireInputGroups()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+
+    if (file_exists($configFile)) {
+        $data = json_decode(file_get_contents($configFile), true);
+        if ($data === null) {
+            $data = array("inputGroups" => array());
+        }
+    } else {
+        $data = array("inputGroups" => array());
+    }
+
+    return json($data);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/input-groups
+function SavePipeWireInputGroups()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+
+    $data = file_get_contents('php://input');
+    $decoded = json_decode($data, true);
+
+    if ($decoded === null) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Invalid JSON"));
+    }
+
+    // Validate structure
+    if (!isset($decoded['inputGroups']) || !is_array($decoded['inputGroups'])) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Missing 'inputGroups' array"));
+    }
+
+    // Assign IDs if missing
+    $maxId = 0;
+    foreach ($decoded['inputGroups'] as &$group) {
+        if (isset($group['id']) && $group['id'] > $maxId) {
+            $maxId = $group['id'];
+        }
+    }
+    unset($group);
+    foreach ($decoded['inputGroups'] as &$group) {
+        if (!isset($group['id']) || $group['id'] <= 0) {
+            $maxId++;
+            $group['id'] = $maxId;
+        }
+    }
+    unset($group);
+
+    $data = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    file_put_contents($configFile, $data);
+
+    // Trigger a JSON Configuration Backup
+    GenerateBackupViaAPI('PipeWire input groups were modified.');
+
+    return json(array("status" => "OK", "data" => $decoded));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/input-groups/apply
+// Generates PipeWire input group config and restarts PipeWire services
+function ApplyPipeWireInputGroups()
+{
+    global $settings, $SUDO;
+
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $confPath = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
+    $cachedConf = $settings['mediaDirectory'] . "/config/pipewire-input-groups.conf";
+
+    if (!file_exists($configFile)) {
+        // No input groups — clean up and reapply output groups only
+        if (file_exists($confPath)) {
+            exec($SUDO . " rm -f " . escapeshellarg($confPath));
+        }
+        if (file_exists($cachedConf)) {
+            unlink($cachedConf);
+        }
+        // Restart PipeWire
+        exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
+        usleep(500000);
+        exec($SUDO . " /usr/bin/systemctl restart fpp-wireplumber.service 2>&1");
+        usleep(500000);
+        exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire-pulse.service 2>&1");
+        return json(array("status" => "OK", "message" => "Input groups cleared, PipeWire restarted"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    if ($data === null || !isset($data['inputGroups']) || empty($data['inputGroups'])) {
+        // Remove any existing config
+        if (file_exists($confPath)) {
+            exec($SUDO . " rm -f " . escapeshellarg($confPath));
+        }
+        if (file_exists($cachedConf)) {
+            unlink($cachedConf);
+        }
+        exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
+        usleep(500000);
+        exec($SUDO . " /usr/bin/systemctl restart fpp-wireplumber.service 2>&1");
+        usleep(500000);
+        exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire-pulse.service 2>&1");
+        return json(array("status" => "OK", "message" => "Input groups cleared, PipeWire restarted"));
+    }
+
+    // Load output groups config to determine routing
+    $outputGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+    $outputGroups = array();
+    if (file_exists($outputGroupsFile)) {
+        $ogData = json_decode(file_get_contents($outputGroupsFile), true);
+        if (is_array($ogData) && isset($ogData['groups'])) {
+            $outputGroups = $ogData['groups'];
+        }
+    }
+
+    // Generate PipeWire config
+    $conf = GeneratePipeWireInputGroupsConfig($data['inputGroups'], $outputGroups);
+
+    // Ensure directory exists
+    exec($SUDO . " /bin/mkdir -p /etc/pipewire/pipewire.conf.d");
+
+    // Write via temp file + sudo cp
+    $tmpFile = tempnam(sys_get_temp_dir(), 'fpp_pw_ig_');
+    file_put_contents($tmpFile, $conf);
+    exec($SUDO . " cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($confPath));
+    exec($SUDO . " chmod 644 " . escapeshellarg($confPath));
+    unlink($tmpFile);
+
+    // Cache a copy
+    file_put_contents($cachedConf, $conf);
+
+    // Update WirePlumber hook to include input group patterns
+    InstallWirePlumberFppLinkingHook($SUDO);
+
+    // Stop fppd playback before restarting PipeWire
+    $wasPlaying = false;
+    $resumePlaylist = '';
+    $resumeRepeat = false;
+    $statusJson = @file_get_contents('http://localhost:32322/fppd/status');
+    if ($statusJson !== false) {
+        $status = json_decode($statusJson, true);
+        if (is_array($status) && isset($status['status']) && $status['status'] == 1) {
+            $wasPlaying = true;
+            $cp = isset($status['current_playlist']) ? $status['current_playlist'] : array();
+            $resumePlaylist = isset($cp['playlist']) ? $cp['playlist'] : '';
+            $resumeRepeat = isset($cp['count']) && $cp['count'] === '0';
+            @file_get_contents('http://localhost:32322/command/Stop%20Now');
+            usleep(500000);
+        }
+    }
+
+    // Restart PipeWire services
+    exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire.service 2>&1");
+    usleep(500000);
+    exec($SUDO . " /usr/bin/systemctl restart fpp-wireplumber.service 2>&1");
+    for ($i = 0; $i < 10; $i++) {
+        if (file_exists('/run/pipewire-fpp/pipewire-0'))
+            break;
+        usleep(250000);
+    }
+    exec($SUDO . " /usr/bin/systemctl restart fpp-pipewire-pulse.service 2>&1");
+    for ($i = 0; $i < 10; $i++) {
+        if (file_exists('/run/pipewire-fpp/pulse/native'))
+            break;
+        usleep(250000);
+    }
+
+    // Update fppd routing: if fppd_stream_1 is a member of an input group,
+    // route fppd's pipewiresink to the input group instead of the output group.
+    $fppdTarget = '';
+    foreach ($data['inputGroups'] as $ig) {
+        if (!isset($ig['enabled']) || !$ig['enabled'])
+            continue;
+        if (!isset($ig['members']) || empty($ig['members']))
+            continue;
+        foreach ($ig['members'] as $mbr) {
+            if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                $igNodeName = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ig['name']));
+                $fppdTarget = $igNodeName;
+                break 2;
+            }
+        }
+    }
+
+    if (!empty($fppdTarget)) {
+        // fppd should route to the input group
+        $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
+        exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($fppdTarget) . " 2>&1");
+        WriteSettingToFile('PipeWireSinkName', $fppdTarget);
+        SendCommand('setSetting,PipeWireSinkName,' . $fppdTarget);
+    }
+
+    // Resume playback if it was active
+    if ($wasPlaying && !empty($resumePlaylist)) {
+        usleep(500000);
+        $repeat = $resumeRepeat ? 'true' : 'false';
+        @file_get_contents('http://localhost:32322/command/Start%20Playlist/'
+            . rawurlencode($resumePlaylist) . '/' . $repeat);
+    }
+
+    return json(array(
+        "status" => "OK",
+        "message" => "Input groups applied, PipeWire restarted"
+            . ($wasPlaying ? ", playback resumed" : ""),
+        "fppdTarget" => $fppdTarget,
+        "restartRequired" => true
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/audio/sources
+// Returns available PipeWire audio capture sources (ALSA Audio/Source nodes)
+function GetPipeWireAudioSources()
+{
+    global $SUDO;
+
+    $sources = array();
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    if (empty($raw)) {
+        return json($sources);
+    }
+
+    $objects = json_decode($raw, true);
+    if (!is_array($objects)) {
+        return json($sources);
+    }
+
+    foreach ($objects as $obj) {
+        $type = isset($obj['type']) ? $obj['type'] : '';
+        if ($type !== 'PipeWire:Interface:Node')
+            continue;
+
+        $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+        $mc = isset($props['media.class']) ? $props['media.class'] : '';
+
+        // Only include Audio/Source (capture devices)
+        if ($mc !== 'Audio/Source')
+            continue;
+
+        $name = isset($props['node.name']) ? $props['node.name'] : '';
+        $desc = isset($props['node.description']) ? $props['node.description'] : $name;
+        $nick = isset($props['node.nick']) ? $props['node.nick'] : '';
+
+        // Skip PipeWire internal monitors and virtual sources
+        if (strpos($name, '.monitor') !== false)
+            continue;
+
+        // Get card ID from alsa properties
+        $cardId = '';
+        if (isset($props['alsa.card'])) {
+            // Resolve to stable ID via /proc/asound
+            $cardNum = intval($props['alsa.card']);
+            $idFile = @file_get_contents("/proc/asound/card$cardNum/id");
+            if ($idFile !== false) {
+                $cardId = trim($idFile);
+            }
+        }
+
+        $channels = isset($props['audio.channels']) ? intval($props['audio.channels']) : 2;
+        $rate = isset($props['audio.rate']) ? intval($props['audio.rate']) : 48000;
+
+        $sources[] = array(
+            'nodeId' => $obj['id'],
+            'name' => $name,
+            'description' => $desc,
+            'nick' => $nick,
+            'cardId' => $cardId,
+            'channels' => $channels,
+            'sampleRate' => $rate,
+            'mediaClass' => $mc,
+            'state' => isset($obj['info']['state']) ? $obj['info']['state'] : '',
+        );
+    }
+
+    return json($sources);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Generate PipeWire input group config (combine-stream + loopback)
+function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
+{
+    $channelPositions = array(
+        1 => "[ MONO ]",
+        2 => "[ FL FR ]",
+        4 => "[ FL FR RL RR ]",
+        6 => "[ FL FR FC LFE RL RR ]",
+        8 => "[ FL FR FC LFE RL RR SL SR ]"
+    );
+
+    $conf = "# Auto-generated by FPP - PipeWire Input Groups (Mix Buses)\n";
+    $conf .= "# Do not edit manually - managed via FPP UI\n";
+    $conf .= "# Loaded before 97-fpp-audio-groups.conf so input group nodes\n";
+    $conf .= "# exist when output groups are created.\n\n";
+
+    $conf .= "context.modules = [\n";
+
+    foreach ($inputGroups as $ig) {
+        if (!isset($ig['enabled']) || !$ig['enabled'])
+            continue;
+        if (!isset($ig['members']) || empty($ig['members']))
+            continue;
+
+        $groupId = isset($ig['id']) ? intval($ig['id']) : 0;
+        $groupName = isset($ig['name']) ? $ig['name'] : "Input Group";
+        $nodeName = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($groupName));
+        $groupChannels = isset($ig['channels']) ? intval($ig['channels']) : 2;
+        $groupPos = isset($channelPositions[$groupChannels]) ? $channelPositions[$groupChannels] : "[ FL FR ]";
+
+        // ── Combine-stream sink for this input group (mix bus) ──
+        $conf .= "  # Input Group: $groupName\n";
+        $conf .= "  { name = libpipewire-module-combine-stream\n";
+        $conf .= "    args = {\n";
+        $conf .= "      combine.mode = sink\n";
+        $conf .= "      node.name = \"$nodeName\"\n";
+        $conf .= "      node.description = \"$groupName\"\n";
+        $conf .= "      combine.props = {\n";
+        $conf .= "        audio.position = $groupPos\n";
+        $conf .= "      }\n";
+        $conf .= "      stream.props = {\n";
+        $conf .= "        stream.dont-remix = true\n";
+        $conf .= "      }\n";
+        $conf .= "      stream.rules = [\n";
+        $conf .= "        { matches = [ { node.name = \"~fpp_loopback_ig{$groupId}_.*\" } ]\n";
+        $conf .= "          actions = { create-stream = { } }\n";
+        $conf .= "        }\n";
+
+        // Also match fppd streams that target this input group
+        foreach ($ig['members'] as $mbr) {
+            if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                $streamId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                $conf .= "        { matches = [ { node.name = \"$streamId\" } ]\n";
+                $conf .= "          actions = { create-stream = { } }\n";
+                $conf .= "        }\n";
+            }
+        }
+
+        $conf .= "      ]\n";
+        $conf .= "    }\n";
+        $conf .= "  }\n";
+
+        // ── Loopback modules for each capture/AES67 member ──
+        foreach ($ig['members'] as $mi => $mbr) {
+            $mbrType = isset($mbr['type']) ? $mbr['type'] : '';
+            $mbrName = isset($mbr['name']) ? $mbr['name'] : "Member $mi";
+            $mbrMute = isset($mbr['mute']) && $mbr['mute'];
+
+            if ($mbrMute)
+                continue;  // Don't create loopback for muted sources
+
+            if ($mbrType === 'fppd_stream') {
+                // fppd streams connect directly via pipewiresink target-object
+                // No loopback needed — the combine-stream rule above handles it
+                continue;
+            }
+
+            $loopbackName = "fpp_loopback_ig{$groupId}_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($mbrName));
+            $loopbackDesc = "$mbrName → $groupName";
+
+            // Determine the source node target
+            $sourceTarget = '';
+            if ($mbrType === 'capture') {
+                $cardId = isset($mbr['cardId']) ? $mbr['cardId'] : '';
+                if (empty($cardId))
+                    continue;
+                // Build the expected ALSA capture node name
+                // PipeWire names these: alsa_input.usb-... or alsa_input.<card>
+                // We'll use the cardId to find it. The node.target will use pw pattern matching.
+                $sourceTarget = '~alsa_input.*' . preg_replace('/[^a-zA-Z0-9]/', '.', $cardId) . '.*';
+            } elseif ($mbrType === 'aes67_receive') {
+                $instanceId = isset($mbr['instanceId']) ? $mbr['instanceId'] : '';
+                if (empty($instanceId))
+                    continue;
+                $sourceTarget = $instanceId;
+            } else {
+                continue;
+            }
+
+            // Per-member volume (0-100 → 0.0-1.0)
+            $volume = isset($mbr['volume']) ? floatval($mbr['volume']) / 100.0 : 1.0;
+
+            $conf .= "  # Loopback: $loopbackDesc\n";
+            $conf .= "  { name = libpipewire-module-loopback\n";
+            $conf .= "    args = {\n";
+            $conf .= "      node.name = \"$loopbackName\"\n";
+            $conf .= "      node.description = \"$loopbackDesc\"\n";
+            $conf .= "      capture.props = {\n";
+
+            // For capture devices, use node.target with a glob/regex pattern
+            if ($mbrType === 'capture') {
+                $cardId = $mbr['cardId'];
+                $conf .= "        node.target = \"$sourceTarget\"\n";
+            } else {
+                $conf .= "        node.target = \"$sourceTarget\"\n";
+            }
+
+            $conf .= "        media.class = Stream/Input/Audio\n";
+            $conf .= "        stream.dont-remix = true\n";
+
+            // Channel mapping if specified
+            if (isset($mbr['channelMapping']) && !empty($mbr['channelMapping'])) {
+                $srcCh = $mbr['channelMapping']['sourceChannels'];
+                $conf .= "        audio.position = [ " . implode(" ", $srcCh) . " ]\n";
+            }
+
+            $conf .= "      }\n";
+            $conf .= "      playback.props = {\n";
+            $conf .= "        node.target = \"$nodeName\"\n";
+            $conf .= "        media.class = Stream/Output/Audio\n";
+
+            // Channel mapping for the output side
+            if (isset($mbr['channelMapping']) && !empty($mbr['channelMapping'])) {
+                $grpCh = $mbr['channelMapping']['groupChannels'];
+                $conf .= "        audio.position = [ " . implode(" ", $grpCh) . " ]\n";
+            }
+
+            $conf .= "      }\n";
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+        }
+
+        // ── Loopback modules to route input group → output groups ──
+        $outputs = isset($ig['outputs']) ? $ig['outputs'] : array();
+        foreach ($outputs as $outGroupId) {
+            // Find the output group by ID to get its node name
+            $outNodeName = '';
+            foreach ($outputGroups as $og) {
+                if (isset($og['id']) && intval($og['id']) === intval($outGroupId)) {
+                    $ogName = isset($og['name']) ? $og['name'] : 'Group';
+                    $outNodeName = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ogName));
+                    break;
+                }
+            }
+            if (empty($outNodeName))
+                continue;
+
+            $routeName = "fpp_route_ig{$groupId}_to_og{$outGroupId}";
+            $routeDesc = "$groupName → " . $ogName;
+
+            $conf .= "  # Route: $routeDesc\n";
+            $conf .= "  { name = libpipewire-module-loopback\n";
+            $conf .= "    args = {\n";
+            $conf .= "      node.name = \"$routeName\"\n";
+            $conf .= "      node.description = \"$routeDesc\"\n";
+            $conf .= "      capture.props = {\n";
+            $conf .= "        node.target = \"$nodeName\"\n";
+            $conf .= "        media.class = Stream/Input/Audio\n";
+            $conf .= "        stream.dont-remix = true\n";
+            $conf .= "      }\n";
+            $conf .= "      playback.props = {\n";
+            $conf .= "        node.target = \"$outNodeName\"\n";
+            $conf .= "        media.class = Stream/Output/Audio\n";
+            $conf .= "      }\n";
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+        }
+    }
+
+    $conf .= "]\n";
+
+    return $conf;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1751,6 +2263,41 @@ function GetPipeWireGraph()
                             }
                         }
                     }
+                }
+            }
+            unset($node);
+        }
+    }
+
+    // Enrich input group nodes with config data
+    $igFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    if (file_exists($igFile)) {
+        $igCfg = json_decode(file_get_contents($igFile), true);
+        if (is_array($igCfg) && isset($igCfg['inputGroups'])) {
+            foreach ($nodes as &$node) {
+                $nm = $node['name'];
+                // Match input group combine-stream nodes (fpp_input_*)
+                if (preg_match('/^fpp_input_/', $nm)) {
+                    foreach ($igCfg['inputGroups'] as $ig) {
+                        $slug = 'fpp_input_' . strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $ig['name']));
+                        if ($nm === $slug) {
+                            $node['properties']['fpp.inputGroup'] = true;
+                            $node['properties']['fpp.inputGroup.members'] = isset($ig['members']) ? count($ig['members']) : 0;
+                            $node['properties']['fpp.inputGroup.outputs'] = isset($ig['outputs']) ? count($ig['outputs']) : 0;
+                            break;
+                        }
+                    }
+                }
+                // Match loopback nodes (fpp_loopback_ig*)
+                if (preg_match('/^fpp_loopback_ig(\d+)_/', $nm, $m)) {
+                    $node['properties']['fpp.inputGroup.loopback'] = true;
+                    $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
+                }
+                // Match route nodes (fpp_route_ig*_to_og*)
+                if (preg_match('/^fpp_route_ig(\d+)_to_og(\d+)/', $nm, $m)) {
+                    $node['properties']['fpp.inputGroup.route'] = true;
+                    $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
+                    $node['properties']['fpp.outputGroup.id'] = intval($m[2]);
                 }
             }
             unset($node);

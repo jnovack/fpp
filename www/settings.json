@@ -149,6 +149,7 @@
 			"description": "PipeWire Audio",
 			"settings": [
 				"PipeWireAudioGroups",
+				"PipeWireInputMixing",
 				"PipeWireAES67Config"
 			]
 		},
@@ -757,6 +758,7 @@
 				"pipewire": [
 					"PipeWirePrimaryOutput",
 					"PipeWireAudioGroups",
+					"PipeWireInputMixing",
 					"PipeWireAES67Config"
 				],
 				"alsa": [
@@ -791,6 +793,19 @@
 			"buttonText": "Configure Audio Groups",
 			"modalTitle": "PipeWire Audio Output Groups",
 			"modalOnClose": "RefreshPipeWirePrimaryOutput",
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"PipeWireInputMixing": {
+			"name": "PipeWireInputMixing",
+			"description": "Input Mixing (Mix Buses)",
+			"tip": "Create input groups to mix multiple audio sources (fppd streams, ALSA line-in, AES67 receives) and route them to output groups.",
+			"type": "modal",
+			"modalUrl": "pipewire-input-mixing.php?modal=1",
+			"icon": "fas fa-sliders-h",
+			"buttonText": "Configure Input Mixing",
+			"modalTitle": "Input Mixing",
 			"platforms": [
 				"!MacOS"
 			]

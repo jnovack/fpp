@@ -261,8 +261,10 @@
                             Source</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#fd7e14"></span>
                             Stream</span>
+                        <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#e35d6a"></span>
+                            Input Group</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#0d6efd"></span>
-                            Audio Group</span>
+                            Output Group</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#6f42c1"></span>
                             Effect</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#198754"></span>
@@ -307,6 +309,8 @@
             function nodeColor(n) {
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
+                if (nm.startsWith('fpp_input_')) return '#e35d6a'; // input group mix bus
+                if (nm.startsWith('fpp_loopback_ig') || nm.startsWith('fpp_route_ig')) return '#e35d6a'; // input group routing
                 if (nm.startsWith('fpp_group_')) return '#0d6efd'; // combine-stream group
                 if (nm.startsWith('fpp_fx_') && !nm.endsWith('_out')) return '#6f42c1'; // delay filter sink
                 if (nm.startsWith('output.fpp_group_') ||
@@ -342,6 +346,14 @@
                     if (p['fpp.group.members']) parts.push(p['fpp.group.members'] + ' members');
                     if (p['fpp.group.latencyCompensate']) parts.push('latency comp');
                     return parts.join(' · ') || '';
+                }
+
+                // Input group nodes
+                if (nm.startsWith('fpp_input_')) {
+                    const parts = [];
+                    if (p['fpp.inputGroup.members']) parts.push(p['fpp.inputGroup.members'] + ' sources');
+                    if (p['fpp.inputGroup.outputs']) parts.push('→ ' + p['fpp.inputGroup.outputs'] + ' outputs');
+                    return parts.join(' · ') || 'mix bus';
                 }
 
                 // ALSA sinks / sources
@@ -458,6 +470,30 @@
                     }
                 });
 
+                // 3) Combine-stream outputs for input groups: output.fpp_input_* → fpp_input_*
+                graphData.nodes.forEach(n => {
+                    if (n.name.startsWith('output.fpp_input_')) {
+                        let bestParent = null;
+                        for (const [nm, candidate] of Object.entries(nodesByName)) {
+                            if (nm.startsWith('fpp_input_') && n.name.startsWith('output.' + nm)) {
+                                if (!bestParent || nm.length > bestParent.name.length) {
+                                    bestParent = candidate;
+                                }
+                            }
+                        }
+                        if (bestParent) {
+                            absorbed.add(n.id);
+                            nodeIdRemap[n.id] = bestParent.id;
+                            graphData.ports.forEach(p => {
+                                if (p.nodeId === n.id) p.nodeId = bestParent.id;
+                            });
+                            if (n.state === 'running' && bestParent.state !== 'running') {
+                                bestParent.state = n.state;
+                            }
+                        }
+                    }
+                });
+
                 // Remove absorbed nodes
                 graphData.nodes = graphData.nodes.filter(n => !absorbed.has(n.id));
 
@@ -517,28 +553,34 @@
             }
 
             // ── Layout algorithm ──────────────────────────────────────────
-            // Fixed 4-column layout (left to right):
-            //   0: Inputs      — Audio/Source, Stream/Output/Audio (fppd etc.)
-            //   1: Groups      — combine-stream group sinks (fpp_group_*)
-            //   2: Effects     — delay filters, EQ nodes (fpp_fx_*, fpp_eq_*)
-            //   3: Outputs     — ALSA sinks, AES67 / app capture (Stream/Input/Audio)
-            const COL_LABELS = ['Inputs', 'Audio Groups', 'Effects', 'Outputs'];
+            // Fixed 5-column layout (left to right):
+            //   0: Input Sources — Audio/Source, Stream/Output/Audio (fppd etc.)
+            //   1: Input Groups  — fpp_input_* combine-stream mix buses, loopbacks
+            //   2: Output Groups — fpp_group_* combine-stream sinks (existing)
+            //   3: Effects       — delay filters, EQ nodes (fpp_fx_*, fpp_eq_*)
+            //   4: HW Outputs    — ALSA sinks, AES67 / app capture (Stream/Input/Audio)
+            const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects', 'HW Outputs'];
 
             function classifyColumn(n) {
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
 
-                // Group sinks
-                if (nm.startsWith('fpp_group_')) return 1;
+                // Input groups (mix buses)
+                if (nm.startsWith('fpp_input_')) return 1;
+                if (nm.startsWith('fpp_loopback_ig')) return 1;
+                if (nm.startsWith('fpp_route_ig')) return 1;
+
+                // Output group sinks
+                if (nm.startsWith('fpp_group_')) return 2;
 
                 // Effects — delay filters, EQ, any fpp_fx_ node
-                if (nm.startsWith('fpp_fx_') || nm.startsWith('fpp_eq_')) return 2;
+                if (nm.startsWith('fpp_fx_') || nm.startsWith('fpp_eq_')) return 3;
 
                 // ALSA hardware outputs
-                if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return 3;
+                if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return 4;
 
                 // AES67 / app capture sinks (Stream/Input/Audio)
-                if (mc === 'Stream/Input/Audio') return 3;
+                if (mc === 'Stream/Input/Audio') return 4;
 
                 // Audio sources (mic inputs, ALSA capture)
                 if (mc === 'Audio/Source') return 0;
@@ -547,7 +589,7 @@
                 if (mc === 'Stream/Output/Audio') return 0;
 
                 // Any other Audio/Sink not caught above (e.g. custom)
-                if (mc === 'Audio/Sink') return 3;
+                if (mc === 'Audio/Sink') return 4;
 
                 // Fallback
                 return 0;
@@ -563,7 +605,7 @@
                 });
 
                 // Assign each node to a column
-                const cols = { 0: [], 1: [], 2: [], 3: [] };
+                const cols = { 0: [], 1: [], 2: [], 3: [], 4: [] };
                 graphData.nodes.forEach(n => {
                     n._col = classifyColumn(n);
                     cols[n._col].push(n);
@@ -586,7 +628,7 @@
 
                 // ── Barycenter crossing minimization ──────────────────────
                 // Assign initial order indices within each column (alphabetical seed)
-                for (const c of [0, 1, 2, 3]) {
+                for (const c of [0, 1, 2, 3, 4]) {
                     cols[c].sort((a, b) => (a.description || a.name).localeCompare(b.description || b.name));
                     cols[c].forEach((n, i) => { n._order = i; });
                 }
@@ -635,17 +677,17 @@
                 // Run several sweeps: left→right then right→left
                 for (let pass = 0; pass < 4; pass++) {
                     // Forward sweep (use left neighbour col to sort right col)
-                    for (let c = 1; c <= 3; c++) {
+                    for (let c = 1; c <= 4; c++) {
                         if (cols[c].length > 1) barySort(c, c - 1);
                     }
                     // Backward sweep
-                    for (let c = 2; c >= 0; c--) {
+                    for (let c = 3; c >= 0; c--) {
                         if (cols[c].length > 1) barySort(c, c + 1);
                     }
                 }
 
                 // ── Assign final positions ────────────────────────────────
-                for (let ci = 0; ci < 4; ci++) {
+                for (let ci = 0; ci < 5; ci++) {
                     let y = PADDING.top + 30; // room for column header
                     cols[ci].forEach(n => {
                         const h = nodeHeight(n);
@@ -669,7 +711,7 @@
 
                 // Draw column headers
                 gRoot.selectAll('.pw-col-header').remove();
-                for (let ci = 0; ci < 4; ci++) {
+                for (let ci = 0; ci < 5; ci++) {
                     const x = PADDING.left + ci * (NODE_W + PADDING.colGap) + NODE_W / 2;
                     gRoot.append('text')
                         .attr('class', 'pw-col-header')
