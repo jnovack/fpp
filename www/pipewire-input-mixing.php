@@ -770,12 +770,17 @@
             var mbr = inputGroups.inputGroups[groupIdx].members[memberIdx];
             mbr.cardId = cardId;
 
-            // Auto-populate name from device description
-            if (cardId && !mbr.name) {
-                var src = availableSources.find(function (s) { return s.cardId === cardId; });
-                if (src) {
+            // Store exact PipeWire node name for reliable targeting
+            var src = availableSources.find(function (s) { return s.cardId === cardId; });
+            if (src) {
+                mbr.nodeName = src.name;  // exact PipeWire node name
+
+                // Auto-populate name from device description
+                if (!mbr.name) {
                     mbr.name = (src.nick || src.description || cardId).substring(0, 30);
                 }
+            } else {
+                delete mbr.nodeName;
             }
 
             // Clear stale channel mapping when device changes

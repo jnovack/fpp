@@ -1444,6 +1444,49 @@ function GetPipeWireAudioSources()
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// Helper: Resolve ALSA card ID to exact PipeWire capture node name
+// Queries pw-dump to find the Audio/Source node matching the given card ID.
+function ResolveAlsaCaptureNodeName($cardId)
+{
+    global $SUDO;
+
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    if (empty($raw))
+        return '';
+
+    $objects = json_decode($raw, true);
+    if (!is_array($objects))
+        return '';
+
+    foreach ($objects as $obj) {
+        $type = isset($obj['type']) ? $obj['type'] : '';
+        if ($type !== 'PipeWire:Interface:Node')
+            continue;
+
+        $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+        $mc = isset($props['media.class']) ? $props['media.class'] : '';
+        if ($mc !== 'Audio/Source')
+            continue;
+
+        $name = isset($props['node.name']) ? $props['node.name'] : '';
+        if (empty($name) || strpos($name, 'alsa_input') !== 0)
+            continue;
+
+        // Match by ALSA card ID
+        if (isset($props['alsa.card'])) {
+            $cardNum = intval($props['alsa.card']);
+            $idFile = @file_get_contents("/proc/asound/card$cardNum/id");
+            if ($idFile !== false && trim($idFile) === $cardId) {
+                return $name;
+            }
+        }
+    }
+
+    return '';
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // Helper: Generate PipeWire input group config (combine-stream + loopback)
 function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
 {
@@ -1562,10 +1605,15 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
                 $cardId = isset($mbr['cardId']) ? $mbr['cardId'] : '';
                 if (empty($cardId))
                     continue;
-                // Build the expected ALSA capture node name
-                // PipeWire names these: alsa_input.usb-... or alsa_input.<card>
-                // We'll use the cardId to find it. The node.target will use pw pattern matching.
-                $sourceTarget = '~alsa_input.*' . preg_replace('/[^a-zA-Z0-9]/', '.', $cardId) . '.*';
+                // Use exact PipeWire node name if stored (from source picker)
+                if (isset($mbr['nodeName']) && !empty($mbr['nodeName'])) {
+                    $sourceTarget = $mbr['nodeName'];
+                } else {
+                    // Resolve from pw-dump at config generation time
+                    $sourceTarget = ResolveAlsaCaptureNodeName($cardId);
+                    if (empty($sourceTarget))
+                        continue;
+                }
             } elseif ($mbrType === 'aes67_receive') {
                 $instanceId = isset($mbr['instanceId']) ? $mbr['instanceId'] : '';
                 if (empty($instanceId))
