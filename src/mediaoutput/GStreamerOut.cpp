@@ -249,9 +249,9 @@ int GStreamerOutput::Start(int msTime) {
 
     std::string sinkStr;
     if (!pipelineSinkName.empty()) {
-        sinkStr = "pipewiresink name=pwsink target-object=" + pipelineSinkName
-            + " stream-properties=\"props,node.name=" + streamNodeName
-            + ",node.description=" + streamNodeDesc + "\"";
+        // stream-properties cannot be set inline in gst_parse_launch (GstStructure
+        // values with spaces break the parser).  Set it post-launch instead.
+        sinkStr = "pipewiresink name=pwsink target-object=" + pipelineSinkName;
     } else {
         sinkStr = "autoaudiosink";
     }
@@ -599,6 +599,21 @@ int GStreamerOutput::Start(int msTime) {
 
         // Get the appsink
         m_appsink = gst_bin_get_by_name(GST_BIN(m_pipeline), "sampletap");
+
+        // Set stream-properties on pipewiresink (must be done post-launch;
+        // gst_parse_launch can't deserialize GstStructure with spaced values)
+        if (!pipelineSinkName.empty()) {
+            GstElement* pwsink = gst_bin_get_by_name(GST_BIN(m_pipeline), "pwsink");
+            if (pwsink) {
+                GstStructure* props = gst_structure_new("props",
+                    "node.name", G_TYPE_STRING, streamNodeName.c_str(),
+                    "node.description", G_TYPE_STRING, streamNodeDesc.c_str(),
+                    NULL);
+                g_object_set(pwsink, "stream-properties", props, NULL);
+                gst_structure_free(props);
+                gst_object_unref(pwsink);
+            }
+        }
 
         // Attach AES67 zero-hop RTP branches to the audio tee
 #ifdef HAS_AES67_GSTREAMER
