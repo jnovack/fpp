@@ -264,9 +264,9 @@
 
                     <div class="pw-legend">
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#20c997"></span>
-                            Source</span>
+                            HW Source</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#fd7e14"></span>
-                            Stream</span>
+                            Media Stream</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#e35d6a"></span>
                             Input Group</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#0d6efd"></span>
@@ -274,7 +274,7 @@
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#6f42c1"></span>
                             Effect</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#198754"></span>
-                            ALSA Output</span>
+                            HW Output (ALSA)</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#dc3545"></span>
                             AES67 / App</span>
                     </div>
