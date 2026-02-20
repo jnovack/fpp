@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-20
 **Branch:** `input-mixing-phase1` (forked from `multi-input-gstreamer`)
-**Status:** In Progress — Phase 1 & 2 complete, Phase 3 next
+**Status:** In Progress — Phases 1–4 complete, Phase 5 next
 
 ---
 
@@ -663,14 +663,14 @@ const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects',
 - [x] 3.5 WirePlumber hook update
 - [ ] Phase 3 testing complete
 
-### Phase 4 — Multiple fppd Streams
-- [ ] 4.1 GStreamerOutput multi-instance refactor
-- [ ] 4.2 Playlist slot parameter
-- [ ] 4.3 Per-stream volume control
-- [ ] 4.4 Multi-stream scheduling
-- [ ] 4.5 Playlist editor UI
-- [ ] 4.6 WLED audio-reactive tap
-- [ ] 4.7 Status API updates
+### Phase 4 — Multiple fppd Streams ✅ IMPLEMENTED
+- [x] 4.1 GStreamerOutput multi-instance refactor (StreamSlotManager + per-slot PipeWire nodes)
+- [x] 4.2 Playlist slot parameter (streamSlot 1-5 in PlaylistEntryMedia)
+- [x] 4.3 Per-stream volume control (PHP API + pw-cli set-param)
+- [x] 4.4 Multi-stream scheduling (ProcessBackgroundSlots + StopAllSlots)
+- [x] 4.5 Playlist editor UI (streamSlot field in playlistEntryTypes.json)
+- [x] 4.6 WLED audio-reactive tap (slot 1 priority for m_currentInstance)
+- [x] 4.7 Status API updates (streamSlots in fppd status + PHP status endpoint)
 - [ ] Phase 4 testing complete
 
 ### Phase 5 — Advanced Routing
