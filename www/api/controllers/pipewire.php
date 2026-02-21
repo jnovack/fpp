@@ -518,66 +518,6 @@ function QueryAlsaCardBestRate($cardId, $allowedRates, $fallbackRate)
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// Helper: Query a hardware ALSA PCM sink's natively supported sample rates
-// and return the best match from $allowedRates (sorted ascending).
-//
-// We run `aplay --dump-hw-params` which prints ALSA HW parameters even
-// when no audio data exists to play.  Typical output:
-//   RATE: 48000
-//   RATE: { 44100 48000 96000 }
-//   RATE: [8000 192000]   (continuous range)
-//
-// Returns $fallbackRate if the device cannot be queried.
-function QueryAlsaCardBestRate($cardId, $allowedRates, $fallbackRate)
-{
-    // Only alphanumeric + underscore card IDs are safe as hw: path components.
-    if (!preg_match('/^[a-zA-Z0-9_]+$/', $cardId)) {
-        return $fallbackRate;
-    }
-
-    // aplay exits non-zero when /dev/zero has no PCM header, but it still
-    // prints the HW params before failing.  Use a short timeout to avoid
-    // blocking if the device is busy.
-    $out = array();
-    exec('timeout 2 aplay -D ' . escapeshellarg('hw:' . $cardId)
-        . ' --dump-hw-params /dev/zero 2>&1 | head -40', $out);
-    $text = implode("\n", $out);
-
-    $deviceRates = array();
-    if (preg_match('/\bRATE\b[^\n]*\{([^}]+)\}/i', $text, $m)) {
-        // Discrete list: { 44100 48000 96000 }
-        preg_match_all('/\d+/', $m[1], $dm);
-        foreach ($dm[0] as $r) {
-            $deviceRates[] = intval($r);
-        }
-    } elseif (preg_match('/\bRATE\b[^\n]*\[(\d+)[^\d]+(\d+)\]/i', $text, $m)) {
-        // Continuous range [min max] — accept any allowed rate in range
-        $rmin = intval($m[1]);
-        $rmax = intval($m[2]);
-        foreach ($allowedRates as $r) {
-            if ($r >= $rmin && $r <= $rmax) {
-                $deviceRates[] = $r;
-            }
-        }
-    } elseif (preg_match('/\bRATE(?:\[\d+\])?:\s+(\d+)/i', $text, $m)) {
-        // Single rate
-        $deviceRates[] = intval($m[1]);
-    }
-
-    if (empty($deviceRates)) {
-        return $fallbackRate;
-    }
-
-    // Pick the highest allowed rate the device supports for best quality.
-    foreach (array_reverse($allowedRates) as $ar) {
-        if (in_array($ar, $deviceRates)) {
-            return $ar;
-        }
-    }
-    return $fallbackRate;
-}
-
-/////////////////////////////////////////////////////////////////////////////
 // GET /api/pipewire/audio/cards
 // Returns available ALSA cards with channel info for group membership UI.
 // Uses stable ALSA card IDs (from /proc/asound/) as primary identifiers
