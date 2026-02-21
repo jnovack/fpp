@@ -316,6 +316,7 @@
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
                 if (nm.startsWith('fpp_input_')) return '#e35d6a'; // input group mix bus
+                if (nm.startsWith('fpp_tee_fppd_stream_')) return '#e35d6a'; // input group stream tee
                 if (nm.startsWith('fpp_loopback_ig') || nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return '#e35d6a'; // input group routing
                 if (nm.startsWith('fpp_group_')) return '#0d6efd'; // combine-stream group
                 if (nm.startsWith('fpp_fx_') && !nm.endsWith('_out')) return '#6f42c1'; // delay filter sink
@@ -648,8 +649,9 @@
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
 
-                // Input groups (mix buses)
+                // Input groups (mix buses) & stream tee nodes
                 if (nm.startsWith('fpp_input_')) return 1;
+                if (nm.startsWith('fpp_tee_fppd_stream_')) return 1;
                 if (nm.startsWith('fpp_loopback_ig')) return 1;
                 if (nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return 1;
                 // (fpp_route removed — combine-stream handles routing)

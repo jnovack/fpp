@@ -240,6 +240,8 @@ function ApplyPipeWireAudioGroups()
     // Write settings to file now so fppd reads them when it creates new
     // pipelines — even if fppd's command socket is temporarily unresponsive.
     $igSlotTargets = array();
+    $igSlotGroupCount = array();
+    $igSlotSourceIds = array();
     $igFile2 = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
     if (file_exists($igFile2)) {
         $igData2 = json_decode(file_get_contents($igFile2), true);
@@ -257,11 +259,23 @@ function ApplyPipeWireAudioGroups()
                         if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
                             $slotNum = intval($m[1]);
                         }
-                        // First input group wins — it's the primary target for this slot
+                        if (!isset($igSlotGroupCount[$slotNum])) {
+                            $igSlotGroupCount[$slotNum] = 0;
+                        }
+                        $igSlotGroupCount[$slotNum]++;
+                        // First input group wins for single-group case
                         if (!isset($igSlotTargets[$slotNum])) {
                             $igSlotTargets[$slotNum] = $igNodeName2;
+                            $igSlotSourceIds[$slotNum] = $sourceId;
                         }
                     }
+                }
+            }
+            // Redirect to tee when a stream slot is claimed by multiple groups
+            foreach ($igSlotGroupCount as $slotNum => $cnt) {
+                if ($cnt > 1 && isset($igSlotSourceIds[$slotNum])) {
+                    $sourceId = $igSlotSourceIds[$slotNum];
+                    $igSlotTargets[$slotNum] = "fpp_tee_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($sourceId));
                 }
             }
         }
@@ -1117,8 +1131,17 @@ SimpleEventHook {
     end
 
     -- Block default fallback for FPP input group loopback nodes with explicit target
-    if node_name:match ("^fpp_loopback_ig%d+_") and has_target then
+    -- (matches both bare and sub-node names: fpp_loopback_ig1_*, input.fpp_loopback_ig1_*, output.fpp_loopback_ig1_*)
+    if (node_name:match ("^fpp_loopback_ig%d+_") or node_name:match ("^[io][nu]%a+%.fpp_loopback_ig%d+_")) and has_target then
       log:info (si, "... FPP input loopback: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP tee (null-sink fan-out) nodes
+    if node_name:match ("^fpp_tee_fppd_stream_") then
+      log:info (si, "... FPP tee node: blocking default fallback for "
           .. node_name .. ", will retry on rescan")
       event:stop_processing ()
       return
@@ -1331,6 +1354,8 @@ function ApplyPipeWireInputGroups()
     // pipelines, so this ensures the correct target even if fppd's command
     // socket is temporarily unresponsive.
     $slotTargets = array();
+    $slotGroupCount = array();
+    $slotSourceIds = array();
     foreach ($data['inputGroups'] as $ig) {
         if (!isset($ig['enabled']) || !$ig['enabled'])
             continue;
@@ -1344,11 +1369,25 @@ function ApplyPipeWireInputGroups()
                 if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
                     $slotNum = intval($m[1]);
                 }
-                // First input group wins — it's the primary target for this slot
+                // Track how many groups claim this slot
+                if (!isset($slotGroupCount[$slotNum])) {
+                    $slotGroupCount[$slotNum] = 0;
+                }
+                $slotGroupCount[$slotNum]++;
+                // First input group wins for single-group case
                 if (!isset($slotTargets[$slotNum])) {
                     $slotTargets[$slotNum] = $igNodeName;
+                    $slotSourceIds[$slotNum] = $sourceId;
                 }
             }
+        }
+    }
+    // If a stream slot is claimed by multiple groups, redirect fppd to
+    // the null-sink tee instead of the first input group directly.
+    foreach ($slotGroupCount as $slotNum => $cnt) {
+        if ($cnt > 1 && isset($slotSourceIds[$slotNum])) {
+            $sourceId = $slotSourceIds[$slotNum];
+            $slotTargets[$slotNum] = "fpp_tee_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($sourceId));
         }
     }
 
@@ -1465,15 +1504,19 @@ function SetInputGroupMemberVolume()
     $mbr = $targetGroup['members'][$memberIndex];
     $mbrType = isset($mbr['type']) ? $mbr['type'] : '';
 
-    // fppd_stream members don't have loopback nodes — volume is on the GStreamer pipeline
-    if ($mbrType === 'fppd_stream') {
-        return json(array("status" => "error", "message" => "fppd stream volume is controlled via fppd, not PipeWire loopback"));
-    }
-
     // Build the expected loopback node name (must match GeneratePipeWireInputGroupsConfig)
     $groupName = isset($targetGroup['name']) ? $targetGroup['name'] : "Input Group";
     $mbrName = isset($mbr['name']) ? $mbr['name'] : "Member $memberIndex";
-    $loopbackNodeName = "fpp_loopback_ig{$groupId}_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($mbrName));
+
+    if ($mbrType === 'fppd_stream') {
+        // fppd_stream members: primary group has no loopback (volume via fppd),
+        // non-primary groups have a fan-out loopback whose name uses sourceId
+        $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+        $streamSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($sourceId));
+        $loopbackNodeName = "fpp_loopback_ig{$groupId}_{$streamSlug}";
+    } else {
+        $loopbackNodeName = "fpp_loopback_ig{$groupId}_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($mbrName));
+    }
 
     // Find the PipeWire node ID for this loopback
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
@@ -1504,6 +1547,10 @@ function SetInputGroupMemberVolume()
     }
 
     if (empty($nodeIds)) {
+        if ($mbrType === 'fppd_stream') {
+            // Primary group — no loopback exists; volume controlled via fppd
+            return json(array("status" => "error", "message" => "This stream's primary group volume is controlled via fppd, not PipeWire loopback"));
+        }
         return json(array("status" => "error", "message" => "Loopback node '$loopbackNodeName' not found in PipeWire (is it muted or not applied?)"));
     }
 
@@ -2397,6 +2444,63 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
     $conf .= "# Loaded before 97-fpp-audio-groups.conf so input group nodes\n";
     $conf .= "# exist when output groups are created.\n\n";
 
+    // ── Pre-pass: determine which fppd stream slots need a tee (fan-out
+    //    to multiple input groups).  When a stream appears in only one
+    //    enabled group, fppd's pipewiresink connects directly to that
+    //    group's combine-stream.  When it appears in 2+ groups, we create
+    //    an intermediate null-audio-sink ("tee") that fppd targets, then
+    //    use monitor-capture loopbacks from the tee into each group.
+    $streamGroupCount = array(); // sourceId => count of enabled groups
+    $streamPrimaryGroup = array(); // sourceId => igNodeName (first-wins, used when count==1)
+    foreach ($inputGroups as $ig) {
+        if (!isset($ig['enabled']) || !$ig['enabled'])
+            continue;
+        if (!isset($ig['members']) || empty($ig['members']))
+            continue;
+        foreach ($ig['members'] as $mbr) {
+            if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                if (!isset($streamGroupCount[$sourceId])) {
+                    $streamGroupCount[$sourceId] = 0;
+                    $igName = isset($ig['name']) ? $ig['name'] : 'Input Group';
+                    $streamPrimaryGroup[$sourceId] = "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($igName));
+                }
+                $streamGroupCount[$sourceId]++;
+            }
+        }
+    }
+    $streamNeedsTee = array();
+    foreach ($streamGroupCount as $sid => $cnt) {
+        if ($cnt > 1) {
+            $streamNeedsTee[$sid] = true;
+        }
+    }
+
+    // ── Null-audio-sink tee nodes for fan-out streams ──
+    if (!empty($streamNeedsTee)) {
+        $conf .= "context.objects = [\n";
+        foreach ($streamNeedsTee as $sourceId => $unused) {
+            $teeName = "fpp_tee_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($sourceId));
+            $slotNum = 1;
+            if (preg_match('/fppd_stream_(\d+)/', $sourceId, $m)) {
+                $slotNum = intval($m[1]);
+            }
+            $conf .= "  # Tee (null-sink) for $sourceId fan-out\n";
+            $conf .= "  { factory = adapter\n";
+            $conf .= "    args = {\n";
+            $conf .= "      factory.name = support.null-audio-sink\n";
+            $conf .= "      node.name = \"$teeName\"\n";
+            $conf .= "      node.description = \"FPP Media Stream $slotNum Tee\"\n";
+            $conf .= "      media.class = Audio/Sink\n";
+            $conf .= "      audio.position = [ FL FR ]\n";
+            $conf .= "      monitor.channel-volumes = true\n";
+            $conf .= "      monitor.passthrough = true\n";
+            $conf .= "    }\n";
+            $conf .= "  }\n";
+        }
+        $conf .= "]\n\n";
+    }
+
     $conf .= "context.modules = [\n";
 
     foreach ($inputGroups as $ig) {
@@ -2644,8 +2748,44 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
                 continue;  // Don't create loopback for muted sources
 
             if ($mbrType === 'fppd_stream') {
-                // fppd streams connect directly via pipewiresink target-object
-                // No loopback needed — the combine-stream rule above handles it
+                $sourceId = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                $needsTee = isset($streamNeedsTee[$sourceId]);
+
+                if (!$needsTee) {
+                    // Stream used by only one group — direct connection via
+                    // pipewiresink target-object.  No loopback needed.
+                    continue;
+                }
+
+                // Stream fans out to multiple groups via a null-sink tee.
+                // Create a loopback that captures the tee's monitor and
+                // plays into this input group's combine-stream.
+                $teeName = "fpp_tee_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($sourceId));
+                $streamSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($sourceId));
+                $loopbackName = "fpp_loopback_ig{$groupId}_{$streamSlug}";
+                $loopbackDesc = "$mbrName → $groupName";
+
+                $volume = isset($mbr['volume']) ? floatval($mbr['volume']) / 100.0 : 1.0;
+
+                $conf .= "  # Loopback (fppd stream fan-out via tee): $loopbackDesc\n";
+                $conf .= "  { name = libpipewire-module-loopback\n";
+                $conf .= "    args = {\n";
+                $conf .= "      node.name = \"$loopbackName\"\n";
+                $conf .= "      node.description = \"$loopbackDesc\"\n";
+                $conf .= "      capture.props = {\n";
+                $conf .= "        node.target = \"$teeName\"\n";
+                $conf .= "        stream.capture.sink = true\n";
+                $conf .= "        stream.dont-remix = true\n";
+                $conf .= "      }\n";
+                $conf .= "      playback.props = {\n";
+                $conf .= "        node.target = \"$nodeName\"\n";
+                $conf .= "        media.class = Stream/Output/Audio\n";
+                if ($volume < 0.999) {
+                    $conf .= "        channelmix.volume = " . round($volume, 3) . "\n";
+                }
+                $conf .= "      }\n";
+                $conf .= "    }\n";
+                $conf .= "  }\n";
                 continue;
             }
 
@@ -3655,6 +3795,11 @@ function GetPipeWireGraph()
                     $node['properties']['fpp.inputGroup.eq'] = true;
                     $node['properties']['fpp.inputGroup.id'] = intval($m[1]);
                 }
+                // Match tee (null-sink fan-out) nodes for fppd streams
+                if (preg_match('/^fpp_tee_fppd_stream_(\d+)$/', $nm, $m)) {
+                    $node['properties']['fpp.tee'] = true;
+                    $node['properties']['fpp.tee.slot'] = intval($m[1]);
+                }
                 // (Routing loopback nodes removed — combine-stream handles output routing)
             }
             unset($node);
@@ -3675,8 +3820,24 @@ function GetPipeWireGraph()
     }
     // Build lookup: which input groups each fppd stream slot targets
     // A single fppd_stream can be a member of multiple input groups.
-    $fppdStreamTargets = array(); // streamName => [igSlug, igSlug, ...]
+    // When fan-out (tee) is active, the stream targets the tee node.
+    $fppdStreamTargets = array(); // streamName => [targetSlug, ...]
     if ($igCfg && isset($igCfg['inputGroups'])) {
+        $fppdStreamGroupCount = array(); // sourceId => count
+        foreach ($igCfg['inputGroups'] as $ig) {
+            if (!isset($ig['enabled']) || !$ig['enabled'])
+                continue;
+            if (!isset($ig['members']))
+                continue;
+            foreach ($ig['members'] as $mbr) {
+                if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
+                    $sid = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
+                    if (!isset($fppdStreamGroupCount[$sid]))
+                        $fppdStreamGroupCount[$sid] = 0;
+                    $fppdStreamGroupCount[$sid]++;
+                }
+            }
+        }
         foreach ($igCfg['inputGroups'] as $ig) {
             if (!isset($ig['enabled']) || !$ig['enabled'])
                 continue;
@@ -3686,11 +3847,20 @@ function GetPipeWireGraph()
             foreach ($ig['members'] as $mbr) {
                 if (isset($mbr['type']) && $mbr['type'] === 'fppd_stream') {
                     $sid = isset($mbr['sourceId']) ? $mbr['sourceId'] : 'fppd_stream_1';
-                    if (!isset($fppdStreamTargets[$sid])) {
-                        $fppdStreamTargets[$sid] = array();
-                    }
-                    if (!in_array($igSlug, $fppdStreamTargets[$sid])) {
-                        $fppdStreamTargets[$sid][] = $igSlug;
+                    // When fan-out (tee), stream targets the tee node
+                    $needsTee = isset($fppdStreamGroupCount[$sid]) && $fppdStreamGroupCount[$sid] > 1;
+                    if ($needsTee) {
+                        $teeSlug = 'fpp_tee_' . strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $sid));
+                        if (!isset($fppdStreamTargets[$sid])) {
+                            $fppdStreamTargets[$sid] = array($teeSlug);
+                        }
+                    } else {
+                        if (!isset($fppdStreamTargets[$sid])) {
+                            $fppdStreamTargets[$sid] = array();
+                        }
+                        if (!in_array($igSlug, $fppdStreamTargets[$sid])) {
+                            $fppdStreamTargets[$sid][] = $igSlug;
+                        }
                     }
                 }
             }
