@@ -320,6 +320,7 @@
                 if (nm.startsWith('fpp_input_')) return '#e35d6a'; // input group mix bus
                 if (nm.startsWith('fpp_tee_fppd_stream_')) return '#d63384'; // input tee (fan-out)
                 if (nm.startsWith('fpp_loopback_ig') || nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return '#e35d6a'; // input group routing
+                if (nm.startsWith('fpp_route_ig_') || nm.startsWith('output.fpp_route_ig_')) return '#e35d6a'; // routing hub (post-EQ)
                 if (nm.startsWith('fpp_group_')) return '#0d6efd'; // combine-stream group
                 if (nm.startsWith('fpp_fx_') && !nm.endsWith('_out')) return '#6f42c1'; // delay filter sink
                 if (nm.startsWith('output.fpp_group_') ||
@@ -578,6 +579,53 @@
                     }
                 });
 
+                // 5) Routing hub sub-nodes: output.fpp_route_ig_* → fpp_route_ig_*
+                //    Created when EQ is enabled on an input group.
+                graphData.nodes.forEach(n => {
+                    if (n.name.startsWith('output.fpp_route_ig_')) {
+                        let bestParent = null;
+                        for (const [nm, candidate] of Object.entries(nodesByName)) {
+                            if (nm.startsWith('fpp_route_ig_') && n.name.startsWith('output.' + nm)) {
+                                if (!bestParent || nm.length > bestParent.name.length) {
+                                    bestParent = candidate;
+                                }
+                            }
+                        }
+                        if (bestParent) {
+                            absorbed.add(n.id);
+                            nodeIdRemap[n.id] = bestParent.id;
+                            graphData.ports.forEach(p => {
+                                if (p.nodeId === n.id) p.nodeId = bestParent.id;
+                            });
+                            if (n.state === 'running' && bestParent.state !== 'running') {
+                                bestParent.state = n.state;
+                            }
+                        }
+                    }
+                });
+
+                // 6) Routing hub → EQ: fpp_route_ig_N → fpp_fx_ig_N
+                //    Merge the post-EQ routing combine-stream into the EQ node so
+                //    the graph cleanly shows:  Input Group → EQ → Output Groups
+                graphData.nodes.forEach(n => {
+                    if (!n.name.startsWith('fpp_route_ig_') || absorbed.has(n.id)) return;
+                    // Extract group ID: fpp_route_ig_{id}
+                    const m = n.name.match(/^fpp_route_ig_(\d+)$/);
+                    if (!m) return;
+                    const eqName = 'fpp_fx_ig_' + m[1];
+                    const eqNode = nodesByName[eqName];
+                    if (eqNode && !absorbed.has(eqNode.id)) {
+                        absorbed.add(n.id);
+                        nodeIdRemap[n.id] = eqNode.id;
+                        graphData.ports.forEach(p => {
+                            if (p.nodeId === n.id) p.nodeId = eqNode.id;
+                        });
+                        if (n.state === 'running' && eqNode.state !== 'running') {
+                            eqNode.state = n.state;
+                        }
+                    }
+                });
+
                 // Remove absorbed nodes
                 graphData.nodes = graphData.nodes.filter(n => !absorbed.has(n.id));
 
@@ -614,11 +662,11 @@
                     !p.name.startsWith('monitor_') || teeNodeIds.has(p.nodeId)
                 );
 
-                // Collapse duplicate output ports on group nodes. After merging
-                // combine-stream outputs, a group may have 3× FL + 3× FR output
+                // Collapse duplicate output ports on group/EQ nodes. After merging
+                // combine-stream outputs, a node may have 3× FL + 3× FR output
                 // ports. Keep one canonical port per channel and redirect links.
                 graphData.nodes.forEach(n => {
-                    if (!n.name.startsWith('fpp_group_')) return;
+                    if (!n.name.startsWith('fpp_group_') && !n.name.startsWith('fpp_fx_ig_')) return;
                     const myPorts = graphData.ports.filter(p => p.nodeId === n.id && p.direction === 'output');
                     const canonical = {};    // channel → portId to keep
                     const remapPort = {};    // duplicate portId → canonical portId
@@ -671,6 +719,11 @@
 
                 // Effects — delay filters, EQ, any fpp_fx_ node
                 if (nm.startsWith('fpp_fx_') || nm.startsWith('fpp_eq_')) return 4;
+
+                // Routing hub (post-EQ fan-out) — normally merged into EQ node;
+                // fallback classification if merge didn't absorb it
+                if (nm.startsWith('fpp_route_ig_')) return 2;
+                if (nm.startsWith('output.fpp_route_ig_')) return 2;
 
                 // ALSA hardware outputs
                 if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return 5;
