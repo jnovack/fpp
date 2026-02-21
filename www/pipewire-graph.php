@@ -724,9 +724,26 @@
                 });
 
                 // ── Barycenter crossing minimization ──────────────────────
+                // Helper: sub-group priority for Input Sources column (0).
+                // Media streams first (0), HW sources second (1).
+                function inputSourceGroup(n) {
+                    const mc = n.mediaClass || '';
+                    if (mc === 'Stream/Output/Audio') return 0; // media streams at top
+                    return 1; // HW sources (Audio/Source) below
+                }
+
                 // Assign initial order indices within each column (alphabetical seed)
                 for (let c = 0; c < NUM_COLS; c++) {
-                    cols[c].sort((a, b) => (a.description || a.name).localeCompare(b.description || b.name));
+                    if (c === 0) {
+                        // Column 0: group media streams above HW sources
+                        cols[c].sort((a, b) => {
+                            const ga = inputSourceGroup(a), gb = inputSourceGroup(b);
+                            if (ga !== gb) return ga - gb;
+                            return (a.description || a.name).localeCompare(b.description || b.name);
+                        });
+                    } else {
+                        cols[c].sort((a, b) => (a.description || a.name).localeCompare(b.description || b.name));
+                    }
                     cols[c].forEach((n, i) => { n._order = i; });
                 }
 
@@ -768,6 +785,14 @@
                     });
 
                     cols[targetCol].sort((a, b) => a._bary - b._bary);
+                    // Column 0: preserve media-stream / HW-source grouping
+                    if (targetCol === 0) {
+                        cols[0].sort((a, b) => {
+                            const ga = inputSourceGroup(a), gb = inputSourceGroup(b);
+                            if (ga !== gb) return ga - gb;
+                            return a._bary - b._bary;
+                        });
+                    }
                     cols[targetCol].forEach((n, i) => { n._order = i; });
                 }
 
