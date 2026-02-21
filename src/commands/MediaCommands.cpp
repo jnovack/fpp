@@ -456,7 +456,7 @@ std::unique_ptr<Command::Result> AES67TestCommand::run(const std::vector<std::st
 }
 
 ApplyRoutingPresetCommand::ApplyRoutingPresetCommand() :
-    Command("Apply Routing Preset", "Live-apply a saved PipeWire routing preset without stopping playback") {
+    Command("Pipewire Apply Routing Preset", "Live-apply a saved PipeWire routing preset without stopping playback") {
     args.push_back(CommandArg("Preset", "string", "Routing Preset Name")
                        .setContentListUrl("api/pipewire/audio/routing/presets/names"));
 }
