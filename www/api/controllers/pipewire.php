@@ -456,6 +456,66 @@ function ResolveCardIdToNumber($cardId)
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// Helper: Query a hardware ALSA PCM sink's natively supported sample rates
+// and return the best match from $allowedRates (sorted ascending).
+//
+// We run `aplay --dump-hw-params` which prints ALSA HW parameters even
+// when no audio data exists to play.  Typical output:
+//   RATE: 48000
+//   RATE: { 44100 48000 96000 }
+//   RATE: [8000 192000]   (continuous range)
+//
+// Returns $fallbackRate if the device cannot be queried.
+function QueryAlsaCardBestRate($cardId, $allowedRates, $fallbackRate)
+{
+    // Only alphanumeric + underscore card IDs are safe as hw: path components.
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $cardId)) {
+        return $fallbackRate;
+    }
+
+    // aplay exits non-zero when /dev/zero has no PCM header, but it still
+    // prints the HW params before failing.  Use a short timeout to avoid
+    // blocking if the device is busy.
+    $out = array();
+    exec('timeout 2 aplay -D ' . escapeshellarg('hw:' . $cardId)
+        . ' --dump-hw-params /dev/zero 2>&1 | head -40', $out);
+    $text = implode("\n", $out);
+
+    $deviceRates = array();
+    if (preg_match('/\bRATE\b[^\n]*\{([^}]+)\}/i', $text, $m)) {
+        // Discrete list: { 44100 48000 96000 }
+        preg_match_all('/\d+/', $m[1], $dm);
+        foreach ($dm[0] as $r) {
+            $deviceRates[] = intval($r);
+        }
+    } elseif (preg_match('/\bRATE\b[^\n]*\[(\d+)[^\d]+(\d+)\]/i', $text, $m)) {
+        // Continuous range [min max] — accept any allowed rate in range
+        $rmin = intval($m[1]);
+        $rmax = intval($m[2]);
+        foreach ($allowedRates as $r) {
+            if ($r >= $rmin && $r <= $rmax) {
+                $deviceRates[] = $r;
+            }
+        }
+    } elseif (preg_match('/\bRATE(?:\[\d+\])?:\s+(\d+)/i', $text, $m)) {
+        // Single rate
+        $deviceRates[] = intval($m[1]);
+    }
+
+    if (empty($deviceRates)) {
+        return $fallbackRate;
+    }
+
+    // Pick the highest allowed rate the device supports for best quality.
+    foreach (array_reverse($allowedRates) as $ar) {
+        if (in_array($ar, $deviceRates)) {
+            return $ar;
+        }
+    }
+    return $fallbackRate;
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // GET /api/pipewire/audio/cards
 // Returns available ALSA cards with channel info for group membership UI.
 // Uses stable ALSA card IDs (from /proc/asound/) as primary identifiers
@@ -3228,6 +3288,7 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
     $existingSinks = array(); // node.name => true
     $sinkCardNumMap = array(); // ALSA card number (int) => node.name
     $sinkCardIdMap = array();  // ALSA card ID (string) => node.name
+    $sinkCardRateMap = array(); // ALSA card ID (string) => negotiated audio.rate (int)
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
     $pwDumpJson = '';
     exec($SUDO . " " . $env . " pw-dump 2>/dev/null", $pwDumpLines);
@@ -3275,8 +3336,15 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
                     $cardIdFromProc = @file_get_contents("/proc/asound/card$cn/id");
                     if ($cardIdFromProc !== false) {
                         $cardIdFromProc = trim($cardIdFromProc);
-                        if (!empty($cardIdFromProc) && !isset($sinkCardIdMap[$cardIdFromProc])) {
-                            $sinkCardIdMap[$cardIdFromProc] = $nodeName;
+                        if (!empty($cardIdFromProc)) {
+                            if (!isset($sinkCardIdMap[$cardIdFromProc])) {
+                                $sinkCardIdMap[$cardIdFromProc] = $nodeName;
+                            }
+                            // Capture the rate WirePlumber negotiated for this device.
+                            $nodeRate = isset($props['audio.rate']) ? intval($props['audio.rate']) : 0;
+                            if ($nodeRate > 0 && !isset($sinkCardRateMap[$cardIdFromProc])) {
+                                $sinkCardRateMap[$cardIdFromProc] = $nodeRate;
+                            }
                         }
                     }
                 }
@@ -3405,29 +3473,46 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
                 $cidNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cid));
                 $customAlsaAdapters[$cid] = array(
                     'nodeName' => 'fpp_alsa_' . $cidNorm,
-                    'channels' => $memberCh
+                    'channels' => $memberCh,
+                    'rate' => 0,  // resolved below after all cards are collected
                 );
             }
         }
     }
 
     if (!empty($customAlsaAdapters)) {
-        // Determine audio sample rate from settings (matches FPPINIT logic)
+        // ── Per-device sample rate resolution ──────────────────────────────
+        // Priority (highest to lowest):
+        //   1. Rate already negotiated by WirePlumber for that card (from pw-dump)
+        //   2. Rate queried directly from ALSA HW params via aplay --dump-hw-params
+        //   3. Global FPP AudioFormat setting as last-resort fallback
+        //
+        // PipeWire's allowed-rates = [ 44100 48000 96000 ] means the graph
+        // clock can run at any of these.  We use the same list as candidates.
+        $allowedRates = array(44100, 48000, 96000);
         $audioFormat = isset($settings['AudioFormat']) ? intval($settings['AudioFormat']) : 0;
-        if ($audioFormat >= 7) {
-            $alsaRate = 96000;
-        } elseif ($audioFormat >= 4) {
-            $alsaRate = 48000;
-        } else {
-            $alsaRate = 44100;
+        if ($audioFormat >= 7)       $globalFallbackRate = 96000;
+        elseif ($audioFormat >= 4)   $globalFallbackRate = 48000;
+        else                         $globalFallbackRate = 44100;
+
+        foreach ($customAlsaAdapters as $cid => &$adapterInfo) {
+            if (isset($sinkCardRateMap[$cid]) && in_array($sinkCardRateMap[$cid], $allowedRates)) {
+                // WirePlumber already opened this device and negotiated a rate — use it.
+                $adapterInfo['rate'] = $sinkCardRateMap[$cid];
+            } else {
+                // Device not currently active in PipeWire (or rate not reported).
+                // Query ALSA HW params directly to find the best supported rate.
+                $adapterInfo['rate'] = QueryAlsaCardBestRate($cid, $allowedRates, $globalFallbackRate);
+            }
         }
+        unset($adapterInfo);
 
         $conf .= "# Custom multi-channel ALSA adapter nodes\n";
         $conf .= "# These provide the correct channel count for output group members\n";
         $conf .= "context.objects = [\n";
         foreach ($customAlsaAdapters as $cid => $info) {
             $posStr = isset($channelPositions[$info['channels']]) ? $channelPositions[$info['channels']] : "[ FL FR ]";
-            $cardLabel = isset($member['cardName']) ? $member['cardName'] : $cid;
+            $cardLabel = $cid;
             $conf .= "  { factory = adapter\n";
             $conf .= "    args = {\n";
             $conf .= "      factory.name = api.alsa.pcm.sink\n";
@@ -3438,7 +3523,7 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             $conf .= "      api.alsa.period-size = 1024\n";
             $conf .= "      api.alsa.headroom = 256\n";
             $conf .= "      audio.format = \"S16LE\"\n";
-            $conf .= "      audio.rate = $alsaRate\n";
+            $conf .= "      audio.rate = " . $info['rate'] . "\n";
             $conf .= "      audio.channels = " . $info['channels'] . "\n";
             $conf .= "      audio.position = $posStr\n";
             $conf .= "    }\n";
