@@ -604,8 +604,13 @@
                 graphData.ports = graphData.ports.filter(p => liveNodeIds.has(p.nodeId));
 
                 // Remove monitor ports — they're internal PipeWire plumbing
-                // (monitor_FL, monitor_FR etc.) and carry no real audio links
-                graphData.ports = graphData.ports.filter(p => !p.name.startsWith('monitor_'));
+                // (monitor_FL, monitor_FR etc.) and carry no real audio links.
+                // Exception: keep monitor ports on tee nodes (fpp_tee_*) since
+                // those are the output ports that feed into input group loopbacks.
+                const teeNodeIds = new Set(graphData.nodes.filter(n => n.name.startsWith('fpp_tee_')).map(n => n.id));
+                graphData.ports = graphData.ports.filter(p =>
+                    !p.name.startsWith('monitor_') || teeNodeIds.has(p.nodeId)
+                );
 
                 // Collapse duplicate output ports on group nodes. After merging
                 // combine-stream outputs, a group may have 3× FL + 3× FR output
