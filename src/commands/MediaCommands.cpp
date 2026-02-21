@@ -454,4 +454,20 @@ std::unique_ptr<Command::Result> AES67TestCommand::run(const std::vector<std::st
     }
     return std::make_unique<Command::ErrorResult>(report);
 }
+
+ApplyRoutingPresetCommand::ApplyRoutingPresetCommand() :
+    Command("Apply Routing Preset", "Live-apply a saved PipeWire routing preset without stopping playback") {
+    args.push_back(CommandArg("Preset", "string", "Routing Preset Name")
+                       .setContentListUrl("api/pipewire/audio/routing/presets/names"));
+}
+std::unique_ptr<Command::Result> ApplyRoutingPresetCommand::run(const std::vector<std::string>& args) {
+    if (args.empty() || args[0].empty()) {
+        return std::make_unique<Command::ErrorResult>("No preset name specified");
+    }
+    // Build the API call — POST to the live-apply endpoint with the preset name
+    std::string url = "http://localhost/api/pipewire/audio/routing/presets/live-apply";
+    std::string postData = "{\"name\":\"" + args[0] + "\"}";
+    std::vector<std::string> curlArgs = { url, "POST", postData };
+    return std::make_unique<CURLResult>(curlArgs);
+}
 #endif

@@ -84,4 +84,10 @@ public:
     AES67TestCommand();
     virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
 };
+
+class ApplyRoutingPresetCommand : public Command {
+public:
+    ApplyRoutingPresetCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
 #endif

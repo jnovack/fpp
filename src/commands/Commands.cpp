@@ -110,6 +110,7 @@ void CommandManager::Init() {
     addCommand(new AES67ApplyCommand());
     addCommand(new AES67CleanupCommand());
     addCommand(new AES67TestCommand());
+    addCommand(new ApplyRoutingPresetCommand());
 #endif
     addCommand(new PlaylistPauseCommand());
     addCommand(new PlaylistResumeCommand());

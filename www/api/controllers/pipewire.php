@@ -2013,6 +2013,25 @@ function GetRoutingPresets()
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/audio/routing/presets/names
+// Returns a simple JSON array of preset names (for command dropdowns)
+function GetRoutingPresetNames()
+{
+    global $settings;
+    $presetsDir = $settings['mediaDirectory'] . "/config/routing-presets";
+    $names = array();
+
+    if (is_dir($presetsDir)) {
+        $files = glob($presetsDir . "/*.json");
+        foreach ($files as $file) {
+            $names[] = basename($file, '.json');
+        }
+    }
+    sort($names);
+    return json($names);
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // POST /api/pipewire/audio/routing/presets
 // Save current routing config as a preset
 // Body: { "name": "Christmas Show", "description": "..." }
@@ -2161,6 +2180,301 @@ function DeleteRoutingPreset()
 
     unlink($presetFile);
     return json(array("status" => "OK", "message" => "Preset '$name' deleted"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/audio/routing/presets/live-apply
+// Load a routing preset and apply it in real-time without stopping playback.
+//
+// Live-applied changes (no PipeWire restart):
+//   - Routing path volume / mute changes
+//   - EQ band parameter changes (freq, gain, Q)
+//
+// Changes that require a PipeWire restart (topology changes):
+//   - Adding / removing output group targets
+//   - Enabling / disabling EQ
+//   - Changing number of EQ bands
+//
+// Body: { "name": "Christmas Show" }
+function LiveApplyRoutingPreset()
+{
+    global $settings, $SUDO;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+    $presetsDir = $settings['mediaDirectory'] . "/config/routing-presets";
+    $outputGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['name'])) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Missing preset name"));
+    }
+
+    $name = preg_replace('/[^a-zA-Z0-9_ -]/', '', trim($body['name']));
+    $presetFile = $presetsDir . "/" . $name . ".json";
+
+    if (!file_exists($presetFile)) {
+        http_response_code(404);
+        return json(array("status" => "error", "message" => "Preset '$name' not found"));
+    }
+
+    if (!file_exists($configFile)) {
+        return json(array("status" => "error", "message" => "No input groups configured"));
+    }
+
+    $preset = json_decode(file_get_contents($presetFile), true);
+    $data = json_decode(file_get_contents($configFile), true);
+
+    if (!is_array($preset) || !isset($preset['routing']) ||
+        !is_array($data) || !isset($data['inputGroups'])) {
+        return json(array("status" => "error", "message" => "Invalid preset or config data"));
+    }
+
+    // Load output groups for node name resolution
+    $outputGroups = array();
+    if (file_exists($outputGroupsFile)) {
+        $ogData = json_decode(file_get_contents($outputGroupsFile), true);
+        if (is_array($ogData) && isset($ogData['groups'])) {
+            $outputGroups = $ogData['groups'];
+        }
+    }
+
+    // Build output group lookup: id → node name
+    $ogNodeNames = array();
+    foreach ($outputGroups as $og) {
+        $ogId = intval($og['id']);
+        $ogName = isset($og['name']) ? $og['name'] : 'Group';
+        $ogNodeNames[$ogId] = "fpp_group_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($ogName));
+    }
+
+    // Get PipeWire dump once for all lookups
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $raw = shell_exec($SUDO . " " . $env . " pw-dump 2>/dev/null");
+    $pwObjects = !empty($raw) ? json_decode($raw, true) : null;
+    if (!is_array($pwObjects)) {
+        $pwObjects = array();
+    }
+
+    $topologyChanged = false;
+    $volumeChanges = 0;
+    $eqChanges = 0;
+    $applied = 0;
+    $channelLabels = array("l", "r", "c", "lfe", "rl", "rr", "sl", "sr");
+
+    // ── Detect topology changes and apply live changes ──────────────────
+    foreach ($preset['routing'] as $presetIg) {
+        $presetIgId = intval($presetIg['inputGroupId']);
+
+        // Find matching current input group
+        $currentIg = null;
+        $currentIgIdx = null;
+        foreach ($data['inputGroups'] as $idx => $ig) {
+            if (intval($ig['id']) === $presetIgId) {
+                $currentIg = $ig;
+                $currentIgIdx = $idx;
+                break;
+            }
+        }
+        if ($currentIg === null)
+            continue;
+
+        $igId = $presetIgId;
+        $igName = isset($currentIg['name']) ? $currentIg['name'] : '';
+
+        // ── Check: output group topology changed? ──
+        $currentOutputs = isset($currentIg['outputs']) ? $currentIg['outputs'] : array();
+        $presetOutputs  = isset($presetIg['outputs'])  ? $presetIg['outputs']  : array();
+        $curSorted  = $currentOutputs; sort($curSorted);
+        $preSorted  = $presetOutputs;  sort($preSorted);
+        if ($curSorted !== $preSorted) {
+            $topologyChanged = true;
+        }
+
+        // ── Check: EQ topology changed (enabled/disabled, band count)? ──
+        $currentEq = isset($currentIg['effects']['eq']) ? $currentIg['effects']['eq'] : array();
+        $presetEq  = isset($presetIg['effects']['eq'])  ? $presetIg['effects']['eq']  : array();
+        $curEqOn   = !empty($currentEq['enabled']) && !empty($currentEq['bands']);
+        $preEqOn   = !empty($presetEq['enabled'])  && !empty($presetEq['bands']);
+
+        if ($curEqOn !== $preEqOn) {
+            $topologyChanged = true;
+        } elseif ($curEqOn && $preEqOn) {
+            if (count($currentEq['bands']) !== count($presetEq['bands'])) {
+                $topologyChanged = true;
+            }
+        }
+
+        $applied++;
+    }
+
+    // ── If no topology change, apply everything live ────────────────────
+    if (!$topologyChanged) {
+        foreach ($preset['routing'] as $presetIg) {
+            $presetIgId = intval($presetIg['inputGroupId']);
+            $currentIg = null;
+            $currentIgIdx = null;
+            foreach ($data['inputGroups'] as $idx => $ig) {
+                if (intval($ig['id']) === $presetIgId) {
+                    $currentIg = $ig;
+                    $currentIgIdx = $idx;
+                    break;
+                }
+            }
+            if ($currentIg === null)
+                continue;
+
+            $igId   = $presetIgId;
+            $igName = isset($currentIg['name']) ? $currentIg['name'] : '';
+
+            $curEqOn = !empty($currentIg['effects']['eq']['enabled'])
+                    && !empty($currentIg['effects']['eq']['bands']);
+
+            // Determine routing combine-stream name (with or without EQ)
+            $routingNodeName = $curEqOn
+                ? "fpp_route_ig_$igId"
+                : "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($igName));
+
+            // ── Live-apply routing path volumes ──
+            $presetOutputs  = isset($presetIg['outputs'])  ? $presetIg['outputs']  : array();
+            $presetRouting  = isset($presetIg['routing'])   ? $presetIg['routing']  : array();
+
+            foreach ($presetOutputs as $ogId) {
+                $ogId = intval($ogId);
+                if (!isset($ogNodeNames[$ogId]))
+                    continue;
+
+                $ogTarget = $ogNodeNames[$ogId];
+                $pathKey  = strval($ogId);
+                $volumePct = 100;
+                $mute = false;
+
+                if (isset($presetRouting[$pathKey])) {
+                    $volumePct = isset($presetRouting[$pathKey]['volume'])
+                        ? intval($presetRouting[$pathKey]['volume']) : 100;
+                    $mute = !empty($presetRouting[$pathKey]['mute']);
+                }
+
+                $volumeLinear = $mute ? 0.0 : round($volumePct / 100.0, 3);
+
+                // Find the combine-stream output member targeting this OG
+                foreach ($pwObjects as $obj) {
+                    if (!isset($obj['type']) ||
+                        $obj['type'] !== 'PipeWire:Interface:Node')
+                        continue;
+                    $props  = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+                    $nm     = isset($props['node.name'])   ? $props['node.name']   : '';
+                    $target = isset($props['node.target']) ? $props['node.target'] : '';
+
+                    if (($nm === $routingNodeName ||
+                         strpos($nm, $routingNodeName . '.') === 0)
+                        && $target === $ogTarget
+                    ) {
+                        $cmd = $SUDO . " " . $env
+                             . " pw-cli set-param " . $obj['id']
+                             . " Props '{ channelmix.volume: $volumeLinear }' 2>&1";
+                        shell_exec($cmd);
+                        $volumeChanges++;
+                    }
+                }
+            }
+
+            // ── Live-apply EQ band parameters ──
+            $presetEq = isset($presetIg['effects']['eq'])
+                ? $presetIg['effects']['eq'] : array();
+            $preEqOn  = !empty($presetEq['enabled'])
+                     && !empty($presetEq['bands']);
+
+            if ($curEqOn && $preEqOn) {
+                $fxNodeName = "fpp_fx_ig_" . $igId;
+                $fxNodeId = null;
+
+                foreach ($pwObjects as $obj) {
+                    if (!isset($obj['type']) ||
+                        $obj['type'] !== 'PipeWire:Interface:Node')
+                        continue;
+                    $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+                    $nm = isset($props['node.name']) ? $props['node.name'] : '';
+                    if ($nm === $fxNodeName) {
+                        $fxNodeId = $obj['id'];
+                        break;
+                    }
+                }
+
+                if ($fxNodeId !== null) {
+                    $igChannels = isset($currentIg['channels'])
+                        ? intval($currentIg['channels']) : 2;
+                    $numCh = min($igChannels, count($channelLabels));
+
+                    foreach ($presetEq['bands'] as $bi => $band) {
+                        $freq = floatval(isset($band['freq']) ? $band['freq'] : 1000);
+                        $gain = floatval(isset($band['gain']) ? $band['gain'] : 0);
+                        $q    = floatval(isset($band['q'])    ? $band['q']    : 1.0);
+
+                        for ($ch = 0; $ch < $numCh; $ch++) {
+                            $chLabel = $channelLabels[$ch];
+                            $p = "eq_{$chLabel}_{$bi}";
+                            shell_exec($SUDO . " " . $env
+                                . " pw-cli set-param $fxNodeId Props"
+                                . " '{ \"$p:Freq\": $freq }' 2>&1");
+                            shell_exec($SUDO . " " . $env
+                                . " pw-cli set-param $fxNodeId Props"
+                                . " '{ \"$p:Gain\": $gain }' 2>&1");
+                            shell_exec($SUDO . " " . $env
+                                . " pw-cli set-param $fxNodeId Props"
+                                . " '{ \"$p:Q\": $q }' 2>&1");
+                        }
+                        $eqChanges++;
+                    }
+                }
+            }
+
+            // Update config for persistence
+            $data['inputGroups'][$currentIgIdx]['outputs'] = $presetIg['outputs'];
+            $data['inputGroups'][$currentIgIdx]['routing'] =
+                isset($presetIg['routing']) ? $presetIg['routing'] : array();
+            if (isset($presetIg['effects'])) {
+                $data['inputGroups'][$currentIgIdx]['effects'] = $presetIg['effects'];
+            }
+        }
+
+        // Persist config
+        file_put_contents($configFile,
+            json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        return json(array(
+            "status" => "OK",
+            "message" => "Preset '$name' live-applied ($applied groups,"
+                       . " $volumeChanges volume changes, $eqChanges EQ updates)",
+            "preset" => $name,
+            "applied" => $applied,
+            "volumeChanges" => $volumeChanges,
+            "eqChanges" => $eqChanges,
+            "liveApplied" => true,
+            "restarted" => false,
+        ));
+    }
+
+    // ── Topology changed — must update config and do full apply ─────────
+    // First update the config with the preset data
+    foreach ($preset['routing'] as $presetIg) {
+        $presetIgId = intval($presetIg['inputGroupId']);
+        foreach ($data['inputGroups'] as $idx => &$ig) {
+            if (intval($ig['id']) === $presetIgId) {
+                $ig['outputs'] = $presetIg['outputs'];
+                $ig['routing'] = isset($presetIg['routing']) ? $presetIg['routing'] : array();
+                if (isset($presetIg['effects'])) {
+                    $ig['effects'] = $presetIg['effects'];
+                }
+                break;
+            }
+        }
+        unset($ig);
+    }
+    file_put_contents($configFile,
+        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Delegate to the full apply mechanism (handles PipeWire restart +
+    // playback stop/resume internally)
+    return ApplyPipeWireInputGroups();
 }
 
 /////////////////////////////////////////////////////////////////////////////
