@@ -22,7 +22,8 @@ require_once '../commandsocket.php';
 // Returns array('wasPlaying' => bool, 'playlist' => string, 'repeat' => bool)
 // Uses stream context timeout so PHP doesn't hang if fppd's HTTP handler
 // blocks during GStreamer pipeline teardown.
-function StopFppdPlaybackSafe($timeoutSec = 3) {
+function StopFppdPlaybackSafe($timeoutSec = 3)
+{
     $result = array('wasPlaying' => false, 'playlist' => '', 'repeat' => false);
 
     $ctx = stream_context_create(array('http' => array('timeout' => $timeoutSec)));
@@ -37,7 +38,7 @@ function StopFppdPlaybackSafe($timeoutSec = 3) {
     $result['wasPlaying'] = true;
     $cp = isset($status['current_playlist']) ? $status['current_playlist'] : array();
     $result['playlist'] = isset($cp['playlist']) ? $cp['playlist'] : '';
-    $result['repeat']   = isset($cp['count']) && $cp['count'] === '0';
+    $result['repeat'] = isset($cp['count']) && $cp['count'] === '0';
 
     // Stop playback with timeout — if fppd hangs during GStreamer teardown
     // the context timeout prevents PHP from blocking forever.
@@ -53,7 +54,8 @@ function StopFppdPlaybackSafe($timeoutSec = 3) {
 // Helper: Send a setting to fppd, tolerating a non-responsive daemon.
 // Writes to the settings file (always works) then best-effort sends via
 // the command socket (1-second timeout built into SendCommand).
-function SetFppdSetting($key, $value) {
+function SetFppdSetting($key, $value)
+{
     WriteSettingToFile($key, $value);
     // SendCommand may fail if fppd is deadlocked/restarting — that's OK
     // because fppd will read the setting from the file on next pipeline start.
@@ -453,6 +455,66 @@ function ResolveCardIdToNumber($cardId)
         }
     }
     return -1;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Query a hardware ALSA PCM sink's natively supported sample rates
+// and return the best match from $allowedRates (sorted ascending).
+//
+// We run `aplay --dump-hw-params` which prints ALSA HW parameters even
+// when no audio data exists to play.  Typical output:
+//   RATE: 48000
+//   RATE: { 44100 48000 96000 }
+//   RATE: [8000 192000]   (continuous range)
+//
+// Returns $fallbackRate if the device cannot be queried.
+function QueryAlsaCardBestRate($cardId, $allowedRates, $fallbackRate)
+{
+    // Only alphanumeric + underscore card IDs are safe as hw: path components.
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $cardId)) {
+        return $fallbackRate;
+    }
+
+    // aplay exits non-zero when /dev/zero has no PCM header, but it still
+    // prints the HW params before failing.  Use a short timeout to avoid
+    // blocking if the device is busy.
+    $out = array();
+    exec('timeout 2 aplay -D ' . escapeshellarg('hw:' . $cardId)
+        . ' --dump-hw-params /dev/zero 2>&1 | head -40', $out);
+    $text = implode("\n", $out);
+
+    $deviceRates = array();
+    if (preg_match('/\bRATE\b[^\n]*\{([^}]+)\}/i', $text, $m)) {
+        // Discrete list: { 44100 48000 96000 }
+        preg_match_all('/\d+/', $m[1], $dm);
+        foreach ($dm[0] as $r) {
+            $deviceRates[] = intval($r);
+        }
+    } elseif (preg_match('/\bRATE\b[^\n]*\[(\d+)[^\d]+(\d+)\]/i', $text, $m)) {
+        // Continuous range [min max] — accept any allowed rate in range
+        $rmin = intval($m[1]);
+        $rmax = intval($m[2]);
+        foreach ($allowedRates as $r) {
+            if ($r >= $rmin && $r <= $rmax) {
+                $deviceRates[] = $r;
+            }
+        }
+    } elseif (preg_match('/\bRATE(?:\[\d+\])?:\s+(\d+)/i', $text, $m)) {
+        // Single rate
+        $deviceRates[] = intval($m[1]);
+    }
+
+    if (empty($deviceRates)) {
+        return $fallbackRate;
+    }
+
+    // Pick the highest allowed rate the device supports for best quality.
+    foreach (array_reverse($allowedRates) as $ar) {
+        if (in_array($ar, $deviceRates)) {
+            return $ar;
+        }
+    }
+    return $fallbackRate;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1596,12 +1658,15 @@ function SetInputGroupMemberVolume()
     $nodeIds = array();
     foreach ($objects as $obj) {
         $type = isset($obj['type']) ? $obj['type'] : '';
-        if ($type !== 'PipeWire:Interface:Node') continue;
+        if ($type !== 'PipeWire:Interface:Node')
+            continue;
         $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
         $nm = isset($props['node.name']) ? $props['node.name'] : '';
-        if ($nm === $loopbackNodeName ||
+        if (
+            $nm === $loopbackNodeName ||
             $nm === 'input.' . $loopbackNodeName ||
-            $nm === 'output.' . $loopbackNodeName) {
+            $nm === 'output.' . $loopbackNodeName
+        ) {
             $nodeIds[] = $obj['id'];
         }
     }
@@ -1631,7 +1696,7 @@ function SetInputGroupMemberVolume()
     foreach ($data['inputGroups'] as &$ig) {
         if (isset($ig['id']) && intval($ig['id']) === $groupId) {
             if ($isMuteToggle) {
-                $ig['members'][$memberIndex]['mute'] = (bool)$body['mute'];
+                $ig['members'][$memberIndex]['mute'] = (bool) $body['mute'];
             } else {
                 $ig['members'][$memberIndex]['volume'] = $volumePct;
                 $ig['members'][$memberIndex]['mute'] = false;
@@ -1689,7 +1754,8 @@ function SetStreamSlotVolume()
                 $volumeLinear = round($volume / 100.0, 3);
                 foreach ($objects as $obj) {
                     $type = isset($obj['type']) ? $obj['type'] : '';
-                    if ($type !== 'PipeWire:Interface:Node') continue;
+                    if ($type !== 'PipeWire:Interface:Node')
+                        continue;
                     $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
                     $nm = isset($props['node.name']) ? $props['node.name'] : '';
                     if ($nm === $nodeName) {
@@ -1753,7 +1819,8 @@ function GetStreamSlotStatus()
         if (is_array($pwObjects)) {
             foreach ($pwObjects as $obj) {
                 $type = isset($obj['type']) ? $obj['type'] : '';
-                if ($type !== 'PipeWire:Interface:Node') continue;
+                if ($type !== 'PipeWire:Interface:Node')
+                    continue;
                 $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
                 $nm = isset($props['node.name']) ? $props['node.name'] : '';
                 if ($nm === $nodeName) {
@@ -2016,7 +2083,8 @@ function SetRoutingPathVolume()
         $target = isset($props['node.target']) ? $props['node.target'] : '';
 
         // Match internal stream: node.name starts with routing node name and targets output group
-        if (($nm === $routingNodeName || strpos($nm, $routingNodeName . '.') === 0)
+        if (
+            ($nm === $routingNodeName || strpos($nm, $routingNodeName . '.') === 0)
             && $target === $ogNodeName
         ) {
             $cmd = $SUDO . " " . $env . " pw-cli set-param " . $obj['id'] . " Props '{ channelmix.volume: $volumeLinear }' 2>&1";
@@ -2030,9 +2098,11 @@ function SetRoutingPathVolume()
     // Also update saved config for persistence
     foreach ($igData['inputGroups'] as &$ig) {
         if (intval($ig['id']) === $igId) {
-            if (!isset($ig['routing'])) $ig['routing'] = array();
+            if (!isset($ig['routing']))
+                $ig['routing'] = array();
             $pathKey = strval($ogId);
-            if (!isset($ig['routing'][$pathKey])) $ig['routing'][$pathKey] = array();
+            if (!isset($ig['routing'][$pathKey]))
+                $ig['routing'][$pathKey] = array();
             $ig['routing'][$pathKey]['volume'] = $volumePct;
             break;
         }
@@ -2284,8 +2354,10 @@ function LiveApplyRoutingPreset()
     $preset = json_decode(file_get_contents($presetFile), true);
     $data = json_decode(file_get_contents($configFile), true);
 
-    if (!is_array($preset) || !isset($preset['routing']) ||
-        !is_array($data) || !isset($data['inputGroups'])) {
+    if (
+        !is_array($preset) || !isset($preset['routing']) ||
+        !is_array($data) || !isset($data['inputGroups'])
+    ) {
         return json(array("status" => "error", "message" => "Invalid preset or config data"));
     }
 
@@ -2342,18 +2414,20 @@ function LiveApplyRoutingPreset()
 
         // ── Check: output group topology changed? ──
         $currentOutputs = isset($currentIg['outputs']) ? $currentIg['outputs'] : array();
-        $presetOutputs  = isset($presetIg['outputs'])  ? $presetIg['outputs']  : array();
-        $curSorted  = $currentOutputs; sort($curSorted);
-        $preSorted  = $presetOutputs;  sort($preSorted);
+        $presetOutputs = isset($presetIg['outputs']) ? $presetIg['outputs'] : array();
+        $curSorted = $currentOutputs;
+        sort($curSorted);
+        $preSorted = $presetOutputs;
+        sort($preSorted);
         if ($curSorted !== $preSorted) {
             $topologyChanged = true;
         }
 
         // ── Check: EQ topology changed (enabled/disabled, band count)? ──
         $currentEq = isset($currentIg['effects']['eq']) ? $currentIg['effects']['eq'] : array();
-        $presetEq  = isset($presetIg['effects']['eq'])  ? $presetIg['effects']['eq']  : array();
-        $curEqOn   = !empty($currentEq['enabled']) && !empty($currentEq['bands']);
-        $preEqOn   = !empty($presetEq['enabled'])  && !empty($presetEq['bands']);
+        $presetEq = isset($presetIg['effects']['eq']) ? $presetIg['effects']['eq'] : array();
+        $curEqOn = !empty($currentEq['enabled']) && !empty($currentEq['bands']);
+        $preEqOn = !empty($presetEq['enabled']) && !empty($presetEq['bands']);
 
         if ($curEqOn !== $preEqOn) {
             $topologyChanged = true;
@@ -2382,11 +2456,11 @@ function LiveApplyRoutingPreset()
             if ($currentIg === null)
                 continue;
 
-            $igId   = $presetIgId;
+            $igId = $presetIgId;
             $igName = isset($currentIg['name']) ? $currentIg['name'] : '';
 
             $curEqOn = !empty($currentIg['effects']['eq']['enabled'])
-                    && !empty($currentIg['effects']['eq']['bands']);
+                && !empty($currentIg['effects']['eq']['bands']);
 
             // Determine routing combine-stream name (with or without EQ)
             $routingNodeName = $curEqOn
@@ -2394,8 +2468,8 @@ function LiveApplyRoutingPreset()
                 : "fpp_input_" . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($igName));
 
             // ── Live-apply routing path volumes ──
-            $presetOutputs  = isset($presetIg['outputs'])  ? $presetIg['outputs']  : array();
-            $presetRouting  = isset($presetIg['routing'])   ? $presetIg['routing']  : array();
+            $presetOutputs = isset($presetIg['outputs']) ? $presetIg['outputs'] : array();
+            $presetRouting = isset($presetIg['routing']) ? $presetIg['routing'] : array();
 
             foreach ($presetOutputs as $ogId) {
                 $ogId = intval($ogId);
@@ -2403,7 +2477,7 @@ function LiveApplyRoutingPreset()
                     continue;
 
                 $ogTarget = $ogNodeNames[$ogId];
-                $pathKey  = strval($ogId);
+                $pathKey = strval($ogId);
                 $volumePct = 100;
                 $mute = false;
 
@@ -2417,20 +2491,23 @@ function LiveApplyRoutingPreset()
 
                 // Find the combine-stream output member targeting this OG
                 foreach ($pwObjects as $obj) {
-                    if (!isset($obj['type']) ||
-                        $obj['type'] !== 'PipeWire:Interface:Node')
+                    if (
+                        !isset($obj['type']) ||
+                        $obj['type'] !== 'PipeWire:Interface:Node'
+                    )
                         continue;
-                    $props  = isset($obj['info']['props']) ? $obj['info']['props'] : array();
-                    $nm     = isset($props['node.name'])   ? $props['node.name']   : '';
+                    $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
+                    $nm = isset($props['node.name']) ? $props['node.name'] : '';
                     $target = isset($props['node.target']) ? $props['node.target'] : '';
 
-                    if (($nm === $routingNodeName ||
-                         strpos($nm, $routingNodeName . '.') === 0)
+                    if (
+                        ($nm === $routingNodeName ||
+                            strpos($nm, $routingNodeName . '.') === 0)
                         && $target === $ogTarget
                     ) {
                         $cmd = $SUDO . " " . $env
-                             . " pw-cli set-param " . $obj['id']
-                             . " Props '{ channelmix.volume: $volumeLinear }' 2>&1";
+                            . " pw-cli set-param " . $obj['id']
+                            . " Props '{ channelmix.volume: $volumeLinear }' 2>&1";
                         shell_exec($cmd);
                         $volumeChanges++;
                     }
@@ -2440,16 +2517,18 @@ function LiveApplyRoutingPreset()
             // ── Live-apply EQ band parameters ──
             $presetEq = isset($presetIg['effects']['eq'])
                 ? $presetIg['effects']['eq'] : array();
-            $preEqOn  = !empty($presetEq['enabled'])
-                     && !empty($presetEq['bands']);
+            $preEqOn = !empty($presetEq['enabled'])
+                && !empty($presetEq['bands']);
 
             if ($curEqOn && $preEqOn) {
                 $fxNodeName = "fpp_fx_ig_" . $igId;
                 $fxNodeId = null;
 
                 foreach ($pwObjects as $obj) {
-                    if (!isset($obj['type']) ||
-                        $obj['type'] !== 'PipeWire:Interface:Node')
+                    if (
+                        !isset($obj['type']) ||
+                        $obj['type'] !== 'PipeWire:Interface:Node'
+                    )
                         continue;
                     $props = isset($obj['info']['props']) ? $obj['info']['props'] : array();
                     $nm = isset($props['node.name']) ? $props['node.name'] : '';
@@ -2467,7 +2546,7 @@ function LiveApplyRoutingPreset()
                     foreach ($presetEq['bands'] as $bi => $band) {
                         $freq = floatval(isset($band['freq']) ? $band['freq'] : 1000);
                         $gain = floatval(isset($band['gain']) ? $band['gain'] : 0);
-                        $q    = floatval(isset($band['q'])    ? $band['q']    : 1.0);
+                        $q = floatval(isset($band['q']) ? $band['q'] : 1.0);
 
                         for ($ch = 0; $ch < $numCh; $ch++) {
                             $chLabel = $channelLabels[$ch];
@@ -2497,13 +2576,15 @@ function LiveApplyRoutingPreset()
         }
 
         // Persist config
-        file_put_contents($configFile,
-            json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        file_put_contents(
+            $configFile,
+            json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
 
         return json(array(
             "status" => "OK",
             "message" => "Preset '$name' live-applied ($applied groups,"
-                       . " $volumeChanges volume changes, $eqChanges EQ updates)",
+                . " $volumeChanges volume changes, $eqChanges EQ updates)",
             "preset" => $name,
             "applied" => $applied,
             "volumeChanges" => $volumeChanges,
@@ -2529,8 +2610,10 @@ function LiveApplyRoutingPreset()
         }
         unset($ig);
     }
-    file_put_contents($configFile,
-        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    file_put_contents(
+        $configFile,
+        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+    );
 
     // Delegate to the full apply mechanism (handles PipeWire restart +
     // playback stop/resume internally)
@@ -2649,17 +2732,20 @@ function UpdateInputGroupEQRealtime()
         if (isset($body['freq'])) {
             $cmd = $SUDO . " " . $env . " pw-cli set-param $nodeId Props '{ \"$paramName:Freq\": " . floatval($body['freq']) . " }' 2>&1";
             $output = shell_exec($cmd);
-            if (strpos($output, 'Error') !== false) $success = false;
+            if (strpos($output, 'Error') !== false)
+                $success = false;
         }
         if (isset($body['gain'])) {
             $cmd = $SUDO . " " . $env . " pw-cli set-param $nodeId Props '{ \"$paramName:Gain\": " . floatval($body['gain']) . " }' 2>&1";
             $output = shell_exec($cmd);
-            if (strpos($output, 'Error') !== false) $success = false;
+            if (strpos($output, 'Error') !== false)
+                $success = false;
         }
         if (isset($body['q'])) {
             $cmd = $SUDO . " " . $env . " pw-cli set-param $nodeId Props '{ \"$paramName:Q\": " . floatval($body['q']) . " }' 2>&1";
             $output = shell_exec($cmd);
-            if (strpos($output, 'Error') !== false) $success = false;
+            if (strpos($output, 'Error') !== false)
+                $success = false;
         }
     }
 
@@ -2669,9 +2755,12 @@ function UpdateInputGroupEQRealtime()
         foreach ($data['inputGroups'] as &$ig) {
             if (intval($ig['id']) === $groupId) {
                 if (isset($ig['effects']['eq']['bands'][$bandIdx])) {
-                    if (isset($body['freq'])) $ig['effects']['eq']['bands'][$bandIdx]['freq'] = floatval($body['freq']);
-                    if (isset($body['gain'])) $ig['effects']['eq']['bands'][$bandIdx]['gain'] = floatval($body['gain']);
-                    if (isset($body['q'])) $ig['effects']['eq']['bands'][$bandIdx]['q'] = floatval($body['q']);
+                    if (isset($body['freq']))
+                        $ig['effects']['eq']['bands'][$bandIdx]['freq'] = floatval($body['freq']);
+                    if (isset($body['gain']))
+                        $ig['effects']['eq']['bands'][$bandIdx]['gain'] = floatval($body['gain']);
+                    if (isset($body['q']))
+                        $ig['effects']['eq']['bands'][$bandIdx]['q'] = floatval($body['q']);
                 }
                 break;
             }
@@ -2913,7 +3002,8 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
                 $pathMute = isset($routing[$pathKey]['mute']) && $routing[$pathKey]['mute'];
             }
             // Skip muted paths
-            if ($pathMute) continue;
+            if ($pathMute)
+                continue;
 
             foreach ($outputGroups as $og) {
                 if (isset($og['id']) && intval($og['id']) === intval($outGroupId)) {
@@ -3491,21 +3581,13 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
         // clock can run at any of these.  We use the same list as candidates.
         $allowedRates = array(44100, 48000, 96000);
         $audioFormat = isset($settings['AudioFormat']) ? intval($settings['AudioFormat']) : 0;
-        if ($audioFormat >= 7)       $globalFallbackRate = 96000;
-        elseif ($audioFormat >= 4)   $globalFallbackRate = 48000;
-        else                         $globalFallbackRate = 44100;
-
-        foreach ($customAlsaAdapters as $cid => &$adapterInfo) {
-            if (isset($sinkCardRateMap[$cid]) && in_array($sinkCardRateMap[$cid], $allowedRates)) {
-                // WirePlumber already opened this device and negotiated a rate — use it.
-                $adapterInfo['rate'] = $sinkCardRateMap[$cid];
-            } else {
-                // Device not currently active in PipeWire (or rate not reported).
-                // Query ALSA HW params directly to find the best supported rate.
-                $adapterInfo['rate'] = QueryAlsaCardBestRate($cid, $allowedRates, $globalFallbackRate);
-            }
+        if ($audioFormat >= 7) {
+            $alsaRate = 96000;
+        } elseif ($audioFormat >= 4) {
+            $alsaRate = 48000;
+        } else {
+            $alsaRate = 44100;
         }
-        unset($adapterInfo);
 
         $conf .= "# Custom multi-channel ALSA adapter nodes\n";
         $conf .= "# These provide the correct channel count for output group members\n";
@@ -4273,9 +4355,18 @@ function GetPipeWireGraph()
 
     // Virtual node IDs start above any real PipeWire ID
     $maxId = 0;
-    foreach ($nodes as $n) { if ($n['id'] > $maxId) $maxId = $n['id']; }
-    foreach ($ports as $p) { if ($p['id'] > $maxId) $maxId = $p['id']; }
-    foreach ($links as $l) { if ($l['id'] > $maxId) $maxId = $l['id']; }
+    foreach ($nodes as $n) {
+        if ($n['id'] > $maxId)
+            $maxId = $n['id'];
+    }
+    foreach ($ports as $p) {
+        if ($p['id'] > $maxId)
+            $maxId = $p['id'];
+    }
+    foreach ($links as $l) {
+        if ($l['id'] > $maxId)
+            $maxId = $l['id'];
+    }
     $virtualId = $maxId + 10000;
 
     for ($i = 1; $i <= $FPPD_STREAM_COUNT; $i++) {
@@ -4346,8 +4437,10 @@ function GetPipeWireGraph()
                 foreach ($ports as $p) {
                     if ($p['nodeId'] === $targetNodeId && $p['direction'] === 'input') {
                         $ch = preg_replace('/^(playback|capture|input|output)_/', '', $p['name']);
-                        if ($ch === 'FL' && !$targetPortFL) $targetPortFL = $p['id'];
-                        if ($ch === 'FR' && !$targetPortFR) $targetPortFR = $p['id'];
+                        if ($ch === 'FL' && !$targetPortFL)
+                            $targetPortFL = $p['id'];
+                        if ($ch === 'FR' && !$targetPortFR)
+                            $targetPortFR = $p['id'];
                     }
                 }
                 if ($targetPortFL) {
