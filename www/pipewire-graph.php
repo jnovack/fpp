@@ -267,6 +267,8 @@
                             HW Source</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#fd7e14"></span>
                             Media Stream</span>
+                        <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#d63384"></span>
+                            Input Tee</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#e35d6a"></span>
                             Input Group</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#0d6efd"></span>
@@ -316,7 +318,7 @@
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
                 if (nm.startsWith('fpp_input_')) return '#e35d6a'; // input group mix bus
-                if (nm.startsWith('fpp_tee_fppd_stream_')) return '#e35d6a'; // input group stream tee
+                if (nm.startsWith('fpp_tee_fppd_stream_')) return '#d63384'; // input tee (fan-out)
                 if (nm.startsWith('fpp_loopback_ig') || nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return '#e35d6a'; // input group routing
                 if (nm.startsWith('fpp_group_')) return '#0d6efd'; // combine-stream group
                 if (nm.startsWith('fpp_fx_') && !nm.endsWith('_out')) return '#6f42c1'; // delay filter sink
@@ -642,36 +644,39 @@
             }
 
             // ── Layout algorithm ──────────────────────────────────────────
-            // Fixed 5-column layout (left to right):
+            // Fixed 6-column layout (left to right):
             //   0: Input Sources — Audio/Source, Stream/Output/Audio (fppd etc.)
-            //   1: Input Groups  — fpp_input_* combine-stream mix buses, loopbacks
-            //   2: Output Groups — fpp_group_* combine-stream sinks (existing)
-            //   3: Effects       — delay filters, EQ nodes (fpp_fx_*, fpp_eq_*)
-            //   4: HW Outputs    — ALSA sinks, AES67 / app capture (Stream/Input/Audio)
-            const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects', 'HW Outputs'];
+            //   1: Input Tees   — fpp_tee_* null-sink fan-out nodes
+            //   2: Input Groups  — fpp_input_* combine-stream mix buses, loopbacks
+            //   3: Output Groups — fpp_group_* combine-stream sinks (existing)
+            //   4: Effects       — delay filters, EQ nodes (fpp_fx_*, fpp_eq_*)
+            //   5: HW Outputs    — ALSA sinks, AES67 / app capture (Stream/Input/Audio)
+            const NUM_COLS = 6;
+            const COL_LABELS = ['Input Sources', 'Input Tees', 'Input Groups', 'Output Groups', 'Effects', 'HW Outputs'];
 
             function classifyColumn(n) {
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
 
-                // Input groups (mix buses) & stream tee nodes
-                if (nm.startsWith('fpp_input_')) return 1;
+                // Input tees (fan-out null-sinks)
                 if (nm.startsWith('fpp_tee_fppd_stream_')) return 1;
-                if (nm.startsWith('fpp_loopback_ig')) return 1;
-                if (nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return 1;
-                // (fpp_route removed — combine-stream handles routing)
+
+                // Input groups (mix buses)
+                if (nm.startsWith('fpp_input_')) return 2;
+                if (nm.startsWith('fpp_loopback_ig')) return 2;
+                if (nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return 2;
 
                 // Output group sinks
-                if (nm.startsWith('fpp_group_')) return 2;
+                if (nm.startsWith('fpp_group_')) return 3;
 
                 // Effects — delay filters, EQ, any fpp_fx_ node
-                if (nm.startsWith('fpp_fx_') || nm.startsWith('fpp_eq_')) return 3;
+                if (nm.startsWith('fpp_fx_') || nm.startsWith('fpp_eq_')) return 4;
 
                 // ALSA hardware outputs
-                if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return 4;
+                if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return 5;
 
                 // AES67 / app capture sinks (Stream/Input/Audio)
-                if (mc === 'Stream/Input/Audio') return 4;
+                if (mc === 'Stream/Input/Audio') return 5;
 
                 // Audio sources (mic inputs, ALSA capture)
                 if (mc === 'Audio/Source') return 0;
@@ -680,7 +685,7 @@
                 if (mc === 'Stream/Output/Audio') return 0;
 
                 // Any other Audio/Sink not caught above (e.g. custom)
-                if (mc === 'Audio/Sink') return 4;
+                if (mc === 'Audio/Sink') return 5;
 
                 // Fallback
                 return 0;
@@ -696,7 +701,8 @@
                 });
 
                 // Assign each node to a column
-                const cols = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+                const cols = {};
+                for (let i = 0; i < NUM_COLS; i++) cols[i] = [];
                 graphData.nodes.forEach(n => {
                     n._col = classifyColumn(n);
                     cols[n._col].push(n);
@@ -719,7 +725,7 @@
 
                 // ── Barycenter crossing minimization ──────────────────────
                 // Assign initial order indices within each column (alphabetical seed)
-                for (const c of [0, 1, 2, 3, 4]) {
+                for (let c = 0; c < NUM_COLS; c++) {
                     cols[c].sort((a, b) => (a.description || a.name).localeCompare(b.description || b.name));
                     cols[c].forEach((n, i) => { n._order = i; });
                 }
@@ -768,17 +774,17 @@
                 // Run several sweeps: left→right then right→left
                 for (let pass = 0; pass < 4; pass++) {
                     // Forward sweep (use left neighbour col to sort right col)
-                    for (let c = 1; c <= 4; c++) {
+                    for (let c = 1; c < NUM_COLS; c++) {
                         if (cols[c].length > 1) barySort(c, c - 1);
                     }
                     // Backward sweep
-                    for (let c = 3; c >= 0; c--) {
+                    for (let c = NUM_COLS - 2; c >= 0; c--) {
                         if (cols[c].length > 1) barySort(c, c + 1);
                     }
                 }
 
                 // ── Assign final positions ────────────────────────────────
-                for (let ci = 0; ci < 5; ci++) {
+                for (let ci = 0; ci < NUM_COLS; ci++) {
                     let y = PADDING.top + 30; // room for column header
                     cols[ci].forEach(n => {
                         const h = nodeHeight(n);
@@ -802,7 +808,7 @@
 
                 // Draw column headers
                 gRoot.selectAll('.pw-col-header').remove();
-                for (let ci = 0; ci < 5; ci++) {
+                for (let ci = 0; ci < NUM_COLS; ci++) {
                     const x = PADDING.left + ci * (NODE_W + PADDING.colGap) + NODE_W / 2;
                     gRoot.append('text')
                         .attr('class', 'pw-col-header')
