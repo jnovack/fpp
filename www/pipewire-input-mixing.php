@@ -310,7 +310,8 @@
                                 status...</span>
                         </div>
                         <div class="toolbar-right">
-                            <button class="buttons btn-outline-secondary btn-sm" onclick="RefreshSources()" title="Refresh capture device list">
+                            <button class="buttons btn-outline-secondary btn-sm" onclick="RefreshSources()"
+                                title="Refresh capture device list">
                                 <i class="fas fa-redo"></i> Refresh Sources
                             </button>
                             <button class="buttons btn-outline-success btn-group-action" onclick="AddInputGroup()">
@@ -322,7 +323,8 @@
                             <button class="buttons btn-outline-primary" onclick="ApplyInputGroups()">
                                 <i class="fas fa-sync"></i> Save &amp; Apply
                             </button>
-                            <a class="buttons btn-outline-secondary" href="pipewire-routing-matrix.php" title="Open Routing Matrix">
+                            <a class="buttons btn-outline-secondary" href="pipewire-routing-matrix.php"
+                                title="Open Routing Matrix">
                                 <i class="fas fa-th"></i> Routing Matrix
                             </a>
                         </div>
@@ -599,7 +601,7 @@
 
                 // Device state badge
                 if (mbr.cardId) {
-                    var matchedSrc = availableSources.find(function(s) { return s.cardId === mbr.cardId; });
+                    var matchedSrc = availableSources.find(function (s) { return s.cardId === mbr.cardId; });
                     if (matchedSrc) {
                         var stateLabel = matchedSrc.state || 'unknown';
                         var stateClass = stateLabel === 'running' ? 'state-running' :
@@ -619,7 +621,7 @@
                 }
             } else if (type === 'aes67_receive') {
                 // Dropdown populated from AES67 receive instances
-                var recvInstances = availableAES67Instances.filter(function(inst) {
+                var recvInstances = availableAES67Instances.filter(function (inst) {
                     return inst.mode === 'receive' && inst.enabled;
                 });
                 if (recvInstances.length > 0) {
@@ -1000,6 +1002,6 @@
             return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
     </script>
-</body>
+    </body>
 
 </html>

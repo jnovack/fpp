@@ -1,7 +1,7 @@
 # FPP Input Mixing & Multi-Stream Architecture — Implementation Plan
 
 **Created:** 2026-02-20
-**Branch:** `input-mixing-phase1` (forked from `multi-input-gstreamer`)
+**Branch:** `gstreamer-multi-routing-pipewire` (forked from `multi-input-gstreamer`)
 **Status:** Complete — Phases 1–5 implemented
 
 ---
@@ -540,16 +540,16 @@ fppd
 
 ### Post-Implementation Bug Fixes
 
-| Bug | Root Cause | Fix | Commit |
-| --- | --- | --- | --- |
-| **Self-deadlock in StreamSlotManager** | `std::mutex` couldn't handle re-entrant calls from `Start()`→`Stop()` within the same lock | Changed to `std::recursive_mutex` | `0b764171` |
-| **`Stop()` deadlock** | Appsink/bus callbacks held the lock while `gst_element_set_state(NULL)` tried to drain them | Clean up appsink and bus *before* state change | `370dfa57` |
-| **PipeWire audio groups not robust across reboots** | USB card names changed across reboots, breaking input group config references | Boot-time card resolution + regeneration script for `96-fpp-input-groups.conf` | `3675b7a6` |
-| **Input group mute/volume not working in real-time** | `ToggleMute()` didn't send API call; mute flag didn't persist correctly | Send `POST /api/pipewire/audio/input-groups/volume` with `mute` flag; preserve saved volume on mute | `4da04d7a` |
-| **Routing matrix page missing header** | Used `common/menuBody.inc` instead of FPP standard `menu.inc` pattern; `AudioPipeWire` setting check was wrong | Restructured to standard FPP page layout; changed check to `AudioBackend === 'pipewire'` | `7bda3e18` |
-| **Graph showed fppd stream routing to wrong input group** | `$fppdStreamTargets` map was single-value, last group overwrote previous | Changed to array-of-targets so all group assignments are preserved | `40819271` |
-| **Songs skipping without playing (5s stall)** | Same overwrite bug in `ApplyPipeWireAudioGroups` and `ApplyPipeWireInputGroupsConfig` — last input group wrote `PipeWireSinkName` to a non-existent node | First-wins semantics: `if (!isset($slotTargets[$slotNum]))` | `e00bb6e1` |
-| **Volume/mute API returned "loopback node not found"** | PipeWire loopback modules create only `input.NAME` and `output.NAME` sub-nodes (no bare parent) | Match all three name variants: bare, `input.` prefix, `output.` prefix | `54eb4abf` |
+| Bug                                                       | Root Cause                                                                                                                                               | Fix                                                                                                 | Commit     |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------- |
+| **Self-deadlock in StreamSlotManager**                    | `std::mutex` couldn't handle re-entrant calls from `Start()`→`Stop()` within the same lock                                                               | Changed to `std::recursive_mutex`                                                                   | `0b764171` |
+| **`Stop()` deadlock**                                     | Appsink/bus callbacks held the lock while `gst_element_set_state(NULL)` tried to drain them                                                              | Clean up appsink and bus *before* state change                                                      | `370dfa57` |
+| **PipeWire audio groups not robust across reboots**       | USB card names changed across reboots, breaking input group config references                                                                            | Boot-time card resolution + regeneration script for `96-fpp-input-groups.conf`                      | `3675b7a6` |
+| **Input group mute/volume not working in real-time**      | `ToggleMute()` didn't send API call; mute flag didn't persist correctly                                                                                  | Send `POST /api/pipewire/audio/input-groups/volume` with `mute` flag; preserve saved volume on mute | `4da04d7a` |
+| **Routing matrix page missing header**                    | Used `common/menuBody.inc` instead of FPP standard `menu.inc` pattern; `AudioPipeWire` setting check was wrong                                           | Restructured to standard FPP page layout; changed check to `AudioBackend === 'pipewire'`            | `7bda3e18` |
+| **Graph showed fppd stream routing to wrong input group** | `$fppdStreamTargets` map was single-value, last group overwrote previous                                                                                 | Changed to array-of-targets so all group assignments are preserved                                  | `40819271` |
+| **Songs skipping without playing (5s stall)**             | Same overwrite bug in `ApplyPipeWireAudioGroups` and `ApplyPipeWireInputGroupsConfig` — last input group wrote `PipeWireSinkName` to a non-existent node | First-wins semantics: `if (!isset($slotTargets[$slotNum]))`                                         | `e00bb6e1` |
+| **Volume/mute API returned "loopback node not found"**    | PipeWire loopback modules create only `input.NAME` and `output.NAME` sub-nodes (no bare parent)                                                          | Match all three name variants: bare, `input.` prefix, `output.` prefix                              | `54eb4abf` |
 
 ### Testing Criteria
 
