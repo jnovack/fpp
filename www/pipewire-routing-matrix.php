@@ -46,6 +46,30 @@
             min-width: 140px;
         }
 
+        .routing-matrix .axis-corner {
+            background: var(--bs-tertiary-bg, #f8f9fa);
+        }
+
+        .routing-matrix .axis-header-outputs {
+            background: var(--bs-primary-bg-subtle, #cfe2ff);
+            color: var(--bs-primary-text-emphasis, #052c65);
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-align: center;
+            padding: 0.3rem 0.75rem;
+        }
+
+        .routing-matrix .axis-header-inputs {
+            background: var(--bs-tertiary-bg, #f8f9fa);
+            color: var(--bs-secondary-color, #6c757d);
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-align: right;
+            white-space: nowrap;
+        }
+
         .routing-cell {
             min-width: 120px;
         }
@@ -160,11 +184,20 @@
         .dirty-indicator.show {
             display: inline;
         }
+
+        /* Modal mode: tighten spacing */
+        body.modal-mode .routing-matrix-container {
+            margin-bottom: 0.5rem;
+        }
+
+        body.modal-mode #routingContent>.mb-3:first-child {
+            margin-bottom: 0.5rem !important;
+        }
     </style>
 </head>
 
 <body<?php if ($modalMode)
-    echo ' style="margin:0;padding:1rem;background:#fff;color:#212529;"'; ?>>
+    echo ' class="modal-mode" style="margin:0;padding:0.75rem;background:#fff;color:#212529;"'; ?>>
     <?php if (!$modalMode) { ?>
         <div id="bodyWrapper">
             <?php
@@ -248,8 +281,11 @@
                             RenderEffects();
                             isDirty = false;
                             UpdateDirtyIndicator();
+                            // Let the DOM settle, then tell parent iframe our true height
+                            setTimeout(NotifyParentResize, 50);
                         }).fail(function () {
                             $('#matrixContainer').html('<p class="text-danger">Failed to load routing data.</p>');
+                            setTimeout(NotifyParentResize, 50);
                         });
 
                         LoadPresets();
@@ -275,7 +311,15 @@
                         var enabledOGs = matrixData.outputGroups.filter(function (og) { return og.enabled; });
 
                         var html = '<table class="routing-matrix">';
-                        html += '<thead><tr><th></th>';
+                        html += '<thead>';
+                        // Super-header: axis labels
+                        html += '<tr>';
+                        html += '<th class="axis-corner"></th>';
+                        html += '<th colspan="' + enabledOGs.length + '" class="axis-header-outputs">';
+                        html += '<i class="fas fa-arrow-right"></i> Output Groups</th>';
+                        html += '</tr>';
+                        // Column headers: output group names
+                        html += '<tr><th class="axis-header-inputs">Input Groups <i class="fas fa-arrow-down"></i></th>';
                         enabledOGs.forEach(function (og) {
                             html += '<th>' + EscapeHtml(og.name || 'Group ' + og.id) + '</th>';
                         });
@@ -725,6 +769,14 @@
                     $(document).ready(function () {
                         LoadData();
                     });
+
+                    // Notify parent frame of rendered height after AJAX completes
+                    function NotifyParentResize() {
+                        if (window.parent && window.parent !== window) {
+                            var h = document.body.scrollHeight;
+                            window.parent.postMessage({ type: 'fpp-iframe-resize', height: h }, '*');
+                        }
+                    }
                 </script>
 
                 <?php if (!$modalMode) { ?>

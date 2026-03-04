@@ -323,8 +323,8 @@
                             <button class="buttons btn-outline-primary" onclick="ApplyInputGroups()">
                                 <i class="fas fa-sync"></i> Save &amp; Apply
                             </button>
-                            <a class="buttons btn-outline-secondary" href="pipewire-routing-matrix.php"
-                                title="Open Routing Matrix">
+                            <a class="buttons btn-outline-secondary" href="#" title="Open Routing Matrix"
+                                onclick="OpenRoutingMatrix(); return false;">
                                 <i class="fas fa-th"></i> Routing Matrix
                             </a>
                         </div>
@@ -523,7 +523,7 @@
             // Output routing
             html += '<div class="output-routing">';
             html += '<label><i class="fas fa-arrow-right"></i> Route to Output Groups: ';
-            html += '<a href="pipewire-routing-matrix.php" target="_blank" style="font-size:0.8rem;font-weight:normal;" title="Open Routing Matrix for per-path volume control">';
+            html += '<a href="#" onclick="OpenRoutingMatrix(); return false;" style="font-size:0.8rem;font-weight:normal;" title="Open Routing Matrix for per-path volume control">';
             html += '<i class="fas fa-th"></i> Matrix View</a></label>';
             html += '<div>';
             var outputs = ig.outputs || [];
@@ -1001,6 +1001,33 @@
             if (!str) return '';
             return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
+        // ─── Routing Matrix Modal ──────────────────────────────────────
+        function OpenRoutingMatrix() {
+            $('#routingMatrixFrame').attr('src', 'pipewire-routing-matrix.php?modal=1');
+            $('#routingMatrixModal').modal('show');
+        }
+    </script>
+
+    <!-- Routing Matrix Modal -->
+    <div class="modal fade" id="routingMatrixModal" tabindex="-1" aria-labelledby="routingMatrixModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="routingMatrixModalLabel"><i class="fas fa-th"></i> Routing Matrix</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <iframe id="routingMatrixFrame" src="" style="width:100%;border:none;display:block;height:78vh;"
+                        scrolling="yes"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        $('#routingMatrixModal').on('hidden.bs.modal', function () {
+            $('#routingMatrixFrame').attr('src', '');
+        });
     </script>
     </body>
 
