@@ -1913,6 +1913,57 @@ static void setupAudio() {
     }
 
     // --- Audio Output Groups Configuration ---
+    // On first PipeWire setup, create default output and input group configs
+    // that mirror the legacy ALSA configuration: one output group with the
+    // configured sound card, and one input group with fppd_stream_1 routed
+    // to it.  This ensures audio works immediately when switching to PipeWire.
+    const std::string groupsJsonPath = FPP_MEDIA_DIR + "/config/pipewire-audio-groups.json";
+    const std::string igJsonPath = FPP_MEDIA_DIR + "/config/pipewire-input-groups.json";
+    if (usePipeWireBackend && !runningInDocker && !FileExists(groupsJsonPath)) {
+        std::string defCardId = getAlsaCardId(card);
+        printf("FPP - First PipeWire setup: creating default output group (card %s) and input group\n", defCardId.c_str());
+
+        // Default output group: one group with the legacy audio device
+        Json::Value ogRoot;
+        Json::Value group;
+        group["id"] = 1;
+        group["name"] = "Main Output";
+        group["enabled"] = true;
+        Json::Value member;
+        member["cardId"] = defCardId;
+        member["channels"] = 2;
+        member["delayMs"] = 0.0;
+        group["members"] = Json::Value(Json::arrayValue);
+        group["members"].append(member);
+        ogRoot["groups"] = Json::Value(Json::arrayValue);
+        ogRoot["groups"].append(group);
+
+        PutFileContents(groupsJsonPath, SaveJsonToString(ogRoot));
+
+        // Default input group: fppd_stream_1 routed to output group 1
+        Json::Value igRoot;
+        Json::Value ig;
+        ig["id"] = 1;
+        ig["name"] = "Mix Bus 1";
+        ig["enabled"] = true;
+        ig["channels"] = 2;
+        ig["volume"] = 100;
+        Json::Value igMember;
+        igMember["type"] = "fppd_stream";
+        igMember["sourceId"] = "fppd_stream_1";
+        igMember["name"] = "Media Playback";
+        igMember["volume"] = 100;
+        igMember["mute"] = false;
+        ig["members"] = Json::Value(Json::arrayValue);
+        ig["members"].append(igMember);
+        ig["outputs"] = Json::Value(Json::arrayValue);
+        ig["outputs"].append(1);
+        igRoot["inputGroups"] = Json::Value(Json::arrayValue);
+        igRoot["inputGroups"].append(ig);
+
+        PutFileContents(igJsonPath, SaveJsonToString(igRoot));
+    }
+
     // Restore cached combine-stream and input group configs so group sinks
     // survive reboot.  These are initially copied as-is so PipeWire starts
     // with the right module layout.  After PipeWire is up and WirePlumber
@@ -1927,9 +1978,12 @@ static void setupAudio() {
         printf("FPP - Restoring PipeWire audio output groups config\n");
         exec("/bin/cp " + groupsConfCache + " " + groupsConfDest);
         hasGroupsConfig = true;
+    } else if (usePipeWireBackend && !runningInDocker && FileExists(groupsJsonPath)) {
+        // JSON exists but no cached .conf yet (e.g. first-time default creation).
+        // The regeneration script will generate the .conf from the JSON.
+        hasGroupsConfig = true;
     } else if (usePipeWireBackend && !runningInDocker && FileExists(groupsConfDest)) {
         // JSON config was deleted but stale conf remains — clean up
-        const std::string groupsJsonPath = FPP_MEDIA_DIR + "/config/pipewire-audio-groups.json";
         if (!FileExists(groupsJsonPath)) {
             unlink(groupsConfDest.c_str());
         }
