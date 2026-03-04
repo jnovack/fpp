@@ -1620,7 +1620,7 @@ static void setupAudio() {
     });
     bool usePipeWireBackend = (audioBackendLower == "pipewire");
     bool runningInDocker = FileExists("/.dockerenv");
-    const std::string audioEnvPath = "/opt/fpp/etc/systemd/fpp-audio.env";
+    const std::string audioEnvPath = "/run/fppd/fpp-audio.env";
     printf("FPP - Audio backend: %s\n", usePipeWireBackend ? "PipeWire" : "ALSA");
     std::string aplay = execAndReturn("/usr/bin/aplay -l 2>&1");
     std::vector<std::string> lines = split(aplay, '\n');
@@ -1898,6 +1898,7 @@ static void setupAudio() {
     setRawSetting("AudioCardType", cardType);
 
     if (!runningInDocker) {
+        mkdir("/run/fppd", 0755);
         std::ostringstream audioEnv;
         audioEnv << "SDL_AUDIODRIVER=" << (usePipeWireBackend ? "pulse" : "alsa") << "\n";
         if (usePipeWireBackend) {
