@@ -170,7 +170,7 @@ for svc in fpp-pipewire.service fpp-wireplumber.service fpp-pipewire-pulse.servi
     fi
 done
 
-# Also refresh fppd.service (picks up fpp-audio.env EnvironmentFile)
+# Also refresh fppd.service (picks up /run/fppd/fpp-audio.env EnvironmentFile)
 if [ -f "/opt/fpp/etc/systemd/fppd.service" ]; then
     cp /opt/fpp/etc/systemd/fppd.service /lib/systemd/system/
     echo "    Updated fppd.service"
