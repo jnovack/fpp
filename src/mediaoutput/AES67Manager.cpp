@@ -614,13 +614,13 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
         return false;
     }
 
-    AES67Pipeline p;
-    p.instanceId = inst.id;
-    p.isSend = true;
-    p.pipeline = pipeline;
-    p.bus = bus;  // watchdog takes ownership — released in TeardownPipeline
-    p.running = true;
-    m_sendPipelines[inst.id] = p;
+    m_sendPipelines.erase(inst.id);
+    auto [it, ok] = m_sendPipelines.try_emplace(inst.id);
+    it->second.instanceId = inst.id;
+    it->second.isSend = true;
+    it->second.pipeline = pipeline;
+    it->second.bus = bus;  // watchdog takes ownership — released in TeardownPipeline
+    it->second.running = true;
 
     LogInfo(VB_MEDIAOUT, "AES67 send pipeline [%d] %s started → %s:%d (%dch, %dms ptime)\n",
             inst.id, inst.name.c_str(), inst.multicastIP.c_str(), inst.port,
@@ -694,13 +694,13 @@ bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
         return false;
     }
 
-    AES67Pipeline p;
-    p.instanceId = inst.id;
-    p.isSend = false;
-    p.pipeline = pipeline;
-    p.bus = bus;  // watchdog takes ownership
-    p.running = true;
-    m_recvPipelines[inst.id] = p;
+    m_recvPipelines.erase(inst.id);
+    auto [it, ok] = m_recvPipelines.try_emplace(inst.id);
+    it->second.instanceId = inst.id;
+    it->second.isSend = false;
+    it->second.pipeline = pipeline;
+    it->second.bus = bus;  // watchdog takes ownership
+    it->second.running = true;
 
     LogInfo(VB_MEDIAOUT, "AES67 recv pipeline [%d] %s started ← %s:%d (%dch, %dms latency)\n",
             inst.id, inst.name.c_str(), inst.multicastIP.c_str(), inst.port,
