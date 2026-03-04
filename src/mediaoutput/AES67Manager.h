@@ -109,7 +109,7 @@ struct AES67Pipeline {
     // Buffer-drop probe: when > 0, the probe drops buffers and
     // decrements the counter.  Used by FlushSendPipelines() to
     // discard stale audio between tracks.
-    volatile int dropCounter = 0;
+    std::atomic<int> dropCounter = 0;
     GstPad* probePad = nullptr;          // pad where probe is installed
     gulong probeId = 0;                  // installed probe handle (0 = none)
 

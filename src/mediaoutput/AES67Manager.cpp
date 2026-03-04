@@ -755,7 +755,7 @@ void AES67Manager::ResumeSendPipelines() {
 // Pad probe callback: drops buffers while dropCounter > 0, passes through otherwise.
 // Installed once on pipewiresrc's src pad and stays active for the pipeline's lifetime.
 static GstPadProbeReturn DropBufferProbe(GstPad* pad, GstPadProbeInfo* info, gpointer userData) {
-    volatile int* counter = static_cast<volatile int*>(userData);
+    std::atomic<int>* counter = static_cast<std::atomic<int>*>(userData);
     if (!(info->type & GST_PAD_PROBE_TYPE_BUFFER))
         return GST_PAD_PROBE_OK;
     if (*counter <= 0)
@@ -805,7 +805,7 @@ void AES67Manager::FlushSendPipelines() {
                     srcpad,
                     GST_PAD_PROBE_TYPE_BUFFER,
                     DropBufferProbe,
-                    const_cast<int*>(&p.dropCounter),
+                    &p.dropCounter,
                     nullptr);
             }
             gst_object_unref(srcElem);
