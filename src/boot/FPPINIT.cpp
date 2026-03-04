@@ -1354,7 +1354,24 @@ static bool waitForInterfacesUp(bool flite, int timeOut) {
     } else {
         printf("FPP - Waited for %0.1f seconds for IP address\n", (((float)count) * 0.2f));
         if (!getRawSettingInt("disableIPAnnouncement", 0) && FileExists("/usr/bin/flite") && flite) {
-            execbg("/usr/bin/flite -voice awb -t \"" + announce + "\" &");
+            // When PipeWire is the audio backend, flite (an ALSA client) needs
+            // the PipeWire environment variables so the ALSA-PipeWire plugin in
+            // .asoundrc can locate the PipeWire socket.  Without these, flite
+            // silently fails to produce any audio output.
+            std::string audioBackend;
+            getRawSetting("AudioBackend", audioBackend);
+            std::string abLower = audioBackend;
+            std::transform(abLower.begin(), abLower.end(), abLower.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            std::string fliteCmd;
+            if (abLower == "pipewire") {
+                fliteCmd = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp "
+                           "XDG_RUNTIME_DIR=/run/pipewire-fpp "
+                           "/usr/bin/flite -voice awb -t \"" + announce + "\" &";
+            } else {
+                fliteCmd = "/usr/bin/flite -voice awb -t \"" + announce + "\" &";
+            }
+            execbg(fliteCmd);
         }
         return true;
     }
