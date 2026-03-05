@@ -64,6 +64,24 @@ public:
     StopAllMediaCommand();
     virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
 };
+
+class StopMediaSlotCommand : public Command {
+public:
+    StopMediaSlotCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class SetSlotVolumeCommand : public Command {
+public:
+    SetSlotVolumeCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class MediaSlotStatusCommand : public Command {
+public:
+    MediaSlotStatusCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
 #endif
 
 #ifdef HAS_AES67_GSTREAMER

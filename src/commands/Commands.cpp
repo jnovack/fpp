@@ -105,6 +105,9 @@ void CommandManager::Init() {
     addCommand(new PlayMediaCommand());
     addCommand(new StopMediaCommand());
     addCommand(new StopAllMediaCommand());
+    addCommand(new StopMediaSlotCommand());
+    addCommand(new SetSlotVolumeCommand());
+    addCommand(new MediaSlotStatusCommand());
 #endif
 #ifdef HAS_AES67_GSTREAMER
     addCommand(new AES67ApplyCommand());
