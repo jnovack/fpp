@@ -1005,11 +1005,17 @@
                     .attr('stroke', 'rgba(0,0,0,0.2)')
                     .attr('stroke-width', 1);
 
-                // Title
+                // Title – prefer ALSA card name for HW outputs (more human-readable)
                 nodeGroups.append('text')
                     .attr('class', 'pw-node-label')
                     .attr('x', 10).attr('y', 16)
-                    .text(d => truncate(d.description || d.name, 28));
+                    .text(d => {
+                        const p = d.properties || {};
+                        if ((d.name || '').startsWith('alsa_') && p['api.alsa.card.name']) {
+                            return truncate(p['api.alsa.card.name'], 28);
+                        }
+                        return truncate(d.description || d.name, 28);
+                    });
 
                 // Subtitle (media class)
                 nodeGroups.append('text')
