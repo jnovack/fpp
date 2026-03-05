@@ -4204,7 +4204,11 @@ function GetPipeWireGraph()
                 ) {
                     return true;
                 }
-                $devId = preg_replace('/^(hw|front|surround[0-9]*):\\d*,?/', '', $n['_alsaPath']);
+                // Extract card identifier: strip prefix (hw:, front:, surroundNN:)
+                // then remove trailing device number (,N) to get just the card id.
+                // e.g. "hw:1,0" → "1", "hw:S3,0" → "S3", "front:0,0" → "0"
+                $devId = preg_replace('/^(hw|front|surround[0-9]*):/', '', $n['_alsaPath']);
+                $devId = preg_replace('/,\d+$/', '', $devId);
                 // Also try extracting card ID from object.path:
                 // "alsa:acp:ICUSBAUDIO7D:4:playback" → "ICUSBAUDIO7D"
                 $objPath = isset($n['properties']['object.path']) ? $n['properties']['object.path'] : '';

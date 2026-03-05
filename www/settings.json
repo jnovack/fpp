@@ -121,7 +121,7 @@
 			]
 		},
 		"generalAudio": {
-			"description": "Audio",
+			"description": "General Audio",
 			"settings": [
 				"AudioBackend",
 				"AudioFormat",
