@@ -392,7 +392,7 @@
                                 status...</span>
                         </div>
                         <div class="toolbar-right">
-                            <button class="buttons btn-outline-success btn-group-action" onclick="AddGroup()">
+                            <button class="buttons btn-outline-success" onclick="AddGroup()">
                                 <i class="fas fa-plus"></i> Add Group
                             </button>
                             <button class="buttons" onclick="SaveGroups()">

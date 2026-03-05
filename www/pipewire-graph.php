@@ -251,6 +251,10 @@
             <div class="pageContent">
 
                 <div class="pw-toolbar">
+                    <a class="btn btn-sm btn-outline-secondary" href="settings.php#settings-av"
+                        title="Back to Audio Settings">
+                        <i class="fas fa-arrow-left"></i> Audio Settings
+                    </a>
                     <button class="btn btn-sm btn-outline-primary" id="btnRefresh" title="Refresh graph">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>

@@ -191,9 +191,7 @@ PrintSettingGroup('generalAudio');
         <?
         PrintSettingGroup('pipeWireAudio', '', '', 1, '', '', false);
         ?>
-        <button class="buttons" onclick="window.open('pipewire-graph.php', '_blank');">
-            <i class="fas fa-project-diagram"></i> Visualise Current Pipeline
-        </button>
+
     </div>
 
     <div id="alsaHardwareAudioSection" <?= (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') ? ' style="display:none;"' : '' ?>>

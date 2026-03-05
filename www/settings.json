@@ -150,7 +150,9 @@
 			"settings": [
 				"PipeWireAudioGroups",
 				"PipeWireInputMixing",
-				"PipeWireAES67Config"
+				"PipeWireRoutingMatrix",
+				"PipeWireAES67Config",
+				"PipeWireGraph"
 			]
 		},
 		"generalVideo": {
@@ -759,7 +761,9 @@
 					"PipeWirePrimaryOutput",
 					"PipeWireAudioGroups",
 					"PipeWireInputMixing",
-					"PipeWireAES67Config"
+					"PipeWireRoutingMatrix",
+					"PipeWireAES67Config",
+					"PipeWireGraph"
 				],
 				"alsa": [
 					"AudioOutput",
@@ -822,6 +826,15 @@
 			"platforms": [
 				"!MacOS"
 			]
+		},
+		"PipeWireGraph": {
+			"name": "PipeWireGraph",
+			"description": "PipeWire Graph",
+			"tip": "Visual graph of the current PipeWire audio topology, including all sources, sinks, and processing nodes. Useful for troubleshooting and understanding how audio is flowing through the system.",
+			"type": "link",
+			"linkUrl": "pipewire-graph.php",
+			"icon": "fas fa-project-diagram",
+			"buttonText": " Visualise Current Pipeline"
 		},
 		"PipeWireAES67Config": {
 			"name": "PipeWireAES67Config",

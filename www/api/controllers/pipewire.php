@@ -3388,9 +3388,11 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
     //   1. Previously-stored nodeTarget in member JSON (survives PipeWire being down)
     //   2. Direct cardId→nodeName via sinkCardIdMap (no card-number dependency)
     //   3. cardId→cardNum→nodeName via sinkCardNumMap (legacy fallback)
-    //   4. Skip card with warning
+    //   4. Create FPP ALSA adapter if card exists but has no PipeWire sink
+    //   5. Skip card with warning (card not physically present)
     $cardNodeMap = array();   // cardId -> PipeWire node name
     $unresolvedCards = array();
+    $customAlsaAdaptersForUnresolved = array(); // cardId -> adapter info for cards with no PipeWire sink
 
     foreach ($groups as $group) {
         if (!isset($group['enabled']) || !$group['enabled'])
@@ -3459,9 +3461,28 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
                 continue;
             }
 
-            // Could not resolve
+            // Could not resolve — if the ALSA card is present but has no
+            // PipeWire sink (e.g. HDMI with profile=Off, disabled WirePlumber
+            // device), create an FPP ALSA adapter node for it.
+            // First verify the PCM device can actually be opened (HDMI outputs
+            // fail if nothing is connected to the port).
             if ($cardNum >= 0) {
-                $unresolvedCards[] = $cardId . " (card $cardNum — no PipeWire sink found)";
+                $testOutput = shell_exec("timeout 2 aplay -D hw:$cardId --dump-hw-params /dev/zero 2>&1");
+                $canOpen = (strpos($testOutput, 'HW Params') !== false);
+                if ($canOpen) {
+                    $cidNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
+                    $adapterName = 'fpp_alsa_' . $cidNorm;
+                    $cardNodeMap[$cardId] = $adapterName;
+                    if (!isset($customAlsaAdaptersForUnresolved[$cardId])) {
+                        $customAlsaAdaptersForUnresolved[$cardId] = array(
+                            'nodeName' => $adapterName,
+                            'channels' => 2,
+                            'rate' => 0,
+                        );
+                    }
+                } else {
+                    $unresolvedCards[] = $cardId . " (card $cardNum — device cannot be opened)";
+                }
             } else {
                 $unresolvedCards[] = $cardId . " (ALSA card not present)";
             }
@@ -3510,6 +3531,15 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
         }
     }
 
+    // Merge adapters for unresolved cards (no PipeWire sink) into the
+    // custom adapter list.  Multi-channel adapters take priority — if a card
+    // already has a multi-channel adapter, don't downgrade to 2ch.
+    foreach ($customAlsaAdaptersForUnresolved as $cid => $info) {
+        if (!isset($customAlsaAdapters[$cid])) {
+            $customAlsaAdapters[$cid] = $info;
+        }
+    }
+
     if (!empty($customAlsaAdapters)) {
         // ── Per-device sample rate resolution ──────────────────────────────
         // Priority (highest to lowest):
@@ -3529,8 +3559,8 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             $alsaRate = 44100;
         }
 
-        $conf .= "# Custom multi-channel ALSA adapter nodes\n";
-        $conf .= "# These provide the correct channel count for output group members\n";
+        $conf .= "# Custom FPP ALSA adapter nodes\n";
+        $conf .= "# These provide sinks for cards with no WirePlumber node or needing extra channels\n";
         $conf .= "context.objects = [\n";
         foreach ($customAlsaAdapters as $cid => $info) {
             $posStr = isset($channelPositions[$info['channels']]) ? $channelPositions[$info['channels']] : "[ FL FR ]";
@@ -4046,6 +4076,19 @@ function GetPipeWireGraph()
                 }
             }
 
+            // For ALSA sink/source nodes, prefer node.nick over the generic
+            // PipeWire-derived node.description (e.g. "Built-in Audio Stereo").
+            // The nick comes from the ALSA driver and identifies the actual hardware.
+            // Skip FPP-managed nodes (*.fpp_*) which already have good descriptions.
+            if (!empty($nick) && strpos($name, 'alsa_') === 0 && strpos($name, '.fpp_') === false) {
+                $profileDesc = isset($props['device.profile.description']) ? $props['device.profile.description'] : '';
+                if (!empty($profileDesc)) {
+                    $desc = $nick . ' (' . $profileDesc . ')';
+                } else {
+                    $desc = $nick;
+                }
+            }
+
             // Skip non-audio nodes unless ?all=1
             if (!$showAll) {
                 if (empty($mc) || !in_array($mc, $audioClasses)) {
@@ -4056,6 +4099,9 @@ function GetPipeWireGraph()
 
             $audioNodeIds[$obj['id']] = true;
 
+            // Stash the raw ALSA device path for de-duplication (not sent to client)
+            $alsaPath = isset($props['api.alsa.path']) ? $props['api.alsa.path'] : '';
+
             $node = array(
                 'id' => $obj['id'],
                 'name' => $name,
@@ -4064,6 +4110,7 @@ function GetPipeWireGraph()
                 'mediaClass' => $mc,
                 'state' => $state,
                 'factory' => $factoryName,
+                '_alsaPath' => $alsaPath,
                 'properties' => array(),
             );
 
@@ -4124,6 +4171,69 @@ function GetPipeWireGraph()
         $links = array_values(array_filter($links, function ($l) use ($audioNodeIds) {
             return isset($audioNodeIds[$l['outputNodeId']]) || isset($audioNodeIds[$l['inputNodeId']]);
         }));
+    }
+
+    // ── Remove WirePlumber auto-created ALSA nodes that duplicate FPP-managed hardware ──
+    // FPP creates its own ALSA adapter nodes (alsa_output.fpp_card*, fpp_alsa_*) with
+    // explicit configuration.  WirePlumber also auto-creates nodes for every ALSA card
+    // it discovers, producing duplicates that clutter the graph.  Remove the WirePlumber
+    // nodes when FPP already manages the same ALSA device path.
+    if (!$showAll) {
+        // Collect ALSA device paths claimed by FPP-managed nodes
+        $fppAlsaPaths = array();
+        foreach ($nodes as $n) {
+            $nm = $n['name'];
+            if (
+                !empty($n['_alsaPath']) &&
+                (strpos($nm, '.fpp_') !== false || strpos($nm, 'fpp_alsa_') === 0)
+            ) {
+                // Normalise: "hw:ICUSBAUDIO7D" → "ICUSBAUDIO7D"
+                $devId = preg_replace('/^hw:/', '', $n['_alsaPath']);
+                $fppAlsaPaths[$devId] = true;
+            }
+        }
+        if (!empty($fppAlsaPaths)) {
+            $removedNodeIds = array();
+            $nodes = array_values(array_filter($nodes, function ($n) use ($fppAlsaPaths, &$removedNodeIds) {
+                $nm = $n['name'];
+                // Only consider WirePlumber-created ALSA nodes (not FPP-managed)
+                if (
+                    empty($n['_alsaPath']) ||
+                    strpos($nm, '.fpp_') !== false ||
+                    strpos($nm, 'fpp_alsa_') === 0
+                ) {
+                    return true;
+                }
+                $devId = preg_replace('/^(hw|front|surround[0-9]*):\\d*,?/', '', $n['_alsaPath']);
+                // Also try extracting card ID from object.path:
+                // "alsa:acp:ICUSBAUDIO7D:4:playback" → "ICUSBAUDIO7D"
+                $objPath = isset($n['properties']['object.path']) ? $n['properties']['object.path'] : '';
+                $cardIds = array($devId);
+                if (preg_match('/^alsa:acp:([^:]+):/', $objPath, $m)) {
+                    $cardIds[] = $m[1];
+                }
+                foreach ($cardIds as $cid) {
+                    if (isset($fppAlsaPaths[$cid])) {
+                        $removedNodeIds[$n['id']] = true;
+                        return false;
+                    }
+                }
+                return true;
+            }));
+            // Remove ports and links belonging to removed nodes
+            if (!empty($removedNodeIds)) {
+                $ports = array_values(array_filter($ports, function ($p) use ($removedNodeIds) {
+                    return !isset($removedNodeIds[$p['nodeId']]);
+                }));
+                $links = array_values(array_filter($links, function ($l) use ($removedNodeIds) {
+                    return !isset($removedNodeIds[$l['outputNodeId']]) && !isset($removedNodeIds[$l['inputNodeId']]);
+                }));
+                // Also remove from audioNodeIds
+                foreach ($removedNodeIds as $rid => $_) {
+                    unset($audioNodeIds[$rid]);
+                }
+            }
+        }
     }
 
     // Enrich delay/effect nodes with audio group config (delay, EQ, volume)
@@ -4407,8 +4517,15 @@ function GetPipeWireGraph()
         }
     }
 
+    // Strip internal fields before returning
+    $outNodes = array_values($nodes);
+    foreach ($outNodes as &$n) {
+        unset($n['_alsaPath']);
+    }
+    unset($n);
+
     return json(array(
-        'nodes' => array_values($nodes),
+        'nodes' => $outNodes,
         'ports' => $ports,
         'links' => $links,
     ));

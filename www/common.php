@@ -692,6 +692,21 @@ function PrintSetting($setting, $callback = '', $options = array(), $plugin = ''
                 echo "}\n";
                 echo "</script>\n";
                 break;
+            case 'link':
+                // Renders a button that navigates to a URL in the same window
+                // settings.json properties:
+                //   linkUrl       - URL to navigate to (required)
+                //   icon          - FontAwesome icon class (e.g. "fas fa-project-diagram")
+                //   buttonText    - Text for the button (defaults to description)
+                $linkUrl = isset($s['linkUrl']) ? $s['linkUrl'] : '';
+                $icon = isset($s['icon']) ? $s['icon'] : '';
+                $buttonText = isset($s['buttonText']) ? $s['buttonText'] : $s['description'];
+                $iconHtml = $icon ? "<i class='" . htmlspecialchars($icon) . "'></i> " : '';
+
+                echo "<a class='buttons' href='" . htmlspecialchars($linkUrl) . "'>";
+                echo $iconHtml . htmlspecialchars($buttonText);
+                echo "</a>";
+                break;
             default:
                 printf("FIXME, handle %s setting type for %s\n", $s['type'], $setting);
                 break;
