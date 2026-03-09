@@ -766,7 +766,6 @@
 			},
 			"children": {
 				"pipewire": [
-					"PipeWirePrimaryOutput",
 					"PipeWireAudioGroups",
 					"PipeWireInputMixing",
 					"PipeWireRoutingMatrix",
@@ -786,17 +785,6 @@
 				"!MacOS"
 			]
 		},
-		"PipeWirePrimaryOutput": {
-			"name": "PipeWirePrimaryOutput",
-			"description": "Primary Audio Output",
-			"tip": "Select where FPP sends its audio output when using PipeWire. Choose an Audio Output Group to route audio to multiple sound cards simultaneously, or select an individual card for direct output. Note: When Input Mixing is configured, this setting is overridden — fppd stream routing is managed by the input group configuration instead.",
-			"restart": 2,
-			"default": "",
-			"type": "select",
-			"platforms": [
-				"!MacOS"
-			]
-		},
 		"PipeWireAudioGroups": {
 			"name": "PipeWireAudioGroups",
 			"description": "Audio Output Groups",
@@ -806,7 +794,6 @@
 			"icon": "fas fa-layer-group",
 			"buttonText": "Configure Output Audio Groups",
 			"modalTitle": "PipeWire Audio Output Groups",
-			"modalOnClose": "RefreshPipeWirePrimaryOutput",
 			"platforms": [
 				"!MacOS"
 			]

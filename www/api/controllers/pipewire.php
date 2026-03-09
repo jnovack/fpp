@@ -853,44 +853,6 @@ function GetPipeWireAudioCards()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// POST /api/pipewire/audio/primary-output
-// Set the primary audio output sink for FPP (PipeWire mode only)
-function SetPipeWirePrimaryOutput()
-{
-    global $SUDO, $settings;
-
-    $data = json_decode(file_get_contents('php://input'), true);
-    if (!isset($data['sinkName'])) {
-        http_response_code(400);
-        return json(array("status" => "ERROR", "message" => "Missing sinkName"));
-    }
-
-    $sinkName = trim($data['sinkName']);
-    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
-
-    if (empty($sinkName)) {
-        // Clear — revert to system default
-        WriteSettingToFile('PipeWireSinkName', '');
-        SendCommand('setSetting,PipeWireSinkName,');
-        return json(array("status" => "OK", "message" => "Cleared — using system default", "restartRequired" => true));
-    }
-
-    // Set as PipeWire default sink
-    exec($SUDO . " " . $env . " pactl set-default-sink " . escapeshellarg($sinkName) . " 2>&1");
-
-    // Write PipeWireSinkName only — ForceAudioId is owned by ALSA mode and must not be
-    // overwritten here; SDL routing in PipeWire mode is handled by pactl set-default-sink.
-    WriteSettingToFile('PipeWireSinkName', $sinkName);
-    SendCommand('setSetting,PipeWireSinkName,' . $sinkName);
-
-    return json(array(
-        "status" => "OK",
-        "sinkName" => $sinkName,
-        "restartRequired" => true
-    ));
-}
-
-/////////////////////////////////////////////////////////////////////////////
 // POST /api/pipewire/audio/group/volume
 // Set volume for a specific group or member sink
 function SetPipeWireGroupVolume()
@@ -4311,7 +4273,7 @@ function GetPipeWireGraph()
                 'name' => isset($props['port.name']) ? $props['port.name'] : '',
                 'direction' => isset($info['direction']) ? $info['direction'] : '',
                 'channel' => isset($props['audio.channel']) ? $props['audio.channel'] :
-                            (isset($props['port.name']) ? $props['port.name'] : ''),
+                    (isset($props['port.name']) ? $props['port.name'] : ''),
             );
         } elseif ($type === 'PipeWire:Interface:Link') {
             $links[] = array(
@@ -5296,7 +5258,7 @@ function ApplyPipeWireVideoInputSources()
         $nameSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower(isset($src['name']) ? $src['name'] : 'source'));
         $src['pipeWireNodeName'] = "fpp_video_src_" . $src['id'] . "_" . $nameSlug;
 
-        $enabled = isset($src['enabled']) ? (bool)$src['enabled'] : true;
+        $enabled = isset($src['enabled']) ? (bool) $src['enabled'] : true;
 
         $entry = array(
             'id' => $src['id'],

@@ -131,8 +131,6 @@ dispatch_post('/pipewire/audio/eq/update', 'UpdatePipeWireEQRealtime');
 dispatch_post('/pipewire/audio/delay/update', 'UpdatePipeWireDelayRealtime');
 dispatch_post('/pipewire/audio/sync/start', 'StartSyncCalibration');
 dispatch_post('/pipewire/audio/sync/stop', 'StopSyncCalibration');
-dispatch_post('/pipewire/audio/primary-output', 'SetPipeWirePrimaryOutput');
-
 dispatch_get('/pipewire/video/groups', 'GetPipeWireVideoGroups');
 dispatch_post('/pipewire/video/groups', 'SavePipeWireVideoGroups');
 dispatch_post('/pipewire/video/groups/apply', 'ApplyPipeWireVideoGroups');
