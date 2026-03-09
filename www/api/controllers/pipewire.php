@@ -384,6 +384,10 @@ function ApplyPipeWireAudioGroups()
         }
     }
 
+    // Restore configured volume levels to PipeWire sinks.
+    // WirePlumber may have restored stale volume state after restart.
+    RestorePipeWireGroupVolumes($data['groups']);
+
     // Resume playback if it was active before the restart
     if ($wasPlaying && !empty($resumePlaylist)) {
         usleep(500000);
@@ -3955,6 +3959,53 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
         return array('conf' => $conf, 'cardNodeMap' => $cardNodeMap);
     }
     return $conf;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// RestorePipeWireGroupVolumes
+// Apply per-group and per-member volume levels from the audio groups JSON
+// to the running PipeWire sinks via pactl.  Call after PipeWire restart.
+function RestorePipeWireGroupVolumes($groups = null)
+{
+    global $SUDO, $settings;
+
+    if ($groups === null) {
+        $configFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+        if (!file_exists($configFile))
+            return;
+        $data = json_decode(file_get_contents($configFile), true);
+        if (!is_array($data) || !isset($data['groups']))
+            return;
+        $groups = $data['groups'];
+    }
+
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
+
+    foreach ($groups as $group) {
+        if (!isset($group['enabled']) || !$group['enabled'])
+            continue;
+        if (!isset($group['members']) || empty($group['members']))
+            continue;
+
+        $groupName = isset($group['name']) ? $group['name'] : 'Group';
+        $groupNodeName = 'fpp_group_' . preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($groupName));
+        $groupId = isset($group['id']) ? intval($group['id']) : 0;
+
+        // Set group master volume
+        $groupVol = isset($group['volume']) ? intval($group['volume']) : 100;
+        exec($SUDO . " " . $env . " pactl set-sink-volume " . escapeshellarg($groupNodeName) . " ${groupVol}% 2>/dev/null");
+
+        // Set per-member volumes on the filter-chain sink nodes
+        foreach ($group['members'] as $member) {
+            $cardId = isset($member['cardId']) ? $member['cardId'] : '';
+            if (empty($cardId))
+                continue;
+            $memberVol = isset($member['volume']) ? intval($member['volume']) : 100;
+            $cardIdNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
+            $fxNodeName = 'fpp_fx_g' . $groupId . '_' . $cardIdNorm;
+            exec($SUDO . " " . $env . " pactl set-sink-volume " . escapeshellarg($fxNodeName) . " ${memberVol}% 2>/dev/null");
+        }
+    }
 }
 
 /////////////////////////////////////////////////////////////////////////////

@@ -2045,7 +2045,14 @@ static void setupAudio() {
                 // Config was changed — restart PipeWire to pick up the new config
                 printf("FPP - PipeWire group config changed, restarting PipeWire...\n");
                 exec("/usr/bin/systemctl restart fpp-pipewire.service fpp-wireplumber.service fpp-pipewire-pulse.service");
+                // Wait for WirePlumber & combine-stream/filter-chain nodes to come up
+                std::this_thread::sleep_for(std::chrono::seconds(3));
             }
+
+            // Restore per-group and per-member volume levels from the JSON config.
+            // WirePlumber may restore stale volume state on startup.
+            printf("FPP - Restoring PipeWire audio group volumes...\n");
+            system("/usr/bin/php /opt/fpp/scripts/restore_pipewire_volumes");
         }
     } else if (!runningInDocker) {
         exec("/usr/bin/systemctl stop fpp-pipewire-pulse.service fpp-wireplumber.service fpp-pipewire.service");
