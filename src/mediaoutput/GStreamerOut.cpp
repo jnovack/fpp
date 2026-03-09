@@ -470,6 +470,12 @@ int GStreamerOutput::Start(int msTime) {
         GstElement* audioresample = gst_element_factory_make("audioresample", "aresample");
         GstElement* tee = gst_element_factory_make("tee", "t");
         GstElement* queue1 = gst_element_factory_make("queue", "q1");
+        // Protect against audio pipewiresink blocking (PipeWire slow to connect).
+        // Without leaky, a blocked sink fills the queue, blocks the tee, and
+        // starves the video path via decodebin's internal multiqueue.
+        g_object_set(queue1, "max-size-time", (guint64)(5 * GST_SECOND),
+                     "max-size-buffers", 0, "max-size-bytes", 0,
+                     "leaky", 2 /* downstream */, NULL);
         m_volume = gst_element_factory_make("volume", "vol");
         GstElement* sink = nullptr;
         if (!pipelineSinkName.empty()) {
@@ -930,6 +936,23 @@ int GStreamerOutput::Stop(void) {
         // to avoid pipewiresrc crash from disappearing PipeWire producer node
         if (m_videoPipeWireRouting) {
             VideoOutputManager::Instance().StopConsumers();
+        }
+
+        // Flush pipewiresink before tearing down the pipeline.  If the
+        // pipewiresink streaming thread is blocked waiting for PipeWire
+        // (target node missing, PipeWire restarted, etc.), the flush-start
+        // event unblocks the chain function so gst_element_set_state(NULL)
+        // can join the thread without hanging or triggering SIGBUS.
+        {
+            GstElement* pwsink = gst_bin_get_by_name(GST_BIN(m_pipeline), "pwsink");
+            if (pwsink) {
+                GstPad* sinkPad = gst_element_get_static_pad(pwsink, "sink");
+                if (sinkPad) {
+                    gst_pad_send_event(sinkPad, gst_event_new_flush_start());
+                    gst_object_unref(sinkPad);
+                }
+                gst_object_unref(pwsink);
+            }
         }
 
         Stopping();
