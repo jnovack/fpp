@@ -728,7 +728,7 @@
         // Render a member row
         function RenderMemberRow(group, groupIndex, memberIndex) {
             var member = group.members[memberIndex];
-            var cardSelect = BuildCardSelect(groupIndex, memberIndex, member.cardId);
+            var cardSelect = BuildCardSelect(groupIndex, memberIndex, member.cardId, group.members);
             var channelMapping = BuildChannelMapping(group, groupIndex, memberIndex, member);
             var eqEnabled = member.eq && member.eq.enabled;
 
@@ -786,13 +786,25 @@
 
         /////////////////////////////////////////////////////////////////////////////
         // Build card select dropdown
-        function BuildCardSelect(groupIndex, memberIndex, selectedCardId) {
+        // members: array of group members — cards already used by other members are excluded
+        function BuildCardSelect(groupIndex, memberIndex, selectedCardId, members) {
+            // Collect cardIds already assigned to other members in this group
+            var usedCards = {};
+            if (members) {
+                for (var m = 0; m < members.length; m++) {
+                    if (m !== memberIndex && members[m].cardId) {
+                        usedCards[members[m].cardId] = true;
+                    }
+                }
+            }
+
             var html = '<select class="form-select form-select-sm" style="width:auto;display:inline-block;" ';
             html += 'onchange="UpdateMemberCard(' + groupIndex + ',' + memberIndex + ', this.value)">';
             html += '<option value="">-- Select Card --</option>';
 
             var hasAlsa = false, hasAES67 = false;
             for (var i = 0; i < availableCards.length; i++) {
+                if (availableCards[i].cardId in usedCards) continue;
                 if (availableCards[i].isAES67) hasAES67 = true;
                 else hasAlsa = true;
             }
@@ -801,6 +813,7 @@
             for (var i = 0; i < availableCards.length; i++) {
                 var card = availableCards[i];
                 if (card.isAES67) continue;
+                if (card.cardId in usedCards) continue;
                 var sel = (card.cardId === selectedCardId) ? ' selected' : '';
                 var label = EscapeHtml(card.cardName) + ' [' + EscapeHtml(card.cardId) + ']';
                 if (card.byPath) label += ' (' + EscapeHtml(card.byPath) + ')';
@@ -813,6 +826,7 @@
                 for (var i = 0; i < availableCards.length; i++) {
                     var card = availableCards[i];
                     if (!card.isAES67) continue;
+                    if (card.cardId in usedCards) continue;
                     var sel = (card.cardId === selectedCardId) ? ' selected' : '';
                     var label = '\u{1F310} ' + EscapeHtml(card.cardName);
                     if (card.multicastIP) label += ' (' + EscapeHtml(card.multicastIP) + ':' + card.port + ')';
