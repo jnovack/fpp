@@ -661,11 +661,20 @@ function GetPipeWireAudioCards()
                         $pwSinkByAlsaCardNum[$pwCardNumInt] = $pwName;
                     }
                 }
-                // Strategy 2: FPP-created sinks are named alsa_output.fpp_card{N}
-                // and do not have alsa.card set — derive card number from the name.
-                if (preg_match('/^alsa_output\.fpp_card(\d+)$/', $pwName, $fppMatch)) {
+                // Strategy 2: FPP-created sinks (fpp_alsa_{cardIdNorm} or legacy
+                // alsa_output.fpp_card{N}) — resolve via api.alsa.path or name pattern.
+                if (strpos($pwName, 'fpp_alsa_') === 0) {
+                    // Resolve card number from api.alsa.path (e.g. "hw:S3" → card 5)
+                    $fppAlsaPath = isset($pwProps['api.alsa.path']) ? $pwProps['api.alsa.path'] : '';
+                    if (preg_match('/^hw:(.+)$/', $fppAlsaPath, $hwM)) {
+                        $fppCardNum = ResolveCardIdToNumber(trim($hwM[1]));
+                        if ($fppCardNum >= 0) {
+                            $pwSinkByAlsaCardNum[$fppCardNum] = $pwName;
+                        }
+                    }
+                } elseif (preg_match('/^alsa_output\.fpp_card(\d+)$/', $pwName, $fppMatch)) {
                     $pwCardNumInt = intval($fppMatch[1]);
-                    // FPP-created sinks take priority (they are the managed sink for the card)
+                    // Legacy FPP sinks take priority
                     $pwSinkByAlsaCardNum[$pwCardNumInt] = $pwName;
                 }
                 // Strategy 3: FPP-created ALSA adapter sinks (fpp_alsa_*) have
@@ -3470,7 +3479,10 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
                 }
 
                 if ($cn >= 0) {
-                    if (!isset($sinkCardNumMap[$cn])) {
+                    // FPP-managed nodes (fpp_alsa_*) always take priority over
+                    // WirePlumber auto-discovered nodes for the same device.
+                    $isFppNode = (strpos($nodeName, 'fpp_alsa_') === 0);
+                    if ($isFppNode || !isset($sinkCardNumMap[$cn])) {
                         $sinkCardNumMap[$cn] = $nodeName;
                     }
                     // Reverse-resolve card number → stable ALSA card ID
@@ -3479,7 +3491,7 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
                     if ($cardIdFromProc !== false) {
                         $cardIdFromProc = trim($cardIdFromProc);
                         if (!empty($cardIdFromProc)) {
-                            if (!isset($sinkCardIdMap[$cardIdFromProc])) {
+                            if ($isFppNode || !isset($sinkCardIdMap[$cardIdFromProc])) {
                                 $sinkCardIdMap[$cardIdFromProc] = $nodeName;
                             }
                             // Capture the rate WirePlumber negotiated for this device.
@@ -3581,15 +3593,39 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             if ($cardNum >= 0) {
                 $testOutput = shell_exec("timeout 2 aplay -D hw:$cardId --dump-hw-params /dev/zero 2>&1");
                 $canOpen = (strpos($testOutput, 'HW Params') !== false);
-                if ($canOpen) {
+                // Also verify card supports standard PCM formats (not IEC958/passthrough only)
+                $hasPcmFmt = (strpos($testOutput, 'S16_LE') !== false || strpos($testOutput, 'S24_LE') !== false
+                    || strpos($testOutput, 'S24_3LE') !== false || strpos($testOutput, 'S32_LE') !== false);
+                if ($canOpen && $hasPcmFmt) {
                     $cidNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
                     $adapterName = 'fpp_alsa_' . $cidNorm;
                     $cardNodeMap[$cardId] = $adapterName;
                     if (!isset($customAlsaAdaptersForUnresolved[$cardId])) {
+                        // Detect max channels from ALSA HW params
+                        $unresolvedMaxCh = 2;
+                        if (preg_match('/CHANNELS\[?\d*\]?:\s+(.+)/i', $testOutput, $chM)) {
+                            preg_match_all('/\d+/', $chM[1], $chNums);
+                            if (!empty($chNums[0])) {
+                                $unresolvedMaxCh = min(8, max(array_map('intval', $chNums[0])));
+                            }
+                        }
+                        // Detect best audio format: S32 > S24 > S16
+                        $unresolvedFmt = 'S16LE';
+                        if (preg_match('/FORMAT[^:]*:\s+(.+)/i', $testOutput, $fmtM)) {
+                            $fmtLine = $fmtM[1];
+                            if (strpos($fmtLine, 'S32_LE') !== false) {
+                                $unresolvedFmt = 'S32LE';
+                            } elseif (strpos($fmtLine, 'S24_LE') !== false) {
+                                $unresolvedFmt = 'S24_32LE';
+                            } elseif (strpos($fmtLine, 'S24_3LE') !== false) {
+                                $unresolvedFmt = 'S24LE';
+                            }
+                        }
                         $customAlsaAdaptersForUnresolved[$cardId] = array(
                             'nodeName' => $adapterName,
-                            'channels' => 2,
+                            'channels' => $unresolvedMaxCh,
                             'rate' => 0,
+                            'format' => $unresolvedFmt,
                         );
                     }
                 } else {
@@ -3634,10 +3670,27 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             // Track max channels needed per card (same card in multiple groups)
             if (!isset($customAlsaAdapters[$cid]) || $memberCh > $customAlsaAdapters[$cid]['channels']) {
                 $cidNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cid));
+                // Detect best audio format from ALSA HW params
+                $adapterFmt = 'S16LE';
+                $cidSafe = preg_match('/^[a-zA-Z0-9_]+$/', $cid) ? $cid : strval(ResolveCardIdToNumber($cid));
+                if (!empty($cidSafe)) {
+                    $fmtOut = shell_exec("timeout 2 aplay -D hw:" . escapeshellarg($cidSafe) . " --dump-hw-params /dev/zero 2>&1 | head -40");
+                    if ($fmtOut && preg_match('/FORMAT[^:]*:\s+(.+)/i', $fmtOut, $fmtM)) {
+                        $fmtLine = $fmtM[1];
+                        if (strpos($fmtLine, 'S32_LE') !== false) {
+                            $adapterFmt = 'S32LE';
+                        } elseif (strpos($fmtLine, 'S24_LE') !== false) {
+                            $adapterFmt = 'S24_32LE';
+                        } elseif (strpos($fmtLine, 'S24_3LE') !== false) {
+                            $adapterFmt = 'S24LE';
+                        }
+                    }
+                }
                 $customAlsaAdapters[$cid] = array(
                     'nodeName' => 'fpp_alsa_' . $cidNorm,
                     'channels' => $memberCh,
                     'rate' => 0,  // resolved below after all cards are collected
+                    'format' => $adapterFmt,
                 );
             }
         }
@@ -3681,12 +3734,26 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             $conf .= "    args = {\n";
             $conf .= "      factory.name = api.alsa.pcm.sink\n";
             $conf .= "      node.name = \"" . $info['nodeName'] . "\"\n";
-            $conf .= "      node.description = \"$cid (" . $info['channels'] . "ch)\"\n";
+            // Read USB product name for consistent description
+            $cardNumForDesc = ResolveCardIdToNumber($cid);
+            $productNameForDesc = $cid;
+            if ($cardNumForDesc >= 0) {
+                $sysfsProduct = @file_get_contents("/sys/class/sound/card$cardNumForDesc/device/product");
+                if ($sysfsProduct !== false && !empty(trim($sysfsProduct))) {
+                    $productNameForDesc = trim($sysfsProduct);
+                }
+            }
+            $descStr = $productNameForDesc . " (" . $cid . ")";
+            if ($info['channels'] > 2) {
+                $descStr .= " " . $info['channels'] . "ch";
+            }
+            $conf .= "      node.description = \"$descStr\"\n";
             $conf .= "      media.class = \"Audio/Sink\"\n";
             $conf .= "      api.alsa.path = \"hw:$cid\"\n";
             $conf .= "      api.alsa.period-size = 1024\n";
             $conf .= "      api.alsa.headroom = 256\n";
-            $conf .= "      audio.format = \"S16LE\"\n";
+            $adapterFormat = isset($info['format']) ? $info['format'] : 'S16LE';
+            $conf .= "      audio.format = \"$adapterFormat\"\n";
             $conf .= "      audio.rate = " . $info['rate'] . "\n";
             $conf .= "      audio.channels = " . $info['channels'] . "\n";
             $conf .= "      audio.position = $posStr\n";

@@ -28,6 +28,7 @@
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
+#include <regex>
 #include <string>
 #include <sstream>
 #include <thread>
@@ -1834,56 +1835,150 @@ static void setupAudio() {
     const std::string pipewireSinkConfPath = "/etc/pipewire/pipewire.conf.d/95-fpp-alsa-sink.conf";
     if (usePipeWireBackend) {
         exec("/bin/mkdir -p /etc/pipewire/pipewire.conf.d");
-        // Use stable ALSA card ID (e.g., "S3") instead of card number
-        // so the config survives USB enumeration order changes across reboots
-        std::string cardId = getAlsaCardId(card);
-        printf("FPP - PipeWire sink using ALSA card ID: %s (card %d)\n", cardId.c_str(), card);
+        // Create FPP ALSA adapter nodes for ALL playback-capable cards present
+        // at boot.  This ensures consistent naming (fpp_alsa_{cardIdNorm}) and
+        // prevents WirePlumber from creating confusingly-named duplicates.
+        // USB devices plugged in after boot get adapters created at Apply time
+        // by GeneratePipeWireGroupsConfig() in pipewire.php.
+        std::string arecordAll = execAndReturn("/usr/bin/arecord -l 2>/dev/null");
         std::ostringstream pipewireSink;
-        pipewireSink << "context.objects = [\n"
-                     << "  { factory = adapter\n"
-                     << "    args = {\n"
-                     << "      factory.name = api.alsa.pcm.sink\n"
-                     << "      node.name = \"alsa_output.fpp_card" << card << "\"\n"
-                     << "      node.description = \"FPP Hardware Output (" << cardType << ")\"\n"
-                     << "      media.class = \"Audio/Sink\"\n"
-                     << "      api.alsa.path = \"hw:" << cardId << "\"\n"
-                     << "      api.alsa.period-size = " << perSize << "\n"
-                     << "      api.alsa.headroom = 256\n"
-                     << "      audio.format = \"S16LE\"\n"
-                     << "      audio.rate = " << pipewireSampleRate << "\n"
-                     << "      audio.channels = 2\n"
-                     << "      audio.position = [ FL FR ]\n"
-                     << "    }\n"
-                     << "  }\n";
+        pipewireSink << "context.objects = [\n";
+        for (const auto& [key, cardName] : cards) {
+            int cardNum = std::stoi(key.substr(5)); // "card N" -> N
+            std::string cId = getAlsaCardId(cardNum);
+            if (cId.empty()) cId = cardName;
+            // Normalise card ID for node name: lowercase, non-alnum → underscore
+            std::string cidNorm = cId;
+            std::transform(cidNorm.begin(), cidNorm.end(), cidNorm.begin(), ::tolower);
+            for (auto& ch : cidNorm) {
+                if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '_') ch = '_';
+            }
 
-        // If this card has capture capability, also create an Audio/Source node.
-        // This is needed because WirePlumber may disable the device entirely
-        // (e.g. duplicate USB cards via 50-fpp-disable-second-icusbaudio7d.conf),
-        // which prevents auto-creation of capture nodes.
-        std::string captureCheck = execAndReturn("/usr/bin/arecord -l 2>/dev/null | grep '^card " + std::to_string(card) + ":'");
-        if (!captureCheck.empty()) {
-            // Build a user-friendly description matching WirePlumber's style.
-            // Read the USB product name from sysfs and append the ALSA card ID
-            // to distinguish duplicate hardware (e.g. "USB Sound Device (ICUSBAUDIO7D_1)").
-            std::string productName = getAlsaCardProductName(card, cardType);
-            std::string sourceDesc = productName + " (" + cardId + ")";
-            printf("FPP - PipeWire source: card %d (%s) has capture, creating Audio/Source node: %s\n",
-                   card, cardId.c_str(), sourceDesc.c_str());
+            // Probe ALSA HW params — if this fails the device can't be opened
+            // (e.g. HDMI with nothing connected → error 524/ENOMEDIUM).
+            // Also skip cards that only support IEC958/passthrough formats —
+            // PipeWire's adapter can't negotiate those as normal PCM sinks.
+            std::string hwParams = execAndReturn("timeout 2 /usr/bin/aplay -D hw:" + cId + " --dump-hw-params /dev/zero 2>&1 | head -40");
+            if (!contains(hwParams, "HW Params")) {
+                printf("FPP - PipeWire: skipping card %d (%s) — device cannot be opened\n",
+                       cardNum, cId.c_str());
+                continue;
+            }
+            // Verify card supports at least one standard PCM format
+            bool hasPcmFormat = contains(hwParams, "S16_LE") || contains(hwParams, "S24_LE")
+                             || contains(hwParams, "S24_3LE") || contains(hwParams, "S32_LE");
+            if (!hasPcmFormat) {
+                printf("FPP - PipeWire: skipping card %d (%s) — no standard PCM format (IEC958 only?)\n",
+                       cardNum, cId.c_str());
+                continue;
+            }
+
+            std::string productName = getAlsaCardProductName(cardNum, cardName);
+            std::string desc = productName + " (" + cId + ")";
+
+            // Detect max playback channels from ALSA HW params
+            int maxChannels = 2;
+            // Match CHANNELS line — formats: "CHANNELS: 8", "CHANNELS[2]: 2 8", "CHANNELS: [1 8]"
+            std::smatch chMatch;
+            // Try discrete list first: "CHANNELS[N]: val1 val2 ..." or "CHANNELS: val"
+            if (std::regex_search(hwParams, chMatch, std::regex(R"(CHANNELS\[?\d*\]?:\s+(.+))"))) {
+                std::string chLine = chMatch[1].str();
+                // Find the largest number on the line
+                std::regex numRe(R"(\d+)");
+                std::sregex_iterator it(chLine.begin(), chLine.end(), numRe);
+                std::sregex_iterator end;
+                for (; it != end; ++it) {
+                    int ch = std::stoi((*it)[0].str());
+                    if (ch > maxChannels) maxChannels = ch;
+                }
+            }
+            if (maxChannels > 8) maxChannels = 8; // cap at 7.1
+
+            // Detect best audio format from ALSA HW params
+            // FORMAT line examples: "FORMAT: S16_LE S24_3LE", "FORMAT: S16_LE S24_LE S32_LE"
+            // Priority: S32 > S24 > S16.  ALSA uses _ (S24_3LE), PipeWire drops it (S24LE).
+            std::string audioFormat = "S16LE"; // safe default all cards support
+            std::smatch fmtMatch;
+            if (std::regex_search(hwParams, fmtMatch, std::regex(R"(FORMAT[^:]*:\s+(.+))"))) {
+                std::string fmtLine = fmtMatch[1].str();
+                if (fmtLine.find("S32_LE") != std::string::npos) {
+                    audioFormat = "S32LE";
+                } else if (fmtLine.find("S24_LE") != std::string::npos) {
+                    audioFormat = "S24_32LE"; // 24-bit in 32-bit container
+                } else if (fmtLine.find("S24_3LE") != std::string::npos) {
+                    audioFormat = "S24LE"; // packed 24-bit (3 bytes)
+                }
+            }
+
+            // Channel position arrays matching PipeWire convention
+            static const char* positionArrays[] = {
+                nullptr,
+                "[ MONO ]",
+                "[ FL FR ]",
+                "[ FL FR FC ]",
+                "[ FL FR RL RR ]",
+                "[ FL FR FC RL RR ]",
+                "[ FL FR FC LFE RL RR ]",
+                "[ FL FR FC LFE RL RR RC ]",
+                "[ FL FR FC LFE RL RR SL SR ]"
+            };
+            const char* posStr = (maxChannels >= 1 && maxChannels <= 8) ? positionArrays[maxChannels] : "[ FL FR ]";
+
+            printf("FPP - PipeWire: creating adapter fpp_alsa_%s for card %d (%s) [%dch %s]\n",
+                   cidNorm.c_str(), cardNum, cId.c_str(), maxChannels, audioFormat.c_str());
             pipewireSink << "  { factory = adapter\n"
                          << "    args = {\n"
-                         << "      factory.name = api.alsa.pcm.source\n"
-                         << "      node.name = \"alsa_input.fpp_card" << card << "\"\n"
-                         << "      node.description = \"" << sourceDesc << "\"\n"
-                         << "      node.nick = \"" << cardId << "\"\n"
-                         << "      media.class = \"Audio/Source\"\n"
-                         << "      api.alsa.path = \"hw:" << cardId << "\"\n"
-                         << "      audio.format = \"S16LE\"\n"
-                         << "      audio.rate = 44100\n"
-                         << "      audio.channels = 1\n"
+                         << "      factory.name = api.alsa.pcm.sink\n"
+                         << "      node.name = \"fpp_alsa_" << cidNorm << "\"\n"
+                         << "      node.description = \"" << desc << "\"\n"
+                         << "      media.class = \"Audio/Sink\"\n"
+                         << "      api.alsa.path = \"hw:" << cId << "\"\n"
+                         << "      api.alsa.period-size = " << perSize << "\n"
+                         << "      api.alsa.headroom = 256\n"
+                         << "      audio.format = \"" << audioFormat << "\"\n"
+                         << "      audio.rate = " << pipewireSampleRate << "\n"
+                         << "      audio.channels = " << maxChannels << "\n"
+                         << "      audio.position = " << posStr << "\n"
                          << "    }\n"
                          << "  }\n";
+            // If this card has capture capability, also create an Audio/Source node.
+            if (arecordAll.find("card " + std::to_string(cardNum) + ":") != std::string::npos) {
+                // Detect capture channel count from ALSA HW params
+                int capChannels = 2; // safe default — most USB cards need at least 2
+                std::string capParams = execAndReturn("timeout 2 /usr/bin/arecord -D hw:" + cId + " --dump-hw-params /dev/zero 2>&1 | head -40");
+                if (contains(capParams, "HW Params")) {
+                    std::smatch capChMatch;
+                    if (std::regex_search(capParams, capChMatch, std::regex(R"(CHANNELS\[?\d*\]?:\s+(.+))"))) {
+                        std::string capChLine = capChMatch[1].str();
+                        // Find the smallest number (minimum channels)
+                        std::regex capNumRe(R"(\d+)");
+                        std::sregex_iterator capIt(capChLine.begin(), capChLine.end(), capNumRe);
+                        std::sregex_iterator capEnd;
+                        int minCap = 99;
+                        for (; capIt != capEnd; ++capIt) {
+                            int c = std::stoi((*capIt)[0].str());
+                            if (c > 0 && c < minCap) minCap = c;
+                        }
+                        if (minCap > 0 && minCap < 99) capChannels = minCap;
+                    }
+                }
+                printf("FPP - PipeWire: card %d (%s) has capture [%dch], creating source node\n",
+                       cardNum, cId.c_str(), capChannels);
+                pipewireSink << "  { factory = adapter\n"
+                             << "    args = {\n"
+                             << "      factory.name = api.alsa.pcm.source\n"
+                             << "      node.name = \"fpp_alsain_" << cidNorm << "\"\n"
+                             << "      node.description = \"" << desc << "\"\n"
+                             << "      node.nick = \"" << cId << "\"\n"
+                             << "      media.class = \"Audio/Source\"\n"
+                             << "      api.alsa.path = \"hw:" << cId << "\"\n"
+                             << "      audio.format = \"" << audioFormat << "\"\n"
+                             << "      audio.rate = 44100\n"
+                             << "      audio.channels = " << capChannels << "\n"
+                             << "    }\n"
+                             << "  }\n";
+            }
         }
-
         pipewireSink << "]\n";
         PutFileContents(pipewireSinkConfPath, pipewireSink.str());
     } else if (FileExists(pipewireSinkConfPath)) {
