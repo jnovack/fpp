@@ -1079,7 +1079,7 @@
         function AddGroup() {
             var group = {
                 id: nextGroupId++,
-                name: "Audio Group " + audioGroups.groups.length + 1,
+                name: "Audio Group " + (audioGroups.groups.length + 1),
                 enabled: true,
                 channels: 2,
                 latencyCompensate: false,
