@@ -58,7 +58,7 @@ public:
 
     /// Start all configured consumers targeting the given producer node.
     /// Called by GStreamerOut after pipewiresink is attached to PipeWire graph.
-    void StartConsumers(const std::string& producerNodeName);
+    void StartConsumers(const std::string& producerNodeName, int primaryConnectorId = -1);
 
     /// Stop all running consumer pipelines.
     /// Called by GStreamerOut when video playback ends.
@@ -194,5 +194,6 @@ private:
     mutable std::mutex m_mutex;
     std::vector<ConsumerInfo> m_consumers;
     std::string m_activeProducer;  // node name of the current producer, empty if none
+    int m_primaryConnectorId = -1; // DRM connector ID used by primary pipeline's kmssink
     bool m_initialized = false;
 };

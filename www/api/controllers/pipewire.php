@@ -4376,6 +4376,9 @@ function GetPipeWireGraph()
                 'object.path',
                 'video.format',
                 'format.dsp',
+                'fpp.video.stream',
+                'fpp.video.slot',
+                'fpp.video.connector',
             );
             foreach ($interesting as $key) {
                 if (isset($props[$key])) {
@@ -4811,7 +4814,16 @@ function GetPipeWireGraph()
             }
         }
         if (!empty($videoStreamNodes) && stripos($videoOutput, 'HDMI') !== false) {
-            $hdmiNodeName = 'fpp_hdmi_direct_' . $videoOutput;
+            // Use actual connector from video stream (may differ from setting after auto-fallback)
+            $actualConnector = $videoOutput;
+            foreach ($videoStreamNodes as $vsn) {
+                $vc = isset($vsn['properties']['fpp.video.connector']) ? $vsn['properties']['fpp.video.connector'] : '';
+                if (!empty($vc)) {
+                    $actualConnector = $vc;
+                    break;
+                }
+            }
+            $hdmiNodeName = 'fpp_hdmi_direct_' . $actualConnector;
             // Only inject if not already present (shouldn't be, but guard)
             $alreadyPresent = false;
             foreach ($nodes as $n) {
@@ -4823,13 +4835,17 @@ function GetPipeWireGraph()
             if (!$alreadyPresent) {
                 $hdmiNodeId = $virtualId++;
                 $hdmiPortId = $virtualId++;
+                // The video pipewiresink may be 'suspended' in PipeWire when no PipeWire
+                // consumers are attached — the direct kmssink output still works.
+                $vsState = $videoStreamNodes[0]['state'];
+                $hdmiActive = in_array($vsState, array('running', 'suspended'));
                 $nodes[] = array(
                     'id' => $hdmiNodeId,
                     'name' => $hdmiNodeName,
-                    'description' => $videoOutput . ' (Direct)',
+                    'description' => $actualConnector . ' (Direct)',
                     'nick' => '',
                     'mediaClass' => 'Video/Sink',
-                    'state' => $videoStreamNodes[0]['state'] === 'running' ? 'running' : 'not-running',
+                    'state' => $hdmiActive ? 'running' : 'not-running',
                     'factory' => 'virtual',
                     'properties' => array(
                         'fpp.hdmi.direct' => true,
@@ -4853,13 +4869,14 @@ function GetPipeWireGraph()
                         }
                     }
                     if ($vsPortId !== null) {
+                        $vsnActive = in_array($vsn['state'], array('running', 'suspended'));
                         $links[] = array(
                             'id' => $virtualId++,
                             'outputNodeId' => $vsn['id'],
                             'outputPortId' => $vsPortId,
                             'inputNodeId' => $hdmiNodeId,
                             'inputPortId' => $hdmiPortId,
-                            'state' => $vsn['state'] === 'running' ? 'active' : 'not-running',
+                            'state' => $vsnActive ? 'active' : 'not-running',
                         );
                     }
                 }

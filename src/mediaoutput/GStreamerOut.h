@@ -77,6 +77,7 @@ private:
     gint64 m_lastPosition = -1;
     gint64 m_maxDuration = 0;   // highest observed duration (handles VBR fluctuations)
     uint64_t m_stallStartMs = 0;
+    uint64_t m_wallStartMs = 0;
     static constexpr int STALL_TIMEOUT_MS = 5000; // 5 seconds before declaring stall
 
     void ProcessMessages();

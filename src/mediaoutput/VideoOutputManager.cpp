@@ -147,7 +147,7 @@ void VideoOutputManager::Shutdown() {
     LogInfo(VB_MEDIAOUT, "VideoOutputManager: Shutdown complete\n");
 }
 
-void VideoOutputManager::StartConsumers(const std::string& producerNodeName) {
+void VideoOutputManager::StartConsumers(const std::string& producerNodeName, int primaryConnectorId) {
     bool shouldStartSAP = false;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -156,6 +156,7 @@ void VideoOutputManager::StartConsumers(const std::string& producerNodeName) {
         }
 
         m_activeProducer = producerNodeName;
+        m_primaryConnectorId = primaryConnectorId;
 
         // Extract stream slot number from producer node name (e.g. "fppd_video_stream_2" → 2)
         int producerSlot = 0;
@@ -349,13 +350,12 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
         // pipeline always has a direct kmssink on the primary connector (even when
         // PipeWire video routing is active, kmssink stays in the primary pipeline
         // to hold DRM master).  Two kmssinks cannot share the same DRM CRTC/connector.
-        std::string primaryOutput = getSetting("VideoOutput");
-        if (primaryOutput == "--HDMI--" || primaryOutput == "--hdmi--" || primaryOutput == "HDMI")
-            primaryOutput = "HDMI-A-1";
-        if (!primaryOutput.empty() && primaryOutput == consumer.connector) {
+        // Use the actual connector ID (which may differ from VideoOutput setting due to
+        // auto-fallback when the configured connector is disconnected).
+        if (m_primaryConnectorId >= 0 && consumer.connectorId == m_primaryConnectorId) {
             LogWarn(VB_MEDIAOUT, "VideoOutputManager: Skipping HDMI consumer '%s' — "
-                    "connector %s is already used by the primary video output\n",
-                    consumer.name.c_str(), consumer.connector.c_str());
+                    "connector %s (id=%d) is used by the primary video output\n",
+                    consumer.name.c_str(), consumer.connector.c_str(), consumer.connectorId);
             return false;
         }
 
