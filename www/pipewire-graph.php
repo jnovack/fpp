@@ -247,7 +247,7 @@
         include 'menu.inc';
         ?>
         <div class="mainContainer">
-            <h2 class="title d-pull-left">PipeWire Audio Pipeline</h2>
+            <h2 class="title d-pull-left">PipeWire Audio &amp; Video Pipeline</h2>
             <div class="pageContent">
 
                 <div class="pw-toolbar">
@@ -283,6 +283,10 @@
                             HW Output (ALSA)</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#dc3545"></span>
                             AES67 / App</span>
+                        <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#0dcaf0"></span>
+                            Video Stream</span>
+                        <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#20b2aa"></span>
+                            Video Output</span>
                     </div>
                 </div>
 
@@ -321,6 +325,15 @@
             function nodeColor(n) {
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
+                // Video nodes
+                if (nm.startsWith('fppd_video_stream_')) return '#0dcaf0'; // video producer
+                if (nm.startsWith('fpp_hdmi_direct_')) return '#198754';   // HDMI direct output
+                if (nm.startsWith('fpp_video_group_')) return '#20b2aa';   // video consumer
+                if (mc === 'Stream/Output/Video') return '#0dcaf0';
+                if (mc === 'Stream/Input/Video') return '#20b2aa';
+                if (mc === 'Video/Source') return '#0dcaf0';
+                if (mc === 'Video/Sink') return '#20b2aa';
+                // Audio nodes
                 if (nm.startsWith('fpp_input_')) return '#e35d6a'; // input group mix bus
                 if (nm.startsWith('fpp_tee_fppd_stream_')) return '#d63384'; // input tee (fan-out)
                 if (nm.startsWith('fpp_loopback_ig') || nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return '#e35d6a'; // input group routing
@@ -332,7 +345,10 @@
                 if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return '#198754'; // ALSA hw output
                 if (mc === 'Audio/Source') return '#20c997'; // source
                 if (mc === 'Stream/Input/Audio') return '#dc3545'; // app capture (AES67)
-                if (nm.startsWith('fppd_stream_')) return '#fd7e14'; // fppd media stream
+                if (nm.startsWith('fppd_stream_')) {
+                    const props = n.properties || {};
+                    return props['fpp.combined.av'] ? '#e8651a' : '#fd7e14'; // combined A+V / audio only
+                }
                 if (mc === 'Stream/Output/Audio') return '#fd7e14'; // stream
                 if (mc === 'Audio/Sink') return '#198754'; // other sink
                 return '#6c757d';
@@ -384,6 +400,7 @@
                 // fppd media streams
                 if (nm.startsWith('fppd_stream_')) {
                     const parts = [];
+                    if (p['fpp.combined.av']) parts.push('audio + video');
                     if (p['fpp.stream.slot']) parts.push('slot ' + p['fpp.stream.slot']);
                     if (p['fpp.stream.targets'] && p['fpp.stream.targets'].length) {
                         const names = p['fpp.stream.targets'].map(t =>
@@ -395,6 +412,27 @@
                     }
                     if (p['fpp.stream.virtual']) parts.push('(inactive)');
                     return parts.join(' · ') || '';
+                }
+
+                // Video producer streams
+                if (nm.startsWith('fppd_video_stream_')) {
+                    const parts = [];
+                    if (p['fpp.video.slot']) parts.push('slot ' + p['fpp.video.slot']);
+                    parts.push('video producer');
+                    return parts.join(' · ');
+                }
+
+                // Video output consumers
+                if (nm.startsWith('fpp_video_group_')) {
+                    const parts = [];
+                    if (p['fpp.video.groupName']) parts.push(p['fpp.video.groupName']);
+                    parts.push('video consumer');
+                    return parts.join(' · ');
+                }
+
+                // HDMI direct output (kmssink in primary pipeline)
+                if (nm.startsWith('fpp_hdmi_direct_')) {
+                    return p['fpp.hdmi.connector'] || 'HDMI direct';
                 }
 
                 // Streams (AES67, other)
@@ -630,6 +668,43 @@
                     }
                 });
 
+                // 7) Combined A+V: fppd_video_stream_N → fppd_stream_N
+                //    Both nodes come from the same GStreamer pipeline playing
+                //    a media file with audio + video.  Merge video into the
+                //    audio node so they appear as a single process.
+                graphData.nodes.forEach(n => {
+                    const m = n.name.match(/^fppd_video_stream_(\d+)$/);
+                    if (!m || absorbed.has(n.id)) return;
+                    const audioName = 'fppd_stream_' + m[1];
+                    const audioNode = nodesByName[audioName];
+                    if (audioNode && !absorbed.has(audioNode.id)) {
+                        absorbed.add(n.id);
+                        nodeIdRemap[n.id] = audioNode.id;
+                        // Move video output ports to the audio node
+                        graphData.ports.forEach(p => {
+                            if (p.nodeId === n.id) {
+                                p.nodeId = audioNode.id;
+                                // Relabel video port for clarity
+                                p.channel = 'Video';
+                                p.name = 'output_Video';
+                            }
+                        });
+                        // Copy video properties and mark as combined
+                        audioNode.properties = audioNode.properties || {};
+                        audioNode.properties['fpp.combined.av'] = true;
+                        const vp = n.properties || {};
+                        if (vp['fpp.video.stream']) audioNode.properties['fpp.video.stream'] = true;
+                        if (vp['fpp.video.slot']) audioNode.properties['fpp.video.slot'] = vp['fpp.video.slot'];
+                        // Update description to reflect combined A+V
+                        audioNode.description = (audioNode.description || audioNode.name)
+                            .replace('Media Stream', 'Media Stream')
+                            + ' (A+V)';
+                        if (n.state === 'running' && audioNode.state !== 'running') {
+                            audioNode.state = n.state;
+                        }
+                    }
+                });
+
                 // Remove absorbed nodes
                 graphData.nodes = graphData.nodes.filter(n => !absorbed.has(n.id));
 
@@ -696,65 +771,99 @@
             }
 
             // ── Layout algorithm ──────────────────────────────────────────
-            // Fixed 6-column layout (left to right):
-            //   0: Input Sources — Audio/Source, Stream/Output/Audio (fppd etc.)
-            //   1: Input Tees   — fpp_tee_* null-sink fan-out nodes
-            //   2: Input Groups  — fpp_input_* combine-stream mix buses, loopbacks
-            //   3: Output Groups — fpp_group_* combine-stream sinks (existing)
-            //   4: Effects       — delay filters, EQ nodes (fpp_fx_*, fpp_eq_*)
-            //   5: HW Outputs    — ALSA sinks, AES67 / app capture (Stream/Input/Audio)
-            const NUM_COLS = 6;
-            const COL_LABELS = ['Input Sources', 'Input Tees', 'Input Groups', 'Output Groups', 'Effects', 'HW Outputs'];
+            // 7-column layout.  Video outputs sit to the LEFT of the media
+            // sources so video flows ← while audio flows →.
+            // Video port dots are placed on the OPPOSITE side from audio dots
+            // so that video wires naturally flow right-to-left.
+            //   0: Video Outputs — fpp_video_group_*, fpp_hdmi_direct_*, Video/Sink
+            //   1: Media Sources — fppd_stream_* (A+V), Audio/Source, Video/Source
+            //   2: Input Tees   — fpp_tee_* null-sink fan-out nodes
+            //   3: Input Groups  — fpp_input_* combine-stream mix buses, loopbacks
+            //   4: Output Groups — fpp_group_* combine-stream sinks (existing)
+            //   5: Effects       — delay filters, EQ nodes (fpp_fx_*, fpp_eq_*)
+            //   6: HW Outputs    — ALSA sinks, AES67 / app capture (Stream/Input/Audio)
+            const NUM_COLS = 7;
+            const COL_LABELS = ['Video Outputs', 'Media Sources', 'Input Tees', 'Input Groups', 'Output Groups', 'Effects', 'HW Outputs'];
 
             function classifyColumn(n) {
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
 
+                // Video outputs (col 0 — left of sources)
+                if (nm.startsWith('fpp_hdmi_direct_')) return 0;
+                if (nm.startsWith('fpp_video_group_')) return 0;
+                if (mc === 'Stream/Input/Video' || mc === 'Video/Sink') return 0;
+
+                // Video sources go into Media Sources (col 1)
+                if (nm.startsWith('fppd_video_stream_')) return 1;
+                if (mc === 'Stream/Output/Video' || mc === 'Video/Source') return 1;
+
                 // Input tees (fan-out null-sinks)
-                if (nm.startsWith('fpp_tee_fppd_stream_')) return 1;
+                if (nm.startsWith('fpp_tee_fppd_stream_')) return 2;
 
                 // Input groups (mix buses)
-                if (nm.startsWith('fpp_input_')) return 2;
-                if (nm.startsWith('fpp_loopback_ig')) return 2;
-                if (nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return 2;
+                if (nm.startsWith('fpp_input_')) return 3;
+                if (nm.startsWith('fpp_loopback_ig')) return 3;
+                if (nm.startsWith('input.fpp_loopback_ig') || nm.startsWith('output.fpp_loopback_ig')) return 3;
 
                 // Output group sinks
-                if (nm.startsWith('fpp_group_')) return 3;
+                if (nm.startsWith('fpp_group_')) return 4;
 
                 // Effects — delay filters, EQ, any fpp_fx_ node
-                if (nm.startsWith('fpp_fx_') || nm.startsWith('fpp_eq_')) return 4;
+                if (nm.startsWith('fpp_fx_') || nm.startsWith('fpp_eq_')) return 5;
 
                 // Routing hub (post-EQ fan-out) — normally merged into EQ node;
                 // fallback classification if merge didn't absorb it
-                if (nm.startsWith('fpp_route_ig_')) return 2;
-                if (nm.startsWith('output.fpp_route_ig_')) return 2;
+                if (nm.startsWith('fpp_route_ig_')) return 3;
+                if (nm.startsWith('output.fpp_route_ig_')) return 3;
 
                 // ALSA hardware outputs
-                if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return 5;
+                if (mc === 'Audio/Sink' && nm.startsWith('alsa_')) return 6;
 
                 // AES67 / app capture sinks (Stream/Input/Audio)
-                if (mc === 'Stream/Input/Audio') return 5;
+                if (mc === 'Stream/Input/Audio') return 6;
 
                 // Audio sources (mic inputs, ALSA capture)
-                if (mc === 'Audio/Source') return 0;
+                if (mc === 'Audio/Source') return 1;
 
                 // Stream outputs (fppd playback streams)
-                if (mc === 'Stream/Output/Audio') return 0;
+                if (mc === 'Stream/Output/Audio') return 1;
 
                 // Any other Audio/Sink not caught above (e.g. custom)
-                if (mc === 'Audio/Sink') return 5;
+                if (mc === 'Audio/Sink') return 6;
 
                 // Fallback
-                return 0;
+                return 1;
+            }
+
+            // ── Video port side-flipping ───────────────────────────────────
+            // Video ports are placed on the OPPOSITE side of the node from
+            // audio ports so that video wires flow right-to-left.
+            function isVideoPort(port, node) {
+                const mc = (node && node.mediaClass) || '';
+                if (mc.includes('Video')) return true;
+                if (port.channel === 'Video' || port.name === 'output_Video') return true;
+                return false;
+            }
+
+            function portSide(port, node) {
+                const video = isVideoPort(port, node);
+                if (port.direction === 'output') return video ? 'left' : 'right';
+                return video ? 'right' : 'left';
             }
 
             function layoutGraph() {
-                // Compute port counts per node
+                // Build node lookup for port side classification
+                const _nodesById = {};
+                graphData.nodes.forEach(n => { _nodesById[n.id] = n; });
+
+                // Compute port counts per node (left / right side)
                 const portsPerNode = {};
                 graphData.ports.forEach(p => {
-                    if (!portsPerNode[p.nodeId]) portsPerNode[p.nodeId] = { in: 0, out: 0 };
-                    if (p.direction === 'input') portsPerNode[p.nodeId].in++;
-                    else portsPerNode[p.nodeId].out++;
+                    if (!portsPerNode[p.nodeId]) portsPerNode[p.nodeId] = { left: 0, right: 0 };
+                    const side = portSide(p, _nodesById[p.nodeId]);
+                    if (side === 'left') portsPerNode[p.nodeId].left++;
+                    else portsPerNode[p.nodeId].right++;
                 });
 
                 // Assign each node to a column
@@ -781,18 +890,19 @@
                 });
 
                 // ── Barycenter crossing minimization ──────────────────────
-                // Helper: sub-group priority for Input Sources column (0).
-                // Media streams first (0), HW sources second (1).
+                // Helper: sub-group priority for Media Sources column (1).
+                // Media streams first (0), video sources second (1), HW sources third (2).
                 function inputSourceGroup(n) {
                     const mc = n.mediaClass || '';
                     if (mc === 'Stream/Output/Audio') return 0; // media streams at top
-                    return 1; // HW sources (Audio/Source) below
+                    if (mc === 'Stream/Output/Video' || mc === 'Video/Source') return 1;
+                    return 2; // HW sources (Audio/Source) below
                 }
 
                 // Assign initial order indices within each column (alphabetical seed)
                 for (let c = 0; c < NUM_COLS; c++) {
-                    if (c === 0) {
-                        // Column 0: group media streams above HW sources
+                    if (c === 1) {
+                        // Column 1 (Media Sources): group media streams above HW sources
                         cols[c].sort((a, b) => {
                             const ga = inputSourceGroup(a), gb = inputSourceGroup(b);
                             if (ga !== gb) return ga - gb;
@@ -806,8 +916,8 @@
 
                 // Helper: compute node heights for Y positions
                 function nodeHeight(n) {
-                    const pc = portsPerNode[n.id] || { in: 0, out: 0 };
-                    return Math.max(NODE_H_BASE, PORT_Y_START + Math.max(pc.in, pc.out, 1) * PORT_SPACING + 4);
+                    const pc = portsPerNode[n.id] || { left: 0, right: 0 };
+                    return Math.max(NODE_H_BASE, PORT_Y_START + Math.max(pc.left, pc.right, 1) * PORT_SPACING + 4);
                 }
 
                 // Helper: compute temporary Y centers based on current order
@@ -842,9 +952,9 @@
                     });
 
                     cols[targetCol].sort((a, b) => a._bary - b._bary);
-                    // Column 0: preserve media-stream / HW-source grouping
-                    if (targetCol === 0) {
-                        cols[0].sort((a, b) => {
+                    // Column 1: preserve media-stream / HW-source grouping
+                    if (targetCol === 1) {
+                        cols[1].sort((a, b) => {
                             const ga = inputSourceGroup(a), gb = inputSourceGroup(b);
                             if (ga !== gb) return ga - gb;
                             return a._bary - b._bary;
@@ -876,9 +986,9 @@
                         }
                         n._w = NODE_W;
                         n._h = h;
-                        const pc = portsPerNode[n.id] || { in: 0, out: 0 };
-                        n._portsIn = pc.in;
-                        n._portsOut = pc.out;
+                        const pc = portsPerNode[n.id] || { left: 0, right: 0 };
+                        n._portsLeft = pc.left;
+                        n._portsRight = pc.right;
                         y += h + PADDING.rowGap;
                     });
                 }
@@ -907,27 +1017,29 @@
                 const nodesById = {};
                 graphData.nodes.forEach(n => nodesById[n.id] = n);
 
-                // Build port position map — ports ordered per-node per-direction
+                // Build port position map — grouped by left/right side
+                // (video ports are flipped: outputs→left, inputs→right)
                 const portPositions = {};  // portId → {x, y}
-                const nodePortsIn = {};    // nodeId → [port, ...]
-                const nodePortsOut = {};
+                const nodePortsLeft = {};  // nodeId → [port, ...]
+                const nodePortsRight = {};
                 graphData.ports.forEach(p => {
-                    const bucket = p.direction === 'input' ? nodePortsIn : nodePortsOut;
+                    const side = portSide(p, nodesById[p.nodeId]);
+                    const bucket = side === 'left' ? nodePortsLeft : nodePortsRight;
                     if (!bucket[p.nodeId]) bucket[p.nodeId] = [];
                     bucket[p.nodeId].push(p);
                 });
 
                 // Assign port positions relative to their node
                 graphData.nodes.forEach(n => {
-                    const ins = nodePortsIn[n.id] || [];
-                    const outs = nodePortsOut[n.id] || [];
-                    ins.forEach((p, i) => {
+                    const lefts = nodePortsLeft[n.id] || [];
+                    const rights = nodePortsRight[n.id] || [];
+                    lefts.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x,
                             y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
                         };
                     });
-                    outs.forEach((p, i) => {
+                    rights.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x + n._w,
                             y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
@@ -943,7 +1055,8 @@
                     if (!p1 || !p2) return;
 
                     const dx = Math.abs(p2.x - p1.x) * 0.5;
-                    const path = `M${p1.x},${p1.y} C${p1.x + dx},${p1.y} ${p2.x - dx},${p2.y} ${p2.x},${p2.y}`;
+                    const dir = p2.x >= p1.x ? 1 : -1;
+                    const path = `M${p1.x},${p1.y} C${p1.x + dir*dx},${p1.y} ${p2.x - dir*dx},${p2.y} ${p2.x},${p2.y}`;
                     const stateClass = (l.state || '').toLowerCase();
 
                     gLinks.append('path')
@@ -1029,22 +1142,14 @@
                     .attr('x', 10).attr('y', 41)
                     .text(d => nodeMetaText(d));
 
-                // ── Input ports (left side) ───────────────
-                graphData.nodes.forEach(n => {
-                    const ins = nodePortsIn[n.id] || [];
-                    const g = gNodes.select(function () {
-                        // find the node group for this node
-                        return null;
-                    });
-                });
-
                 // Draw ports as circles on the node groups
+                // Video ports are on the opposite side from audio ports
                 nodeGroups.each(function (n) {
                     const g = d3.select(this);
-                    const ins = nodePortsIn[n.id] || [];
-                    const outs = nodePortsOut[n.id] || [];
+                    const lefts = nodePortsLeft[n.id] || [];
+                    const rights = nodePortsRight[n.id] || [];
 
-                    ins.forEach((p, i) => {
+                    lefts.forEach((p, i) => {
                         const py = PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2;
                         g.append('circle')
                             .attr('class', 'pw-port-dot')
@@ -1060,7 +1165,7 @@
                             .text(portLabel(p));
                     });
 
-                    outs.forEach((p, i) => {
+                    rights.forEach((p, i) => {
                         const py = PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2;
                         g.append('circle')
                             .attr('class', 'pw-port-dot')
@@ -1112,27 +1217,28 @@
             }
 
             function rerouteLinks() {
-                // Rebuild port positions from node positions
+                // Rebuild port positions from node positions (left/right side)
                 const portPositions = {};
-                const nodePortsIn = {};
-                const nodePortsOut = {};
+                const nodesById = {};
+                graphData.nodes.forEach(n => { nodesById[n.id] = n; });
+                const nodePortsLeft = {};
+                const nodePortsRight = {};
                 graphData.ports.forEach(p => {
-                    const bucket = p.direction === 'input' ? nodePortsIn : nodePortsOut;
+                    const side = portSide(p, nodesById[p.nodeId]);
+                    const bucket = side === 'left' ? nodePortsLeft : nodePortsRight;
                     if (!bucket[p.nodeId]) bucket[p.nodeId] = [];
                     bucket[p.nodeId].push(p);
                 });
-                // De-dup port ordering
-                const seenIn = {}, seenOut = {};
                 graphData.nodes.forEach(n => {
-                    const ins = nodePortsIn[n.id] || [];
-                    const outs = nodePortsOut[n.id] || [];
-                    ins.forEach((p, i) => {
+                    const lefts = nodePortsLeft[n.id] || [];
+                    const rights = nodePortsRight[n.id] || [];
+                    lefts.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x,
                             y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
                         };
                     });
-                    outs.forEach((p, i) => {
+                    rights.forEach((p, i) => {
                         portPositions[p.id] = {
                             x: n._x + n._w,
                             y: n._y + PORT_Y_START + i * PORT_SPACING + PORT_SPACING / 2
@@ -1146,7 +1252,8 @@
                     const p2 = portPositions[l.inputPortId];
                     if (!p1 || !p2) return;
                     const dx = Math.abs(p2.x - p1.x) * 0.5;
-                    const path = `M${p1.x},${p1.y} C${p1.x + dx},${p1.y} ${p2.x - dx},${p2.y} ${p2.x},${p2.y}`;
+                    const dir = p2.x >= p1.x ? 1 : -1;
+                    const path = `M${p1.x},${p1.y} C${p1.x + dir*dx},${p1.y} ${p2.x - dir*dx},${p2.y} ${p2.x},${p2.y}`;
                     gLinks.append('path')
                         .attr('class', 'pw-link ' + (l.state || '').toLowerCase())
                         .attr('d', path);

@@ -199,9 +199,28 @@ sleep 3
 systemctl start fpp-pipewire-pulse.service
 sleep 1
 
-# --- 9. Verify ---
+# --- 9. Build PipeWire GStreamer plugin from source (video mode=provide fix) ---
 echo ""
-echo "Step 9: Verifying status..."
+echo "Step 9: Checking PipeWire GStreamer plugin for mode=provide support..."
+PLUGIN_HAS_PROVIDE=$(PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp \
+    gst-inspect-1.0 pipewiresink 2>/dev/null | grep -c "provide" || true)
+if [ "${PLUGIN_HAS_PROVIDE}" -gt 0 ]; then
+    echo "    GStreamer pipewiresink already supports mode=provide — skipping build."
+else
+    echo "    Stock plugin lacks mode=provide fix.  Building from source..."
+    if [ -x /opt/fpp/scripts/build_pipewire_gst_plugin.sh ]; then
+        /opt/fpp/scripts/build_pipewire_gst_plugin.sh 1.6.0 || {
+            echo "    WARNING: Plugin build failed. Video Input Sources (mode=provide) may crash."
+            echo "    Run manually: sudo /opt/fpp/scripts/build_pipewire_gst_plugin.sh 1.6.0"
+        }
+    else
+        echo "    WARNING: build_pipewire_gst_plugin.sh not found."
+    fi
+fi
+
+# --- 10. Verify ---
+echo ""
+echo "Step 10: Verifying status..."
 
 ALL_OK=true
 for svc in fpp-pipewire fpp-wireplumber fpp-pipewire-pulse; do

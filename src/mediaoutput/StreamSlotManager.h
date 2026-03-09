@@ -61,6 +61,12 @@ public:
     /// Get the PipeWire node description for a slot (e.g. "FPP Media Stream 1").
     static std::string GetNodeDescription(int slot);
 
+    /// Get the PipeWire video node name for a slot (e.g. "fppd_video_stream_1").
+    static std::string GetVideoNodeName(int slot);
+
+    /// Get the PipeWire video node description for a slot.
+    static std::string GetVideoNodeDescription(int slot);
+
     /// Set volume on a specific slot (0-100). Returns true on success.
     bool SetSlotVolume(int slot, int volume);
 

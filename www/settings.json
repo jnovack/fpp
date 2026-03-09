@@ -155,6 +155,14 @@
 				"PipeWireGraph"
 			]
 		},
+		"pipeWireVideo": {
+			"description": "PipeWire Video Routing",
+			"settings": [
+				"PipeWireVideoOutputs",
+				"PipeWireVideoInputSources",
+				"PipeWireGraph"
+			]
+		},
 		"generalVideo": {
 			"description": "Video",
 			"settings": [
@@ -762,6 +770,8 @@
 					"PipeWireAudioGroups",
 					"PipeWireInputMixing",
 					"PipeWireRoutingMatrix",
+					"PipeWireVideoOutputs",
+					"PipeWireVideoInputSources",
 					"PipeWireAES67Config",
 					"PipeWireGraph"
 				],
@@ -830,11 +840,36 @@
 		"PipeWireGraph": {
 			"name": "PipeWireGraph",
 			"description": "PipeWire Graph",
-			"tip": "Visual graph of the current PipeWire audio topology, including all sources, sinks, and processing nodes. Useful for troubleshooting and understanding how audio is flowing through the system.",
+			"tip": "Visual graph of the current PipeWire audio and video topology, including all sources, sinks, and processing nodes. Useful for troubleshooting and understanding how media is flowing through the system.",
 			"type": "link",
 			"linkUrl": "pipewire-graph.php",
 			"icon": "fas fa-project-diagram",
 			"buttonText": " Visualise Current Pipeline"
+		},
+		"PipeWireVideoOutputs": {
+			"name": "PipeWireVideoOutputs",
+			"description": "Video Output Groups",
+			"tip": "Configure video output groups routed through PipeWire. Each group fans out a video signal to multiple destinations (HDMI ports, pixel overlays, network streams). All members of a group receive the same video signal.",
+			"type": "modal",
+			"modalUrl": "pipewire-video.php?modal=1",
+			"icon": "fas fa-tv",
+			"buttonText": "Configure Video Output Groups",
+			"modalTitle": "PipeWire Video Output Groups",
+			"platforms": [
+				"!MacOS"
+			]
+		},
+		"PipeWireVideoInputSources": {
+			"name": "PipeWireVideoInputSources",
+			"description": "Video Input Sources",
+			"tip": "Configure persistent video input sources (test patterns, cameras) that appear in the PipeWire graph. Video Output Groups can target these sources to display them on HDMI outputs, pixel overlays, or network streams.",
+			"type": "link",
+			"linkUrl": "pipewire-video-inputs.php",
+			"icon": "fas fa-video",
+			"buttonText": "Configure Video Input Sources",
+			"platforms": [
+				"!MacOS"
+			]
 		},
 		"PipeWireAES67Config": {
 			"name": "PipeWireAES67Config",

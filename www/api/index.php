@@ -133,6 +133,17 @@ dispatch_post('/pipewire/audio/sync/start', 'StartSyncCalibration');
 dispatch_post('/pipewire/audio/sync/stop', 'StopSyncCalibration');
 dispatch_post('/pipewire/audio/primary-output', 'SetPipeWirePrimaryOutput');
 
+dispatch_get('/pipewire/video/groups', 'GetPipeWireVideoGroups');
+dispatch_post('/pipewire/video/groups', 'SavePipeWireVideoGroups');
+dispatch_post('/pipewire/video/groups/apply', 'ApplyPipeWireVideoGroups');
+dispatch_get('/pipewire/video/connectors', 'GetVideoOutputTargets');
+dispatch_get('/pipewire/video/routing', 'GetVideoRoutingMatrix');
+dispatch_post('/pipewire/video/routing', 'SaveVideoRoutingMatrix');
+dispatch_get('/pipewire/video/input-sources', 'GetPipeWireVideoInputSources');
+dispatch_post('/pipewire/video/input-sources', 'SavePipeWireVideoInputSources');
+dispatch_post('/pipewire/video/input-sources/apply', 'ApplyPipeWireVideoInputSources');
+dispatch_get('/pipewire/video/input-sources/v4l2-devices', 'GetV4L2Devices');
+
 dispatch_get('/pipewire/aes67/instances', 'GetAES67Instances');
 dispatch_post('/pipewire/aes67/instances', 'SaveAES67Instances');
 dispatch_post('/pipewire/aes67/apply', 'ApplyAES67Instances');

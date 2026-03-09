@@ -68,6 +68,8 @@ OBJECTS_fpp_so += \
 	mediaoutput/GStreamerOut.o \
 	mediaoutput/SDLOut.o \
 	mediaoutput/StreamSlotManager.o \
+	mediaoutput/VideoInputManager.o \
+	mediaoutput/VideoOutputManager.o \
 	mediaoutput/VLCOut.o \
 	mqtt.o \
 	NetworkController.o \

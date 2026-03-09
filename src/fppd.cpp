@@ -81,6 +81,8 @@
 #include "mediaoutput/AES67Manager.h"
 #include "mediaoutput/MediaOutputBase.h"
 #include "mediaoutput/MediaOutputStatus.h"
+#include "mediaoutput/VideoInputManager.h"
+#include "mediaoutput/VideoOutputManager.h"
 #include "mediaoutput/mediaoutput.h"
 #include "overlays/PixelOverlay.h"
 #include "playlist/Playlist.h"
@@ -785,6 +787,8 @@ int main(int argc, char* argv[]) {
     AES67Manager::INSTANCE.Init();
     AES67Manager::INSTANCE.ApplyConfig();
 #endif
+    VideoInputManager::Instance().Init();
+    VideoOutputManager::Instance().Init();
     PixelOverlayManager::INSTANCE.Initialize();
     PingManager::INSTANCE.Initialize();
     WLEDAPIResponder::INSTANCE.Initialize();
@@ -819,6 +823,8 @@ int main(int argc, char* argv[]) {
     // discovery clients won't keep our entries cached for the TTL.
     MDNSManager::INSTANCE.Cleanup();
 
+    VideoInputManager::Instance().Shutdown();
+    VideoOutputManager::Instance().Shutdown();
 #ifdef HAS_AES67_GSTREAMER
     AES67Manager::INSTANCE.Shutdown();
 #endif

@@ -23,10 +23,12 @@
 #include <dirent.h>
 #include <fstream>
 #include <sstream>
+#include <thread>
 
 #include "common.h"
 #include "log.h"
 #include "StreamSlotManager.h"
+#include "VideoOutputManager.h"
 #include "mediadetails.h"
 #include "settings.h"
 #include "channeloutput/channeloutputthread.h"
@@ -255,6 +257,21 @@ int GStreamerOutput::Start(int msTime) {
     }
     LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s' (slot %d)\n", pipelineSinkName.c_str(), m_streamSlot);
 
+    // Check for PipeWire video routing — if PipeWireVideoSinkName is set,
+    // video will be sent through PipeWire instead of direct kmssink.
+    m_pwVideoSinkName = getSetting("PipeWireVideoSinkName");
+    if (m_streamSlot > 1) {
+        std::string slotSetting = "PipeWireVideoSinkName_" + std::to_string(m_streamSlot);
+        std::string slotVideoSinkName = getSetting(slotSetting.c_str());
+        if (!slotVideoSinkName.empty()) {
+            m_pwVideoSinkName = slotVideoSinkName;
+        }
+    }
+    if (!m_pwVideoSinkName.empty()) {
+        LogInfo(VB_MEDIAOUT, "GStreamer: PipeWireVideoSinkName='%s' (slot %d) — video will route through PipeWire\n",
+                m_pwVideoSinkName.c_str(), m_streamSlot);
+    }
+
     // Stream identity: use slot number for PipeWire node naming
     std::string streamNodeName = StreamSlotManager::GetNodeName(m_streamSlot);
     std::string streamNodeDesc = StreamSlotManager::GetNodeDescription(m_streamSlot);
@@ -288,6 +305,12 @@ int GStreamerOutput::Start(int msTime) {
         GstElement* audioresample = gst_element_factory_make("audioresample", "aresample");
         GstElement* tee = gst_element_factory_make("tee", "t");
         GstElement* queue1 = gst_element_factory_make("queue", "q1");
+        // Protect against audio pipewiresink blocking (PipeWire slow to connect).
+        // Without leaky, a blocked sink fills the queue, blocks the tee, and
+        // starves the video path via decodebin's internal multiqueue.
+        g_object_set(queue1, "max-size-time", (guint64)(5 * GST_SECOND),
+                     "max-size-buffers", 0, "max-size-bytes", 0,
+                     "leaky", 2 /* downstream */, NULL);
         m_volume = gst_element_factory_make("volume", "vol");
         GstElement* sink = nullptr;
         if (!pipelineSinkName.empty()) {
@@ -522,6 +545,12 @@ int GStreamerOutput::Start(int msTime) {
 #endif
 
         // Build video sub-chain: queue ! videoconvert ! videoscale ! capsfilter ! kmssink
+        // When PipeWire video routing is active, a tee is inserted before kmssink
+        // so a deferred pipewiresink can expose the stream in the PipeWire graph.
+        // kmssink MUST be in the primary pipeline to hold DRM master — vc4's
+        // kernel driver allows only one master fd per device, and drmModeSetPlane
+        // requires master.  A consumer-side kmssink (pipewiresrc → kmssink) would
+        // open a second fd and fail with "Permission denied".
         GstElement* videoQueue = gst_element_factory_make("queue", "vq");
         GstElement* videoconvert = gst_element_factory_make("videoconvert", "vconv");
         GstElement* videoscale = gst_element_factory_make("videoscale", "vscale");
@@ -534,11 +563,6 @@ int GStreamerOutput::Start(int msTime) {
             return 0;
         }
 
-        // Configure kmssink:
-        //   driver-name: "vc4" on all Pi models (vc4-kms-v3d driver)
-        //   connector-id: resolved from sysfs for the specific HDMI port
-        //   restore-crtc: restore the console/framebuffer mode on stop
-        //   skip-vsync: true for atomic drivers (vc4) to avoid double vsync
         g_object_set(m_kmssink,
                      "driver-name", "vc4",
                      "connector-id", m_hdmiConnectorId,
@@ -547,7 +571,6 @@ int GStreamerOutput::Start(int msTime) {
                      NULL);
 
         // Scale video to display resolution if known — fills the entire screen.
-        // If display resolution is unknown, let kmssink negotiate (may not fill screen).
         GstElement* capsfilterVideo = nullptr;
         if (m_hdmiDisplayWidth > 0 && m_hdmiDisplayHeight > 0) {
             capsfilterVideo = gst_element_factory_make("capsfilter", "vcapsf");
@@ -558,19 +581,58 @@ int GStreamerOutput::Start(int msTime) {
             gst_caps_unref(videoCaps);
         }
 
-        // Add video elements to pipeline
-        if (capsfilterVideo) {
-            gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
-                             capsfilterVideo, m_kmssink, NULL);
-            if (!gst_element_link_many(videoQueue, videoconvert, videoscale,
-                                       capsfilterVideo, m_kmssink, NULL)) {
-                LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain\n");
+        if (!m_pwVideoSinkName.empty()) {
+            // ── PipeWire video routing (tee + deferred pipewiresink) ──
+            // The primary pipeline drives HDMI via kmssink.  A tee before
+            // kmssink allows a pipewiresink to be added later (deferred,
+            // after PLAYING) so the video stream appears in PipeWire for
+            // overlay consumers and graph visibility.
+            m_videoPipeWireRouting = true;
+
+            GstElement* vtee = gst_element_factory_make("tee", "vtee");
+            GstElement* kmsQueue = gst_element_factory_make("queue", "vkmsq");
+            g_object_set(vtee, "allow-not-linked", TRUE, NULL);
+
+            // videoQueue → videoconvert → videoscale → [capsfilter] → vtee → kmsQueue → kmssink
+            if (capsfilterVideo) {
+                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
+                                 capsfilterVideo, vtee, kmsQueue, m_kmssink, NULL);
+                if (!gst_element_link_many(videoQueue, videoconvert, videoscale,
+                                           capsfilterVideo, vtee, NULL)) {
+                    LogErr(VB_MEDIAOUT, "GStreamer video: Failed to link pre-tee chain\n");
+                }
+            } else {
+                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
+                                 vtee, kmsQueue, m_kmssink, NULL);
+                if (!gst_element_link_many(videoQueue, videoconvert, videoscale, vtee, NULL)) {
+                    LogErr(VB_MEDIAOUT, "GStreamer video: Failed to link pre-tee chain (no scaling)\n");
+                }
             }
+
+            // Link tee → kmsQueue → kmssink via request pad
+            GstPad* teeSrc = gst_element_request_pad_simple(vtee, "src_%u");
+            GstPad* kmsQSink = gst_element_get_static_pad(kmsQueue, "sink");
+            gst_pad_link(teeSrc, kmsQSink);
+            gst_object_unref(teeSrc);
+            gst_object_unref(kmsQSink);
+            gst_element_link(kmsQueue, m_kmssink);
+
+            LogInfo(VB_MEDIAOUT, "GStreamer: video tee active — kmssink direct, pipewiresink deferred\n");
         } else {
-            gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
-                             m_kmssink, NULL);
-            if (!gst_element_link_many(videoQueue, videoconvert, videoscale, m_kmssink, NULL)) {
-                LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain (no scaling)\n");
+            // ── Direct kmssink (no PipeWire video routing) ──
+            if (capsfilterVideo) {
+                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
+                                 capsfilterVideo, m_kmssink, NULL);
+                if (!gst_element_link_many(videoQueue, videoconvert, videoscale,
+                                           capsfilterVideo, m_kmssink, NULL)) {
+                    LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain\n");
+                }
+            } else {
+                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
+                                 m_kmssink, NULL);
+                if (!gst_element_link_many(videoQueue, videoconvert, videoscale, m_kmssink, NULL)) {
+                    LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain (no scaling)\n");
+                }
             }
         }
 
@@ -717,6 +779,86 @@ int GStreamerOutput::Start(int msTime) {
 
     m_playing = true;
 
+    // Deferred: attach pipewiresink to video tee and start consumer pipelines.
+    // kmssink is already in the pipeline driving HDMI directly.  Pipewiresink
+    // must be added AFTER the pipeline has fully reached PLAYING because
+    // gst_element_sync_state_with_parent on a new element during a pending
+    // state transition can stall or disrupt the pipeline (preventing kmssink
+    // from rendering).  gst_element_get_state blocks until the async
+    // transition completes — typically 100-200ms.
+    if (m_videoPipeWireRouting && wantHDMI) {
+        gst_object_ref(m_pipeline);
+        std::thread([this]() {
+            // Block until the pipeline finishes its async PLAYING transition
+            GstState state;
+            gst_element_get_state(m_pipeline, &state, nullptr, 10 * GST_SECOND);
+            if (state < GST_STATE_PLAYING || !m_playing) {
+                LogWarn(VB_MEDIAOUT, "GStreamer: Pipeline not PLAYING (state=%d), skipping pipewiresink\n", state);
+                gst_object_unref(m_pipeline);
+                return;
+            }
+
+            // Create pipewiresink and attach to vtee
+            GstElement* vtee = gst_bin_get_by_name(GST_BIN(m_pipeline), "vtee");
+            if (!vtee) {
+                LogWarn(VB_MEDIAOUT, "GStreamer: vtee not found, cannot attach pipewiresink\n");
+                gst_object_unref(m_pipeline);
+                return;
+            }
+
+            GstElement* pwvideosink = gst_element_factory_make("pipewiresink", "pwvideosink");
+            if (!pwvideosink) {
+                LogWarn(VB_MEDIAOUT, "GStreamer: pipewiresink not available\n");
+                gst_object_unref(vtee);
+                gst_object_unref(m_pipeline);
+                return;
+            }
+
+            std::string videoNodeName = StreamSlotManager::GetVideoNodeName(m_streamSlot);
+            std::string videoNodeDesc = StreamSlotManager::GetVideoNodeDescription(m_streamSlot);
+            GstStructure* vprops = gst_structure_new("props",
+                "media.class", G_TYPE_STRING, "Stream/Output/Video",
+                "node.name", G_TYPE_STRING, videoNodeName.c_str(),
+                "node.description", G_TYPE_STRING, videoNodeDesc.c_str(),
+                "node.autoconnect", G_TYPE_BOOLEAN, FALSE,
+                "node.always-process", G_TYPE_BOOLEAN, TRUE,
+                NULL);
+            g_object_set(pwvideosink, "stream-properties", vprops, NULL);
+            gst_structure_free(vprops);
+            g_object_set(pwvideosink, "async", FALSE, "sync", FALSE, NULL);
+
+            GstElement* pwQueue = gst_element_factory_make("queue", "vpwq");
+            // MUST be leaky — if pipewiresink or its PipeWire consumers can't
+            // keep up (x264enc CPU load, PipeWire cold-start), a non-leaky queue
+            // blocks the tee, which starves kmssink and freezes HDMI output.
+            g_object_set(pwQueue,
+                         "leaky", 2,               // downstream: drop oldest frames
+                         "max-size-buffers", 2,
+                         "max-size-bytes", 0,
+                         "max-size-time", (guint64)0,
+                         NULL);
+
+            gst_bin_add_many(GST_BIN(m_pipeline), pwQueue, pwvideosink, NULL);
+            gst_element_link(pwQueue, pwvideosink);
+            gst_element_sync_state_with_parent(pwQueue);
+            gst_element_sync_state_with_parent(pwvideosink);
+
+            GstPad* teeSrc = gst_element_request_pad_simple(vtee, "src_%u");
+            GstPad* pwQSink = gst_element_get_static_pad(pwQueue, "sink");
+            gst_pad_link(teeSrc, pwQSink);
+            gst_object_unref(teeSrc);
+            gst_object_unref(pwQSink);
+            gst_object_unref(vtee);
+
+            LogInfo(VB_MEDIAOUT, "GStreamer: pipewiresink attached to vtee (node=%s)\n",
+                    videoNodeName.c_str());
+
+            // Start consumer pipelines — they connect to the PipeWire video node
+            VideoOutputManager::Instance().StartConsumers(videoNodeName);
+            gst_object_unref(m_pipeline);
+        }).detach();
+    }
+
     // m_currentInstance is used by WLED audio-reactive tap and video overlay.
     // Slot 1 (primary) always takes priority; secondary slots only claim it
     // if no other instance is active.
@@ -784,10 +926,30 @@ int GStreamerOutput::Stop(void) {
             gst_bus_set_sync_handler(m_bus, nullptr, nullptr, nullptr);
         }
 
+        // Stop video output consumers BEFORE tearing down the producer pipeline
+        // to avoid pipewiresrc crash from disappearing PipeWire producer node
+        if (m_videoPipeWireRouting) {
+            VideoOutputManager::Instance().StopConsumers();
+        }
+
         Stopping();
         LogDebug(VB_MEDIAOUT, "GStreamerOutput::Stop() - setting pipeline to NULL\n");
         gst_element_set_state(m_pipeline, GST_STATE_NULL);
         LogDebug(VB_MEDIAOUT, "GStreamerOutput::Stop() - pipeline NULL complete\n");
+
+        // On Raspberry Pi's vc4/v3d DRM driver, the kernel needs time to
+        // fully release CRTC/plane resources after kmssink's DRM fd is
+        // closed.  Without this delay, a subsequent Start() may fail with
+        // "general resource error" from kmssink because the connector is
+        // still held by the kernel.  150ms covers the observed ~100-120ms
+        // release window on Pi 5 hardware.
+        // Only needed when kmssink is in the primary pipeline (not when
+        // PipeWire routing sends HDMI through a consumer pipeline).
+        if (m_kmssink) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            LogDebug(VB_MEDIAOUT, "GStreamerOutput::Stop() - DRM release delay complete\n");
+        }
+
         m_playing = false;
         if (m_mediaOutputStatus) {
             m_mediaOutputStatus->status = MEDIAOUTPUTSTATUS_IDLE;
@@ -998,10 +1160,14 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
         // AES67 inline RTP branch elements are named "aes67_*".
         // Errors from these branches (e.g. network issues, PipeWire
         // disconnects) should NOT stop media playback.
+        // Video PipeWire sink errors ("pwvideosink") are always non-fatal
+        // because kmssink is the primary video output — the pipewiresink
+        // is a secondary tee branch for PipeWire graph visibility only.
         bool isAES67Branch = (strncmp(srcName, "aes67_", 6) == 0);
+        bool isVideoPWSink = (strcmp(srcName, "pwvideosink") == 0);
 
-        if (isAES67Branch) {
-            LogWarn(VB_MEDIAOUT, "GStreamer AES67 branch error (non-fatal, src=%s): %s\n",
+        if (isAES67Branch || isVideoPWSink) {
+            LogWarn(VB_MEDIAOUT, "GStreamer non-fatal error (src=%s): %s\n",
                     srcName, err->message);
             LogDebug(VB_MEDIAOUT, "GStreamer AES67 branch debug: %s\n",
                      debug ? debug : "(none)");
@@ -1111,6 +1277,10 @@ int GStreamerOutput::Close(void) {
     m_videoChain = nullptr;
     m_kmssink = nullptr;     // owned by pipeline bin, already freed
     m_wantHDMI = false;
+
+    // Consumers already stopped before pipeline NULL; just clear state
+    m_videoPipeWireRouting = false;
+    m_pwVideoSinkName.clear();
 
     // Remove model listener
     if (!m_videoOut.empty() && m_videoOut != "--Disabled--") {
@@ -1562,7 +1732,7 @@ void GStreamerOutput::OnNoMorePads(GstElement* element, gpointer userData) {
     if (!self->m_videoLinked && self->m_videoChain && self->m_pipeline) {
         LogInfo(VB_MEDIAOUT, "GStreamer: Removing unconnected video chain (audio-only media)\n");
 
-        const char* videoNames[] = {"vq", "vconv", "vscale", "vcapsf", "videosink", "kmsvideosink", nullptr};
+        const char* videoNames[] = {"vq", "vconv", "vscale", "vcapsf", "vtee", "vkmsq", "vpwq", "videosink", "kmsvideosink", "pwvideosink", nullptr};
         for (int i = 0; videoNames[i]; i++) {
             GstElement* el = gst_bin_get_by_name(GST_BIN(self->m_pipeline), videoNames[i]);
             if (el) {

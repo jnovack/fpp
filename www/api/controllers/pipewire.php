@@ -1232,6 +1232,31 @@ SimpleEventHook {
       return
     end
 
+    -- Block default fallback for FPP video stream nodes with explicit target
+    -- (video routed through PipeWire to video output groups)
+    if node_name:match ("^fppd_video_stream_%d+") and has_target then
+      log:info (si, "... FPP video stream: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP video output consumer nodes with explicit target
+    if node_name:match ("^fpp_video_out_") and has_target then
+      log:info (si, "... FPP video output: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
+    -- Block default fallback for FPP video group combine-stream outputs
+    if node_name:match ("^output%.fpp_video_group_") then
+      log:info (si, "... FPP video group output: blocking default fallback for "
+          .. node_name .. ", will retry on rescan")
+      event:stop_processing ()
+      return
+    end
+
     -- (Routing loopback nodes removed — combine-stream handles output routing)
   end
 }:register ()
@@ -2168,6 +2193,27 @@ function SaveRoutingPreset()
         }
     }
 
+    // Snapshot video routing (which source feeds which video output group)
+    $videoGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+    if (file_exists($videoGroupsFile)) {
+        $vData = json_decode(file_get_contents($videoGroupsFile), true);
+        if (is_array($vData) && isset($vData['videoOutputGroups'])) {
+            $videoRouting = array();
+            foreach ($vData['videoOutputGroups'] as $vg) {
+                if (!isset($vg['enabled']) || !$vg['enabled'])
+                    continue;
+                $videoRouting[] = array(
+                    'groupId' => intval($vg['id']),
+                    'groupName' => isset($vg['name']) ? $vg['name'] : '',
+                    'videoSource' => isset($vg['videoSource']) ? $vg['videoSource'] : '',
+                );
+            }
+            if (!empty($videoRouting)) {
+                $preset['videoRouting'] = $videoRouting;
+            }
+        }
+    }
+
     $presetFile = $presetsDir . "/" . $name . ".json";
     file_put_contents($presetFile, json_encode($preset, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
@@ -2230,12 +2276,43 @@ function LoadRoutingPreset()
     }
 
     file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Apply video routing from preset (if present)
+    $videoApplied = 0;
+    if (isset($preset['videoRouting']) && is_array($preset['videoRouting'])) {
+        $videoGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+        if (file_exists($videoGroupsFile)) {
+            $vData = json_decode(file_get_contents($videoGroupsFile), true);
+            if (is_array($vData) && isset($vData['videoOutputGroups'])) {
+                foreach ($preset['videoRouting'] as $vr) {
+                    $gid = intval($vr['groupId']);
+                    foreach ($vData['videoOutputGroups'] as &$vg) {
+                        if (intval($vg['id']) === $gid) {
+                            $vg['videoSource'] = isset($vr['videoSource']) ? $vr['videoSource'] : '';
+                            $videoApplied++;
+                            break;
+                        }
+                    }
+                    unset($vg);
+                }
+                file_put_contents($videoGroupsFile, json_encode($vData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            }
+        }
+    }
+
     GenerateBackupViaAPI("Routing preset '$name' loaded.");
+
+    $msg = "Preset '$name' loaded ($applied audio group(s)";
+    if ($videoApplied > 0) {
+        $msg .= ", $videoApplied video group(s)";
+    }
+    $msg .= " updated). Apply to activate.";
 
     return json(array(
         "status" => "OK",
-        "message" => "Preset '$name' loaded ($applied groups updated). Apply to activate.",
+        "message" => $msg,
         "applied" => $applied,
+        "videoApplied" => $videoApplied,
         "needsApply" => true
     ));
 }
@@ -2535,10 +2612,44 @@ function LiveApplyRoutingPreset()
             json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
         );
 
+        // Apply video routing from preset if present (video changes always
+        // need a consumer restart, so we save + apply separately)
+        $videoMsg = '';
+        if (isset($preset['videoRouting']) && is_array($preset['videoRouting'])) {
+            $videoGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+            if (file_exists($videoGroupsFile)) {
+                $vData = json_decode(file_get_contents($videoGroupsFile), true);
+                if (is_array($vData) && isset($vData['videoOutputGroups'])) {
+                    $vChanged = 0;
+                    foreach ($preset['videoRouting'] as $vr) {
+                        $gid = intval($vr['groupId']);
+                        foreach ($vData['videoOutputGroups'] as &$vg) {
+                            if (intval($vg['id']) === $gid) {
+                                $newSrc = isset($vr['videoSource']) ? $vr['videoSource'] : '';
+                                $curSrc = isset($vg['videoSource']) ? $vg['videoSource'] : '';
+                                if ($newSrc !== $curSrc) {
+                                    $vg['videoSource'] = $newSrc;
+                                    $vChanged++;
+                                }
+                                break;
+                            }
+                        }
+                        unset($vg);
+                    }
+                    if ($vChanged > 0) {
+                        file_put_contents($videoGroupsFile, json_encode($vData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                        // Re-apply video groups to update consumers
+                        ApplyPipeWireVideoGroups();
+                        $videoMsg = ", $vChanged video source change(s) applied";
+                    }
+                }
+            }
+        }
+
         return json(array(
             "status" => "OK",
             "message" => "Preset '$name' live-applied ($applied groups,"
-                . " $volumeChanges volume changes, $eqChanges EQ updates)",
+                . " $volumeChanges volume changes, $eqChanges EQ updates$videoMsg)",
             "preset" => $name,
             "applied" => $applied,
             "volumeChanges" => $volumeChanges,
@@ -2568,6 +2679,27 @@ function LiveApplyRoutingPreset()
         $configFile,
         json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
     );
+
+    // Also apply video routing from preset if present
+    if (isset($preset['videoRouting']) && is_array($preset['videoRouting'])) {
+        $videoGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+        if (file_exists($videoGroupsFile)) {
+            $vData = json_decode(file_get_contents($videoGroupsFile), true);
+            if (is_array($vData) && isset($vData['videoOutputGroups'])) {
+                foreach ($preset['videoRouting'] as $vr) {
+                    $gid = intval($vr['groupId']);
+                    foreach ($vData['videoOutputGroups'] as &$vg) {
+                        if (intval($vg['id']) === $gid) {
+                            $vg['videoSource'] = isset($vr['videoSource']) ? $vr['videoSource'] : '';
+                            break;
+                        }
+                    }
+                    unset($vg);
+                }
+                file_put_contents($videoGroupsFile, json_encode($vData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            }
+        }
+    }
 
     // Delegate to the full apply mechanism (handles PipeWire restart +
     // playback stop/resume internally)
@@ -4045,14 +4177,17 @@ function GetPipeWireGraph()
 
     $showAll = isset($_GET['all']) && $_GET['all'] == '1';
 
-    // Classify audio-related media classes
+    // Media classes to include in the graph
     $audioClasses = array(
         'Audio/Sink',
         'Audio/Source',
         'Audio/Duplex',
         'Stream/Output/Audio',
         'Stream/Input/Audio',
-        'Video/Source',   // keep for completeness
+        'Video/Source',
+        'Video/Sink',
+        'Stream/Output/Video',
+        'Stream/Input/Video',
     );
 
     // First pass — collect nodes, ports, links
@@ -4087,6 +4222,16 @@ function GetPipeWireGraph()
                 // fppd stream: fppd_stream_N → "FPP Media Stream N"
                 elseif (preg_match('/^fppd_stream_(\d+)$/', $name, $m)) {
                     $desc = "FPP Media Stream " . $m[1];
+                }
+                // fppd video stream: fppd_video_stream_N → "FPP Video Stream N"
+                elseif (preg_match('/^fppd_video_stream_(\d+)$/', $name, $m)) {
+                    $desc = "FPP Video Stream " . $m[1];
+                }
+                // Video output group consumer: fpp_video_group_*_mN_type
+                elseif (preg_match('/^fpp_video_group_\d+_(.+?)_m(\d+)_(.+)$/', $name, $m)) {
+                    $groupLabel = str_replace('_', ' ', ucwords($m[1], '_'));
+                    $typeLabel = strtoupper($m[3]);
+                    $desc = "Video Out: $groupLabel #$m[2] ($typeLabel)";
                 }
             }
 
@@ -4149,6 +4294,8 @@ function GetPipeWireGraph()
                 'application.name',
                 'application.process.binary',
                 'object.path',
+                'video.format',
+                'format.dsp',
             );
             foreach ($interesting as $key) {
                 if (isset($props[$key])) {
@@ -4163,7 +4310,8 @@ function GetPipeWireGraph()
                 'nodeId' => isset($props['node.id']) ? (int) $props['node.id'] : 0,
                 'name' => isset($props['port.name']) ? $props['port.name'] : '',
                 'direction' => isset($info['direction']) ? $info['direction'] : '',
-                'channel' => isset($props['audio.channel']) ? $props['audio.channel'] : '',
+                'channel' => isset($props['audio.channel']) ? $props['audio.channel'] :
+                            (isset($props['port.name']) ? $props['port.name'] : ''),
             );
         } elseif ($type === 'PipeWire:Interface:Link') {
             $links[] = array(
@@ -4299,6 +4447,35 @@ function GetPipeWireGraph()
                             if (isset($group['latencyCompensate'])) {
                                 $node['properties']['fpp.group.latencyCompensate'] = $group['latencyCompensate'];
                             }
+                        }
+                    }
+                }
+            }
+            unset($node);
+        }
+    }
+
+    // Enrich video output group nodes with config data
+    $videoGroupsFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+    if (file_exists($videoGroupsFile)) {
+        $vgCfg = json_decode(file_get_contents($videoGroupsFile), true);
+        if (is_array($vgCfg) && isset($vgCfg['videoOutputGroups'])) {
+            foreach ($nodes as &$node) {
+                $nm = $node['name'];
+                // Match video stream producer nodes
+                if (preg_match('/^fppd_video_stream_(\d+)$/', $nm, $m)) {
+                    $node['properties']['fpp.video.stream'] = true;
+                    $node['properties']['fpp.video.slot'] = intval($m[1]);
+                }
+                // Match video output consumer nodes
+                if (preg_match('/^fpp_video_group_(\d+)_/', $nm, $m)) {
+                    $gid = intval($m[1]);
+                    $node['properties']['fpp.video.consumer'] = true;
+                    $node['properties']['fpp.video.groupId'] = $gid;
+                    foreach ($vgCfg['videoOutputGroups'] as $vg) {
+                        if (isset($vg['id']) && $vg['id'] == $gid) {
+                            $node['properties']['fpp.video.groupName'] = isset($vg['name']) ? $vg['name'] : '';
+                            break;
                         }
                     }
                 }
@@ -4535,6 +4712,81 @@ function GetPipeWireGraph()
         }
     }
 
+    // ── Inject synthetic HDMI direct-output node ──────────────────────
+    // When video PipeWire routing is active, the primary HDMI output is
+    // driven by kmssink inside the GStreamer pipeline (tee → kmssink)
+    // rather than through a PipeWire consumer.  Inject a virtual node so
+    // the graph visualizer shows HDMI alongside the PipeWire consumers.
+    $videoOutput = ReadSettingFromFile('VideoOutput');
+    if (!empty($videoOutput)) {
+        // Normalise legacy values
+        if ($videoOutput === '--HDMI--' || $videoOutput === '--hdmi--' || $videoOutput === 'HDMI') {
+            $videoOutput = 'HDMI-A-1';
+        }
+        // Only inject when there's an active or virtual video stream node
+        $videoStreamNodes = array();
+        foreach ($nodes as $n) {
+            if (preg_match('/^fppd_video_stream_(\d+)$/', $n['name'])) {
+                $videoStreamNodes[] = $n;
+            }
+        }
+        if (!empty($videoStreamNodes) && stripos($videoOutput, 'HDMI') !== false) {
+            $hdmiNodeName = 'fpp_hdmi_direct_' . $videoOutput;
+            // Only inject if not already present (shouldn't be, but guard)
+            $alreadyPresent = false;
+            foreach ($nodes as $n) {
+                if ($n['name'] === $hdmiNodeName) {
+                    $alreadyPresent = true;
+                    break;
+                }
+            }
+            if (!$alreadyPresent) {
+                $hdmiNodeId = $virtualId++;
+                $hdmiPortId = $virtualId++;
+                $nodes[] = array(
+                    'id' => $hdmiNodeId,
+                    'name' => $hdmiNodeName,
+                    'description' => $videoOutput . ' (Direct)',
+                    'nick' => '',
+                    'mediaClass' => 'Video/Sink',
+                    'state' => $videoStreamNodes[0]['state'] === 'running' ? 'running' : 'not-running',
+                    'factory' => 'virtual',
+                    'properties' => array(
+                        'fpp.hdmi.direct' => true,
+                        'fpp.hdmi.connector' => $videoOutput,
+                    ),
+                );
+                $ports[] = array(
+                    'id' => $hdmiPortId,
+                    'nodeId' => $hdmiNodeId,
+                    'name' => 'input_1',
+                    'direction' => 'input',
+                    'channel' => 'video',
+                );
+                // Link each video stream's output port to this HDMI node
+                foreach ($videoStreamNodes as $vsn) {
+                    $vsPortId = null;
+                    foreach ($ports as $p) {
+                        if ($p['nodeId'] === $vsn['id'] && $p['direction'] === 'output') {
+                            $vsPortId = $p['id'];
+                            break;
+                        }
+                    }
+                    if ($vsPortId !== null) {
+                        $links[] = array(
+                            'id' => $virtualId++,
+                            'outputNodeId' => $vsn['id'],
+                            'outputPortId' => $vsPortId,
+                            'inputNodeId' => $hdmiNodeId,
+                            'inputPortId' => $hdmiPortId,
+                            'state' => $vsn['state'] === 'running' ? 'active' : 'not-running',
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // Strip internal fields before returning
     $outNodes = array_values($nodes);
     foreach ($outNodes as &$n) {
@@ -4547,4 +4799,732 @@ function GetPipeWireGraph()
         'ports' => $ports,
         'links' => $links,
     ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
+// VIDEO OUTPUT GROUPS — Route video through PipeWire graph
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Config file: $mediaDirectory/config/pipewire-video-outputs.json
+//
+// Each video output defines a consumer that receives fppd's video stream
+// via PipeWire: HDMI displays, pixel overlays, or network streams.
+//
+// Unlike audio groups (which use combine-stream to mix multiple sinks),
+// video outputs are 1:1 consumer pipelines.  fppd's GStreamer pipeline tees
+// video to a pipewiresink (Stream/Output/Video), and each video output runs
+// a pipewiresrc consumer pipeline to drive its destination.
+/////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Enumerate available DRM/KMS video connectors via sysfs.
+// Returns array of { connector, card, connectorId, connected, width, height }
+function GetVideoConnectors()
+{
+    $connectors = array();
+    $drmDir = '/sys/class/drm';
+    if (!is_dir($drmDir))
+        return $connectors;
+
+    $entries = scandir($drmDir);
+    foreach ($entries as $entry) {
+        // Match cardN-ConnectorName (e.g., card1-HDMI-A-1)
+        if (!preg_match('/^card(\d+)-(.+)$/', $entry, $m))
+            continue;
+        $cardNum = $m[1];
+        $connName = $m[2];
+
+        // Skip non-display connectors
+        if (strpos($connName, 'Writeback') !== false)
+            continue;
+
+        $sysBase = $drmDir . '/' . $entry;
+        $statusPath = $sysBase . '/status';
+        if (!file_exists($statusPath))
+            continue;
+
+        $status = trim(file_get_contents($statusPath));
+        $connected = ($status === 'connected');
+
+        $connectorId = 0;
+        $cidPath = $sysBase . '/connector_id';
+        if (file_exists($cidPath)) {
+            $connectorId = intval(trim(file_get_contents($cidPath)));
+        }
+
+        $width = 0;
+        $height = 0;
+        $modesPath = $sysBase . '/modes';
+        if (file_exists($modesPath)) {
+            $modes = file($modesPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if (!empty($modes)) {
+                $parts = explode('x', $modes[0]);
+                if (count($parts) === 2) {
+                    $width = intval($parts[0]);
+                    $height = intval($parts[1]);
+                }
+            }
+        }
+
+        $connectors[] = array(
+            'connector' => $connName,
+            'card' => intval($cardNum),
+            'cardPath' => '/dev/dri/card' . $cardNum,
+            'connectorId' => $connectorId,
+            'connected' => $connected,
+            'width' => $width,
+            'height' => $height,
+        );
+    }
+
+    // Sort: connected first, then by connector name
+    usort($connectors, function ($a, $b) {
+        if ($a['connected'] !== $b['connected'])
+            return $b['connected'] ? 1 : -1;
+        return strcmp($a['connector'], $b['connector']);
+    });
+
+    return $connectors;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Enumerate available PixelOverlay models for video output.
+function GetVideoOverlayModels()
+{
+    $models = array();
+    $ctx = stream_context_create(array('http' => array('timeout' => 2)));
+    $json = @file_get_contents('http://localhost/api/overlays/models', false, $ctx);
+    if ($json === false)
+        return $models;
+
+    $data = json_decode($json, true);
+    if (!is_array($data))
+        return $models;
+
+    foreach ($data as $model) {
+        if (!is_array($model))
+            continue;
+        $name = isset($model['Name']) ? $model['Name'] : '';
+        if (empty($name))
+            continue;
+        $models[] = array(
+            'name' => $name,
+            'width' => isset($model['Width']) ? intval($model['Width']) : 0,
+            'height' => isset($model['Height']) ? intval($model['Height']) : 0,
+        );
+    }
+
+    return $models;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/video/connectors
+// Returns available video connectors (HDMI ports) and overlay models.
+function GetVideoOutputTargets()
+{
+    return json(array(
+        'connectors' => GetVideoConnectors(),
+        'overlayModels' => GetVideoOverlayModels(),
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/video/groups
+function GetPipeWireVideoGroups()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+
+    if (file_exists($configFile)) {
+        $data = json_decode(file_get_contents($configFile), true);
+        if ($data === null) {
+            $data = array("videoOutputGroups" => array());
+        }
+    } else {
+        $data = array("videoOutputGroups" => array());
+    }
+
+    return json($data);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/video/groups
+function SavePipeWireVideoGroups()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+
+    $data = file_get_contents('php://input');
+    $decoded = json_decode($data, true);
+
+    if ($decoded === null) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Invalid JSON"));
+    }
+
+    if (!isset($decoded['videoOutputGroups']) || !is_array($decoded['videoOutputGroups'])) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Missing 'videoOutputGroups' array"));
+    }
+
+    // Assign group IDs if missing
+    $maxId = 0;
+    foreach ($decoded['videoOutputGroups'] as &$grp) {
+        if (isset($grp['id']) && $grp['id'] > $maxId) {
+            $maxId = $grp['id'];
+        }
+    }
+    unset($grp);
+    foreach ($decoded['videoOutputGroups'] as &$grp) {
+        if (!isset($grp['id']) || $grp['id'] <= 0) {
+            $maxId++;
+            $grp['id'] = $maxId;
+        }
+    }
+    unset($grp);
+
+    file_put_contents($configFile, json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    return json(array("status" => "OK", "message" => "Video output groups saved"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/video/groups/apply
+//
+// Generates consumer config from video output groups and sets
+// PipeWireVideoSinkName settings for fppd stream slots.
+//
+// Video output flow:
+//   fppd (pipewiresink Stream/Output/Video) → PipeWire graph → consumers
+//
+// Each enabled group creates one PipeWire video bus name.  Every member of
+// that group becomes a consumer pipeline (pipewiresrc → sink).  All members
+// of a group receive the same video signal from the producer.
+//
+// The primary HDMI output is handled directly by GStreamerOut's kmssink
+// (not through PipeWire), so the PipeWire video stream is available for
+// ADDITIONAL outputs: a second HDMI port, a PixelOverlay, a network stream.
+function ApplyPipeWireVideoGroups()
+{
+    global $settings, $SUDO;
+
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+
+    // Helper: clear all video sink settings
+    $clearSettings = function () {
+        for ($s = 1; $s <= 5; $s++) {
+            $key = ($s === 1) ? 'PipeWireVideoSinkName' : "PipeWireVideoSinkName_$s";
+            WriteSettingToFile($key, '');
+            @SendCommand("setSetting,$key,");
+        }
+    };
+
+    if (!file_exists($configFile)) {
+        $clearSettings();
+        return json(array("status" => "OK", "message" => "No video output groups configured"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    if ($data === null || !isset($data['videoOutputGroups']) || empty($data['videoOutputGroups'])) {
+        $clearSettings();
+        return json(array("status" => "OK", "message" => "Video output groups cleared"));
+    }
+
+    // Resolve hardware info once
+    $connectors = GetVideoConnectors();
+    $connectorMap = array();
+    foreach ($connectors as $c) {
+        $connectorMap[$c['connector']] = $c;
+    }
+
+    // Build consumer config from enabled groups + members
+    $consumerConfig = array();
+    $enabledGroupCount = 0;
+
+    foreach ($data['videoOutputGroups'] as &$grp) {
+        if (!isset($grp['enabled']) || !$grp['enabled'])
+            continue;
+        if (!isset($grp['members']) || empty($grp['members']))
+            continue;
+
+        $enabledGroupCount++;
+
+        // Generate stable group PipeWire node name
+        $groupSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower(isset($grp['name']) ? $grp['name'] : 'group'));
+        $grp['pipeWireNodeName'] = "fpp_video_group_" . $grp['id'] . "_" . $groupSlug;
+
+        $memberIdx = 0;
+        foreach ($grp['members'] as $member) {
+            $type = isset($member['type']) ? $member['type'] : '';
+            if (empty($type))
+                continue;
+
+            $memberIdx++;
+            $memberSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($type));
+            $nodeName = $grp['pipeWireNodeName'] . "_m" . $memberIdx . "_" . $memberSlug;
+
+            $entry = array(
+                'groupId' => $grp['id'],
+                'groupName' => isset($grp['name']) ? $grp['name'] : 'Group ' . $grp['id'],
+                'groupNodeName' => $grp['pipeWireNodeName'],
+                'type' => $type,
+                'pipeWireNodeName' => $nodeName,
+            );
+
+            // If the group targets a persistent video input source, pass it
+            // through so VideoOutputManager starts the consumer immediately.
+            if (isset($grp['videoSource']) && !empty($grp['videoSource'])) {
+                $entry['sourceNode'] = $grp['videoSource'];
+            }
+
+            // Pass stream slot filter so VideoOutputManager only starts
+            // this consumer for matching fppd media stream slots.
+            if (isset($grp['streamSlots']) && is_array($grp['streamSlots']) && !empty($grp['streamSlots'])) {
+                $entry['streamSlots'] = array_values(array_map('intval', $grp['streamSlots']));
+            }
+
+            switch ($type) {
+                case 'hdmi':
+                    $conn = isset($member['connector']) ? $member['connector'] : '';
+                    if (empty($conn) || !isset($connectorMap[$conn]))
+                        continue 2;
+                    $c = $connectorMap[$conn];
+                    $entry['connector'] = $conn;
+                    $entry['cardPath'] = $c['cardPath'];
+                    $entry['connectorId'] = $c['connectorId'];
+                    $entry['width'] = $c['width'];
+                    $entry['height'] = $c['height'];
+                    $entry['scaling'] = isset($member['scaling']) ? $member['scaling'] : 'fit';
+                    $entry['name'] = $conn;
+                    break;
+
+                case 'overlay':
+                    $modelName = isset($member['overlayModel']) ? $member['overlayModel'] : '';
+                    if (empty($modelName))
+                        continue 2;
+                    $entry['overlayModel'] = $modelName;
+                    $entry['name'] = 'Overlay: ' . $modelName;
+                    break;
+
+                case 'rtp':
+                    $entry['address'] = isset($member['address']) ? $member['address'] : '239.0.0.1';
+                    $entry['port'] = isset($member['port']) ? intval($member['port']) : 5004;
+                    $entry['encoding'] = isset($member['encoding']) ? $member['encoding'] : 'h264';
+                    $encLabel = strtoupper($entry['encoding']);
+                    $entry['name'] = 'RTP ' . $entry['address'] . ':' . $entry['port'] . ' (' . $encLabel . ')';
+                    break;
+
+                default:
+                    continue 2;
+            }
+
+            $consumerConfig[] = $entry;
+        }
+    }
+    unset($grp);
+
+    // Save back with generated node names
+    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Write consumer config (read by fppd VideoOutputManager)
+    $consumerFile = $settings['mediaDirectory'] . "/config/pipewire-video-consumers.json";
+    file_put_contents($consumerFile, json_encode($consumerConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Set PipeWireVideoSinkName for stream slots.
+    // A non-empty value tells fppd to create a pipewiresink for video on
+    // that stream slot.  We enable all slots that have at least one group
+    // targeting them (or all slots if no group restricts via streamSlots).
+    if ($enabledGroupCount > 0) {
+        // Determine which stream slots need video enabled
+        $slotsNeeded = array();
+        $anyGroupUnrestricted = false;
+        foreach ($data['videoOutputGroups'] as $grp) {
+            if (!isset($grp['enabled']) || !$grp['enabled'])
+                continue;
+            if (!isset($grp['members']) || empty($grp['members']))
+                continue;
+            if (isset($grp['streamSlots']) && is_array($grp['streamSlots']) && !empty($grp['streamSlots'])) {
+                foreach ($grp['streamSlots'] as $slot) {
+                    $slotsNeeded[intval($slot)] = true;
+                }
+            } else {
+                // Group has no slot restriction — enable all slots
+                $anyGroupUnrestricted = true;
+            }
+        }
+
+        $videoSinkName = "fpp_video_bus";
+        for ($s = 1; $s <= 5; $s++) {
+            $key = ($s === 1) ? 'PipeWireVideoSinkName' : "PipeWireVideoSinkName_$s";
+            if ($anyGroupUnrestricted || isset($slotsNeeded[$s])) {
+                WriteSettingToFile($key, $videoSinkName);
+                SetFppdSetting($key, $videoSinkName);
+            } else {
+                WriteSettingToFile($key, '');
+                @SendCommand("setSetting,$key,");
+            }
+        }
+    } else {
+        $clearSettings();
+    }
+
+    // Install / update WirePlumber hook (already has video patterns)
+    InstallWirePlumberFppLinkingHook($SUDO);
+
+    // Signal fppd to reload video consumer config
+    @SendCommand("reloadVideoOutputs");
+
+    return json(array(
+        "status" => "OK",
+        "message" => $enabledGroupCount . " video output group(s) with " . count($consumerConfig) . " consumer(s) configured",
+        "consumers" => $consumerConfig,
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/video/input-sources
+function GetPipeWireVideoInputSources()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources.json";
+
+    if (file_exists($configFile)) {
+        $data = json_decode(file_get_contents($configFile), true);
+        if ($data === null) {
+            $data = array("videoInputSources" => array());
+        }
+    } else {
+        $data = array("videoInputSources" => array());
+    }
+
+    // Compute pipeWireNodeName for each source so the UI can reference them
+    if (isset($data['videoInputSources'])) {
+        foreach ($data['videoInputSources'] as &$src) {
+            if (isset($src['id'])) {
+                $nameSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower(isset($src['name']) ? $src['name'] : 'source'));
+                $src['pipeWireNodeName'] = "fpp_video_src_" . $src['id'] . "_" . $nameSlug;
+            }
+        }
+        unset($src);
+    }
+
+    return json($data);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/video/input-sources
+function SavePipeWireVideoInputSources()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources.json";
+
+    $data = file_get_contents('php://input');
+    $decoded = json_decode($data, true);
+
+    if ($decoded === null) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Invalid JSON"));
+    }
+
+    if (!isset($decoded['videoInputSources']) || !is_array($decoded['videoInputSources'])) {
+        http_response_code(400);
+        return json(array("status" => "ERROR", "message" => "Missing 'videoInputSources' array"));
+    }
+
+    // Assign source IDs if missing
+    $maxId = 0;
+    foreach ($decoded['videoInputSources'] as &$src) {
+        if (isset($src['id']) && $src['id'] > $maxId) {
+            $maxId = $src['id'];
+        }
+    }
+    unset($src);
+    foreach ($decoded['videoInputSources'] as &$src) {
+        if (!isset($src['id']) || $src['id'] <= 0) {
+            $maxId++;
+            $src['id'] = $maxId;
+        }
+    }
+    unset($src);
+
+    $jsonOut = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    $writeResult = file_put_contents($configFile, $jsonOut);
+    file_put_contents('/tmp/debug_save_vis.txt', date('c') . " WRITE path=$configFile bytes=$writeResult\n", FILE_APPEND);
+    file_put_contents('/tmp/debug_save_vis.txt', date('c') . " VERIFY: " . file_get_contents($configFile) . "\n", FILE_APPEND);
+
+    return json(array("status" => "OK", "message" => "Video input sources saved"));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/video/input-sources/apply
+//
+// Generates the flat source config array read by fppd VideoInputManager
+// and signals fppd to reload.
+function ApplyPipeWireVideoInputSources()
+{
+    global $settings;
+
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources.json";
+
+    if (!file_exists($configFile)) {
+        // Remove generated config and signal fppd
+        $genFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources-gen.json";
+        @unlink($genFile);
+        @SendCommand("reloadVideoInputs");
+        return json(array("status" => "OK", "message" => "No video input sources configured"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    if ($data === null || !isset($data['videoInputSources']) || empty($data['videoInputSources'])) {
+        $genFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources-gen.json";
+        @unlink($genFile);
+        @SendCommand("reloadVideoInputs");
+        return json(array("status" => "OK", "message" => "Video input sources cleared"));
+    }
+
+    // Build flat source array for fppd
+    $sourceConfig = array();
+    $enabledCount = 0;
+
+    foreach ($data['videoInputSources'] as &$src) {
+        $type = isset($src['type']) ? $src['type'] : '';
+        if (empty($type))
+            continue;
+
+        // Generate stable PipeWire node name
+        $nameSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower(isset($src['name']) ? $src['name'] : 'source'));
+        $src['pipeWireNodeName'] = "fpp_video_src_" . $src['id'] . "_" . $nameSlug;
+
+        $enabled = isset($src['enabled']) ? (bool)$src['enabled'] : true;
+
+        $entry = array(
+            'id' => $src['id'],
+            'name' => isset($src['name']) ? $src['name'] : 'Source ' . $src['id'],
+            'type' => $type,
+            'pipeWireNodeName' => $src['pipeWireNodeName'],
+            'enabled' => $enabled,
+            'width' => isset($src['width']) ? intval($src['width']) : 320,
+            'height' => isset($src['height']) ? intval($src['height']) : 240,
+            'framerate' => isset($src['framerate']) ? intval($src['framerate']) : 10,
+        );
+
+        switch ($type) {
+            case 'videotestsrc':
+                $entry['pattern'] = isset($src['pattern']) ? $src['pattern'] : 'smpte';
+                break;
+            case 'v4l2src':
+                $entry['device'] = isset($src['device']) ? $src['device'] : '/dev/video0';
+                break;
+            case 'rtspsrc':
+                $entry['uri'] = isset($src['uri']) ? $src['uri'] : '';
+                $entry['latency'] = isset($src['latency']) ? intval($src['latency']) : 200;
+                if (empty($entry['uri']))
+                    continue 2;
+                break;
+            case 'urisrc':
+                $entry['uri'] = isset($src['uri']) ? $src['uri'] : '';
+                $entry['bufferSec'] = isset($src['bufferSec']) ? floatval($src['bufferSec']) : 3.0;
+                if (empty($entry['uri']))
+                    continue 2;
+                break;
+            case 'rtpsrc':
+                $entry['port'] = isset($src['port']) ? intval($src['port']) : 5004;
+                $entry['encoding'] = isset($src['encoding']) ? $src['encoding'] : 'H264';
+                $entry['multicastGroup'] = isset($src['multicastGroup']) ? $src['multicastGroup'] : '';
+                if ($entry['port'] < 1024 || $entry['port'] > 65535)
+                    $entry['port'] = 5004;
+                break;
+            default:
+                continue 2;
+        }
+
+        if ($enabled) {
+            $enabledCount++;
+        }
+
+        $sourceConfig[] = $entry;
+    }
+    unset($src);
+
+    // Save back with generated node names
+    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Write generated config (read by fppd VideoInputManager)
+    $genFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources.json";
+    file_put_contents($genFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Write flat array read by fppd
+    $fppFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources-gen.json";
+    file_put_contents($fppFile, json_encode($sourceConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Signal fppd to reload video input sources
+    @SendCommand("reloadVideoInputs");
+
+    return json(array(
+        "status" => "OK",
+        "message" => $enabledCount . " video input source(s) configured",
+        "sources" => $sourceConfig,
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/video/input-sources/v4l2-devices
+// Returns available V4L2 video capture devices
+function GetV4L2Devices()
+{
+    $devices = array();
+
+    // Enumerate /dev/video* devices
+    $videoDevs = glob('/dev/video*');
+    if ($videoDevs === false) {
+        return json(array("devices" => array()));
+    }
+
+    foreach ($videoDevs as $devPath) {
+        // Use v4l2-ctl to get device capabilities
+        $output = array();
+        $ret = 0;
+        exec("v4l2-ctl -d " . escapeshellarg($devPath) . " --all 2>/dev/null", $output, $ret);
+        if ($ret !== 0)
+            continue;
+
+        $info = implode("\n", $output);
+
+        // Only include capture devices (not output or m2m)
+        if (strpos($info, 'Video Capture') === false)
+            continue;
+
+        // Extract device name
+        $name = $devPath;
+        if (preg_match('/Card type\s*:\s*(.+)/', $info, $m)) {
+            $name = trim($m[1]);
+        }
+
+        $devices[] = array(
+            'device' => $devPath,
+            'name' => $name,
+        );
+    }
+
+    return json(array("devices" => $devices));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// GET /api/pipewire/video/routing
+// Returns a combined view of video input sources and video output groups
+// with the current source assignment for each group.
+function GetVideoRoutingMatrix()
+{
+    global $settings;
+
+    $groupsFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+    $sourcesFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources.json";
+
+    // Load video output groups
+    $videoGroups = array();
+    if (file_exists($groupsFile)) {
+        $data = json_decode(file_get_contents($groupsFile), true);
+        if (is_array($data) && isset($data['videoOutputGroups'])) {
+            $videoGroups = $data['videoOutputGroups'];
+        }
+    }
+
+    // Load video input sources
+    $videoSources = array();
+    if (file_exists($sourcesFile)) {
+        $data = json_decode(file_get_contents($sourcesFile), true);
+        if (is_array($data) && isset($data['videoInputSources'])) {
+            $videoSources = $data['videoInputSources'];
+        }
+    }
+
+    // Compute node names for sources
+    $sourceSummary = array();
+    foreach ($videoSources as $src) {
+        if (!isset($src['enabled']) || !$src['enabled'])
+            continue;
+        $nameSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower(isset($src['name']) ? $src['name'] : 'source'));
+        $nodeName = "fpp_video_src_" . $src['id'] . "_" . $nameSlug;
+        $sourceSummary[] = array(
+            'id' => intval($src['id']),
+            'name' => isset($src['name']) ? $src['name'] : 'Source ' . $src['id'],
+            'type' => isset($src['type']) ? $src['type'] : '',
+            'pipeWireNodeName' => $nodeName,
+        );
+    }
+
+    // Build group summaries with current assignment
+    $groupSummary = array();
+    foreach ($videoGroups as $grp) {
+        if (!isset($grp['enabled']) || !$grp['enabled'])
+            continue;
+        $memberTypes = array();
+        if (isset($grp['members']) && is_array($grp['members'])) {
+            foreach ($grp['members'] as $m) {
+                if (isset($m['type']))
+                    $memberTypes[] = $m['type'];
+            }
+        }
+        $groupSummary[] = array(
+            'id' => intval($grp['id']),
+            'name' => isset($grp['name']) ? $grp['name'] : 'Group ' . $grp['id'],
+            'videoSource' => isset($grp['videoSource']) ? $grp['videoSource'] : '',
+            'streamSlots' => isset($grp['streamSlots']) && is_array($grp['streamSlots']) ? array_values(array_map('intval', $grp['streamSlots'])) : array(),
+            'memberTypes' => $memberTypes,
+        );
+    }
+
+    return json(array(
+        'videoSources' => $sourceSummary,
+        'videoGroups' => $groupSummary,
+    ));
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/pipewire/video/routing
+// Save video routing assignments (which source feeds which output group).
+// Body: { "assignments": [{ "groupId": 1, "videoSource": "fpp_video_src_1_camera" }, ...] }
+function SaveVideoRoutingMatrix()
+{
+    global $settings;
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!$body || !isset($body['assignments']) || !is_array($body['assignments'])) {
+        http_response_code(400);
+        return json(array("status" => "error", "message" => "Missing assignments array"));
+    }
+
+    if (!file_exists($configFile)) {
+        return json(array("status" => "error", "message" => "No video output groups configured"));
+    }
+
+    $data = json_decode(file_get_contents($configFile), true);
+    if (!is_array($data) || !isset($data['videoOutputGroups'])) {
+        return json(array("status" => "error", "message" => "Invalid video groups config"));
+    }
+
+    // Index assignments by group ID
+    $assignmentMap = array();
+    foreach ($body['assignments'] as $a) {
+        $gid = intval($a['groupId']);
+        $assignmentMap[$gid] = isset($a['videoSource']) ? $a['videoSource'] : '';
+    }
+
+    // Update each group's videoSource
+    $updated = 0;
+    foreach ($data['videoOutputGroups'] as &$grp) {
+        $gid = isset($grp['id']) ? intval($grp['id']) : 0;
+        if (isset($assignmentMap[$gid])) {
+            $grp['videoSource'] = $assignmentMap[$gid];
+            $updated++;
+        }
+    }
+    unset($grp);
+
+    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    GenerateBackupViaAPI('Video routing matrix was modified.');
+
+    return json(array("status" => "OK", "message" => "$updated video group(s) updated"));
 }

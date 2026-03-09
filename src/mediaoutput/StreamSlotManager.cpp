@@ -77,6 +77,14 @@ std::string StreamSlotManager::GetNodeDescription(int slot) {
     return "FPP Media Stream " + std::to_string(slot);
 }
 
+std::string StreamSlotManager::GetVideoNodeName(int slot) {
+    return "fppd_video_stream_" + std::to_string(slot);
+}
+
+std::string StreamSlotManager::GetVideoNodeDescription(int slot) {
+    return "FPP Video Stream " + std::to_string(slot);
+}
+
 bool StreamSlotManager::SetSlotVolume(int slot, int volume) {
 #ifdef HAS_GSTREAMER
     if (slot < 1 || slot > MAX_SLOTS) return false;

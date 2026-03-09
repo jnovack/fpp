@@ -222,5 +222,9 @@ PrintSettingGroup('generalAudio');
 ?>
 
 <?
+PrintSettingGroup('pipeWireVideo');
+?>
+
+<?
 PrintSettingGroup('generalVideo');
 ?>

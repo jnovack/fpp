@@ -10,7 +10,7 @@
     $modalMode = isset($_GET['modal']) && $_GET['modal'] == '1';
     ?>
 
-    <title><? echo $pageTitle; ?> - Audio Routing Matrix</title>
+    <title><? echo $pageTitle; ?> - Routing Matrix</title>
 
     <style>
         .routing-matrix-container {
@@ -53,6 +53,16 @@
         .routing-matrix .axis-header-outputs {
             background: var(--bs-primary-bg-subtle, #cfe2ff);
             color: var(--bs-primary-text-emphasis, #052c65);
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-align: center;
+            padding: 0.3rem 0.75rem;
+        }
+
+        .routing-matrix .axis-header-video-outputs {
+            background: var(--bs-success-bg-subtle, #d1e7dd);
+            color: var(--bs-success-text-emphasis, #0a3622);
             font-size: 0.8rem;
             font-weight: 600;
             letter-spacing: 0.03em;
@@ -205,7 +215,7 @@
             include 'menu.inc';
             ?>
             <div class="mainContainer">
-                <h1 class="title">Audio Routing Matrix</h1>
+                <h1 class="title">Routing Matrix</h1>
                 <div class="pageContent">
                 <?php } ?>
 
@@ -251,6 +261,10 @@
                             <div id="effectsContent"></div>
                         </div>
 
+                        <!-- Video Routing Matrix -->
+                        <div class="routing-matrix-container" id="videoMatrixContainer" style="display:none;">
+                        </div>
+
                         <!-- Presets -->
                         <div class="presets-section">
                             <h5 class="section-title"><i class="fas fa-bookmark"></i> Routing Presets</h5>
@@ -271,6 +285,7 @@
 
                 <script>
                     var matrixData = null;
+                    var videoRoutingData = null;
                     var isDirty = false;
                     var volumeTimers = {};
 
@@ -288,6 +303,7 @@
                             setTimeout(NotifyParentResize, 50);
                         });
 
+                        LoadVideoData();
                         LoadPresets();
                     }
 
@@ -699,6 +715,131 @@
                         });
                     }
 
+                    // Video Routing
+                    function LoadVideoData() {
+                        $.getJSON('/api/pipewire/video/routing', function (data) {
+                            videoRoutingData = data;
+                            RenderVideoMatrix();
+                            setTimeout(NotifyParentResize, 50);
+                        }).fail(function () {
+                            $('#videoMatrixContainer').hide();
+                        });
+                    }
+
+                    function RenderVideoMatrix() {
+                        if (!videoRoutingData || !videoRoutingData.videoGroups || videoRoutingData.videoGroups.length === 0) {
+                            $('#videoMatrixContainer').hide();
+                            return;
+                        }
+
+                        var groups = videoRoutingData.videoGroups;
+                        var sources = videoRoutingData.videoSources || [];
+
+                        var html = '<h5 class="section-title"><i class="fas fa-video"></i> Video Routing</h5>';
+                        html += '<table class="routing-matrix">';
+                        html += '<thead>';
+                        // Super-header
+                        html += '<tr>';
+                        html += '<th class="axis-corner"></th>';
+                        html += '<th colspan="' + groups.length + '" class="axis-header-video-outputs">';
+                        html += '<i class="fas fa-arrow-right"></i> Video Output Groups</th>';
+                        html += '</tr>';
+                        // Column headers: video output group names
+                        html += '<tr><th class="axis-header-inputs">Video Sources <i class="fas fa-arrow-down"></i></th>';
+                        groups.forEach(function (g) {
+                            var members = g.memberTypes ? g.memberTypes.join(', ') : '';
+                            var slotsLabel = '';
+                            if (!g.videoSource || g.videoSource === '') {
+                                if (g.streamSlots && g.streamSlots.length > 0 && g.streamSlots.length < 5) {
+                                    slotsLabel = '<br><span class="badge bg-secondary" style="font-size:0.7rem;">Streams: ' + g.streamSlots.join(', ') + '</span>';
+                                } else {
+                                    slotsLabel = '<br><span class="badge bg-secondary" style="font-size:0.7rem;">All Streams</span>';
+                                }
+                            }
+                            html += '<th>' + EscapeHtml(g.name) + (members ? '<br><small class="text-muted">' + EscapeHtml(members) + '</small>' : '') + slotsLabel + '</th>';
+                        });
+                        html += '</tr></thead><tbody>';
+
+                        // Row: Media Playback (default / empty videoSource)
+                        html += '<tr>';
+                        html += '<td class="ig-label"><i class="fas fa-film"></i> Media Playback</td>';
+                        groups.forEach(function (g) {
+                            var selected = !g.videoSource || g.videoSource === '';
+                            html += '<td class="routing-cell">';
+                            html += '<div class="form-check form-check-inline">';
+                            html += '<input class="form-check-input" type="radio" name="vr_group_' + g.id + '" ' +
+                                'value="" ' + (selected ? 'checked' : '') +
+                                ' onchange="SetVideoSource(' + g.id + ',\'\')">';
+                            html += '</div></td>';
+                        });
+                        html += '</tr>';
+
+                        // Rows: each video input source
+                        sources.forEach(function (src) {
+                            html += '<tr>';
+                            var typeLabel = '';
+                            switch (src.type) {
+                                case 'videotestsrc': typeLabel = '<i class="fas fa-th"></i> '; break;
+                                case 'v4l2src': typeLabel = '<i class="fas fa-camera"></i> '; break;
+                                case 'rtspsrc': typeLabel = '<i class="fas fa-globe"></i> '; break;
+                            }
+                            html += '<td class="ig-label">' + typeLabel + EscapeHtml(src.name) + '</td>';
+
+                            groups.forEach(function (g) {
+                                var selected = (g.videoSource === src.pipeWireNodeName);
+                                html += '<td class="routing-cell">';
+                                html += '<div class="form-check form-check-inline">';
+                                html += '<input class="form-check-input" type="radio" name="vr_group_' + g.id + '" ' +
+                                    'value="' + EscapeHtml(src.pipeWireNodeName) + '" ' + (selected ? 'checked' : '') +
+                                    ' onchange="SetVideoSource(' + g.id + ',\'' + EscapeHtml(src.pipeWireNodeName) + '\')">';
+                                html += '</div></td>';
+                            });
+                            html += '</tr>';
+                        });
+
+                        html += '</tbody></table>';
+                        $('#videoMatrixContainer').html(html).show();
+                    }
+
+                    function SetVideoSource(groupId, sourceNode) {
+                        if (!videoRoutingData || !videoRoutingData.videoGroups) return;
+                        videoRoutingData.videoGroups.forEach(function (g) {
+                            if (g.id === groupId) {
+                                g.videoSource = sourceNode;
+                            }
+                        });
+                        MarkDirty();
+                    }
+
+                    function SaveVideoRouting(callback) {
+                        if (!videoRoutingData || !videoRoutingData.videoGroups || videoRoutingData.videoGroups.length === 0) {
+                            if (callback) callback();
+                            return;
+                        }
+
+                        var assignments = [];
+                        videoRoutingData.videoGroups.forEach(function (g) {
+                            assignments.push({ groupId: g.id, videoSource: g.videoSource || '' });
+                        });
+
+                        $.ajax({
+                            url: '/api/pipewire/video/routing',
+                            method: 'POST',
+                            contentType: 'application/json',
+                            data: JSON.stringify({ assignments: assignments }),
+                            success: function () {
+                                // Apply video groups to regenerate consumer config
+                                $.ajax({
+                                    url: '/api/pipewire/video/groups/apply',
+                                    method: 'POST',
+                                    success: function () { if (callback) callback(); },
+                                    error: function () { if (callback) callback(); }
+                                });
+                            },
+                            error: function () { if (callback) callback(); }
+                        });
+                    }
+
                     // Save & Apply
                     function SaveAndApply() {
                         if (!matrixData || !matrixData.matrix) return;
@@ -724,19 +865,22 @@
                             contentType: 'application/json',
                             data: JSON.stringify({ routes: routes }),
                             success: function () {
-                                // Apply input groups config (regenerates PipeWire config)
-                                $.ajax({
-                                    url: '/api/pipewire/audio/input-groups/apply',
-                                    method: 'POST',
-                                    success: function (data) {
-                                        isDirty = false;
-                                        UpdateDirtyIndicator();
-                                        $.jGrowl(data.message || 'Routing applied.', { themeState: 'success' });
-                                        setTimeout(LoadData, 1000);
-                                    },
-                                    error: function () {
-                                        $.jGrowl('Failed to apply routing.', { themeState: 'danger' });
-                                    }
+                                // Save video routing in parallel
+                                SaveVideoRouting(function () {
+                                    // Apply input groups config (regenerates PipeWire config)
+                                    $.ajax({
+                                        url: '/api/pipewire/audio/input-groups/apply',
+                                        method: 'POST',
+                                        success: function (data) {
+                                            isDirty = false;
+                                            UpdateDirtyIndicator();
+                                            $.jGrowl(data.message || 'Routing applied.', { themeState: 'success' });
+                                            setTimeout(LoadData, 1000);
+                                        },
+                                        error: function () {
+                                            $.jGrowl('Failed to apply routing.', { themeState: 'danger' });
+                                        }
+                                    });
                                 });
                             },
                             error: function () {

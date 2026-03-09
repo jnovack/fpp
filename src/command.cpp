@@ -41,6 +41,8 @@
 #include "commands/Commands.h"
 #include "mediaoutput/MediaOutputBase.h"
 #include "mediaoutput/MediaOutputStatus.h"
+#include "mediaoutput/VideoInputManager.h"
+#include "mediaoutput/VideoOutputManager.h"
 #include "mediaoutput/mediaoutput.h"
 #include "playlist/Playlist.h"
 #include "util/GPIOUtils.h"
@@ -207,6 +209,12 @@ char* ProcessCommand(char* command, char* response) {
                 getFPPmode(),COMMAND_FAILED,logLevel,logMask);
         }
 */
+    } else if (!strcmp(CommandStr, "reloadVideoOutputs")) {
+        VideoOutputManager::Instance().Reload();
+        snprintf(response, MAX_RESPONSE_SIZE - 1, "%d,%d,Video outputs reloaded,,,,,,,,,,\n", getFPPmode(), COMMAND_SUCCESS);
+    } else if (!strcmp(CommandStr, "reloadVideoInputs")) {
+        VideoInputManager::Instance().Reload();
+        snprintf(response, MAX_RESPONSE_SIZE - 1, "%d,%d,Video inputs reloaded,,,,,,,,,,\n", getFPPmode(), COMMAND_SUCCESS);
     } else if (!strcmp(CommandStr, "SetSetting")) {
         char name[128];
 

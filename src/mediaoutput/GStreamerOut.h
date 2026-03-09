@@ -115,6 +115,11 @@ private:
     int m_hdmiDisplayWidth = 0;            // display resolution
     int m_hdmiDisplayHeight = 0;
 
+    // PipeWire video routing — when PipeWireVideoSinkName is set, video is
+    // tee'd to both kmssink (HDMI) and pipewiresink (PipeWire graph node).
+    std::string m_pwVideoSinkName;                  // target-object for video pipewiresink
+    bool m_videoPipeWireRouting = false;             // true when video goes through PipeWire
+
     // Resolve connector name (e.g., "HDMI-A-1") to DRM card path, connector ID,
     // and display resolution by scanning sysfs.  Works on all Pi models.
     struct DrmConnectorInfo {
