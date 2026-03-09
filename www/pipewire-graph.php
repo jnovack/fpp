@@ -252,8 +252,8 @@
 
                 <div class="pw-toolbar">
                     <a class="btn btn-sm btn-outline-secondary" href="settings.php#settings-av"
-                        title="Back to Audio Settings">
-                        <i class="fas fa-arrow-left"></i> Audio Settings
+                        title="Back to Pipewire Settings">
+                        <i class="fas fa-arrow-left"></i> Pipewire Settings
                     </a>
                     <button class="btn btn-sm btn-outline-primary" id="btnRefresh" title="Refresh graph">
                         <i class="fas fa-sync-alt"></i> Refresh
@@ -1056,7 +1056,7 @@
 
                     const dx = Math.abs(p2.x - p1.x) * 0.5;
                     const dir = p2.x >= p1.x ? 1 : -1;
-                    const path = `M${p1.x},${p1.y} C${p1.x + dir*dx},${p1.y} ${p2.x - dir*dx},${p2.y} ${p2.x},${p2.y}`;
+                    const path = `M${p1.x},${p1.y} C${p1.x + dir * dx},${p1.y} ${p2.x - dir * dx},${p2.y} ${p2.x},${p2.y}`;
                     const stateClass = (l.state || '').toLowerCase();
 
                     gLinks.append('path')
@@ -1253,7 +1253,7 @@
                     if (!p1 || !p2) return;
                     const dx = Math.abs(p2.x - p1.x) * 0.5;
                     const dir = p2.x >= p1.x ? 1 : -1;
-                    const path = `M${p1.x},${p1.y} C${p1.x + dir*dx},${p1.y} ${p2.x - dir*dx},${p2.y} ${p2.x},${p2.y}`;
+                    const path = `M${p1.x},${p1.y} C${p1.x + dir * dx},${p1.y} ${p2.x - dir * dx},${p2.y} ${p2.x},${p2.y}`;
                     gLinks.append('path')
                         .attr('class', 'pw-link ' + (l.state || '').toLowerCase())
                         .attr('d', path);
