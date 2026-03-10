@@ -49,6 +49,17 @@ public:
     // One-time GStreamer + PipeWire env initialization (safe to call repeatedly)
     static void EnsureGStreamerInit();
 
+    // Resolve connector name (e.g., "HDMI-A-1") to DRM card path, connector ID,
+    // and display resolution by scanning sysfs.  Works on all Pi models.
+    struct DrmConnectorInfo {
+        std::string cardPath;     // e.g. "/dev/dri/card1"
+        int connectorId = -1;    // integer ID for kmssink
+        bool connected = false;
+        int displayWidth = 0;
+        int displayHeight = 0;
+    };
+    static DrmConnectorInfo ResolveDrmConnector(const std::string& connectorName);
+
     // GStreamer-specific
     void SetLoopCount(int loops) { m_loopCount = loops; }
     void SetVolumeAdjustment(int volAdj);
@@ -122,17 +133,6 @@ private:
     std::string m_pwVideoSinkName;                  // target-object for video pipewiresink
     bool m_videoPipeWireRouting = false;             // true when video goes through PipeWire
     std::set<int> m_directConnectorIds;                // HDMI connectors driven by direct kmssink on vtee
-
-    // Resolve connector name (e.g., "HDMI-A-1") to DRM card path, connector ID,
-    // and display resolution by scanning sysfs.  Works on all Pi models.
-    struct DrmConnectorInfo {
-        std::string cardPath;     // e.g. "/dev/dri/card1"
-        int connectorId = -1;    // integer ID for kmssink
-        bool connected = false;
-        int displayWidth = 0;
-        int displayHeight = 0;
-    };
-    static DrmConnectorInfo ResolveDrmConnector(const std::string& connectorName);
 
     // Dynamic pad linking for decodebin (video requires pad-added signal)
     static void OnPadAdded(GstElement* element, GstPad* pad, gpointer userData);

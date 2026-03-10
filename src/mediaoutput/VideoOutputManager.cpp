@@ -13,6 +13,7 @@
 #include "fpp-pch.h"
 
 #include "VideoOutputManager.h"
+#include "GStreamerOut.h"
 #include "common.h"
 #include "settings.h"
 #include "log.h"
@@ -381,6 +382,18 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
         if (consumer.connectorId <= 0 || consumer.cardPath.empty()) {
             LogWarn(VB_MEDIAOUT, "VideoOutputManager: HDMI consumer '%s' has no valid connector\n", consumer.name.c_str());
             return false;
+        }
+
+        // Check if the connector is actually connected before launching
+        // a consumer pipeline — avoids wasted effort and error log noise.
+        if (!consumer.connector.empty()) {
+            auto drmCheck = GStreamerOutput::ResolveDrmConnector(consumer.connector);
+            if (!drmCheck.connected) {
+                LogInfo(VB_MEDIAOUT, "VideoOutputManager: Skipping HDMI consumer '%s' — "
+                        "connector %s (id=%d) is not connected\n",
+                        consumer.name.c_str(), consumer.connector.c_str(), consumer.connectorId);
+                return false;
+            }
         }
 
         // Check for conflict with the primary video output — the main GStreamerOut
