@@ -173,6 +173,10 @@ endif
 ifneq ($(wildcard /usr/include/gstreamer-1.0/gst/gst.h),)
 CFLAGS += $(shell pkg-config --cflags gstreamer-1.0 gstreamer-app-1.0 gstreamer-net-1.0)
 LIBS_fpp_so += $(shell pkg-config --libs gstreamer-1.0 gstreamer-app-1.0 gstreamer-net-1.0)
+ifneq ($(wildcard /usr/include/libdrm/drm.h),)
+CFLAGS += $(shell pkg-config --cflags libdrm)
+LIBS_fpp_so += -ldrm
+endif
 endif
 
 ifneq ($(wildcard /usr/include/xf86drm.h),)

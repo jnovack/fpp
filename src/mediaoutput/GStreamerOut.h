@@ -57,8 +57,17 @@ public:
         bool connected = false;
         int displayWidth = 0;
         int displayHeight = 0;
+        int primaryPlaneId = -1; // DRM primary plane for this connector's CRTC
     };
     static DrmConnectorInfo ResolveDrmConnector(const std::string& connectorName);
+
+    // Get a shared DRM master fd for the given card (e.g. "/dev/dri/card1").
+    // All kmssink elements should use this fd to avoid DRM master contention.
+    static int GetSharedDrmFd(const std::string& cardPath);
+
+    // Find the DRM PRIMARY plane for the CRTC currently bound to a connector.
+    // Returns -1 if not found.  Requires the shared DRM fd.
+    static int FindPrimaryPlaneForConnector(int drmFd, int connectorId);
 
     // GStreamer-specific
     void SetLoopCount(int loops) { m_loopCount = loops; }

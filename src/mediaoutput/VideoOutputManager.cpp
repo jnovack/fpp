@@ -202,6 +202,36 @@ void VideoOutputManager::StartConsumers(const std::string& producerNodeName,
         StartSAPAnnouncer();
 }
 
+void VideoOutputManager::SuspendPersistentHdmiConsumers() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    int stopped = 0;
+    for (auto& consumer : m_consumers) {
+        if (!consumer.sourceNode.empty() && consumer.type == "hdmi" && consumer.running) {
+            LogInfo(VB_MEDIAOUT, "VideoOutputManager: Suspending persistent HDMI consumer '%s' (connector %s) for DRM master handoff\n",
+                    consumer.name.c_str(), consumer.connector.c_str());
+            StopConsumer(consumer);
+            stopped++;
+        }
+    }
+    if (stopped > 0)
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Suspended %d persistent HDMI consumer(s)\n", stopped);
+}
+
+void VideoOutputManager::ResumePersistentHdmiConsumers() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    int started = 0;
+    for (auto& consumer : m_consumers) {
+        if (!consumer.sourceNode.empty() && consumer.type == "hdmi" && !consumer.running) {
+            LogInfo(VB_MEDIAOUT, "VideoOutputManager: Resuming persistent HDMI consumer '%s' (connector %s)\n",
+                    consumer.name.c_str(), consumer.connector.c_str());
+            StartConsumer(consumer);
+            started++;
+        }
+    }
+    if (started > 0)
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Resumed %d persistent HDMI consumer(s)\n", started);
+}
+
 std::vector<VideoOutputManager::HdmiConsumerInfo> VideoOutputManager::GetHdmiConsumers(
     int streamSlot, const std::set<int>& skipConnectorIds) const {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -429,7 +459,12 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
 
         // kmssink sync=true paces frames against the original presentation
         // timestamps from the producer (preserved by do-timestamp=false).
-        pipelineDesc += "kmssink name=sink sync=true driver-name=vc4"
+        // NOTE: Do NOT set driver-name here — when we pass a shared DRM fd
+        // post-creation, kmssink's _validate_and_set_external_fd() rejects
+        // the fd if devname (driver-name) is already set.  The fd property
+        // derives devname from the fd itself via drmGetDeviceNameFromFd().
+        // driver-name=vc4 is only used as fallback when no shared fd is available.
+        pipelineDesc += "kmssink name=sink sync=true"
                      " connector-id=" + std::to_string(consumer.connectorId)
                      + " restore-crtc=true skip-vsync=true";
 
@@ -547,6 +582,33 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
         g_object_set(src, "target-object", targetNode.c_str(), NULL);
 
         gst_object_unref(src);
+    }
+
+    // For HDMI consumers, pass the shared DRM fd to kmssink so all
+    // pipelines share a single DRM master — avoids contention on card1.
+    // fd must be set BEFORE driver-name (kmssink rejects fd if devname is set).
+    // When fd is available, driver-name is unnecessary (derived from the fd).
+    // When fd is unavailable, fall back to driver-name=vc4.
+    if (consumer.type == "hdmi") {
+        GstElement* sink = gst_bin_get_by_name(GST_BIN(consumer.pipeline), "sink");
+        if (sink) {
+            int drmFd = consumer.cardPath.empty() ? -1
+                : GStreamerOutput::GetSharedDrmFd(consumer.cardPath);
+            if (drmFd >= 0) {
+                g_object_set(sink, "fd", drmFd, NULL);
+                int planeId = GStreamerOutput::FindPrimaryPlaneForConnector(drmFd, consumer.connectorId);
+                if (planeId >= 0) {
+                    g_object_set(sink, "plane-id", planeId, NULL);
+                }
+                LogInfo(VB_MEDIAOUT, "VideoOutputManager: Set shared DRM fd=%d plane=%d on consumer '%s' kmssink\n",
+                        drmFd, planeId, consumer.name.c_str());
+            } else {
+                g_object_set(sink, "driver-name", "vc4", NULL);
+                LogInfo(VB_MEDIAOUT, "VideoOutputManager: No shared DRM fd for consumer '%s', using driver-name=vc4\n",
+                        consumer.name.c_str());
+            }
+            gst_object_unref(sink);
+        }
     }
 
     // Wire up appsink callback for overlay consumers

@@ -21,9 +21,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
+#include <fcntl.h>
 #include <fstream>
 #include <sstream>
 #include <thread>
+#include <sys/ioctl.h>
+#include <libdrm/drm.h>
+#include <libdrm/drm_mode.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 
 #include "common.h"
 #include "log.h"
@@ -115,6 +121,120 @@ GStreamerOutput::DrmConnectorInfo GStreamerOutput::ResolveDrmConnector(const std
     }
 
     return info;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Shared DRM master fd — opened once per card, shared by all kmssink elements.
+// This avoids DRM master contention between multiple pipelines driving
+// different HDMI connectors on the same card.
+// ──────────────────────────────────────────────────────────────────────────────
+static std::mutex s_drmFdMutex;
+static std::map<std::string, int> s_drmFds;  // cardPath → fd
+
+int GStreamerOutput::GetSharedDrmFd(const std::string& cardPath) {
+    std::lock_guard<std::mutex> lock(s_drmFdMutex);
+    auto it = s_drmFds.find(cardPath);
+    if (it != s_drmFds.end()) {
+        return it->second;
+    }
+
+    int fd = open(cardPath.c_str(), O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+        LogErr(VB_MEDIAOUT, "GStreamer: Failed to open DRM device %s: %s\n",
+               cardPath.c_str(), strerror(errno));
+        return -1;
+    }
+
+    // Become DRM master — required for modesetting (kmssink needs this)
+    if (ioctl(fd, DRM_IOCTL_SET_MASTER, 0) < 0) {
+        LogWarn(VB_MEDIAOUT, "GStreamer: DRM_IOCTL_SET_MASTER failed for %s: %s (another master may exist)\n",
+                cardPath.c_str(), strerror(errno));
+        // Continue anyway — kmssink may still work if we're root
+    }
+
+    s_drmFds[cardPath] = fd;
+    LogInfo(VB_MEDIAOUT, "GStreamer: Opened shared DRM fd=%d for %s\n", fd, cardPath.c_str());
+    return fd;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Find the DRM PRIMARY plane for the CRTC bound to a given connector.
+// When multiple kmssink elements share a DRM fd, each must use a unique plane
+// — otherwise kmssink's auto-selection grabs the same shared overlay plane for
+// all of them, causing drmModeSetPlane to fail with EACCES.
+// ──────────────────────────────────────────────────────────────────────────────
+int GStreamerOutput::FindPrimaryPlaneForConnector(int drmFd, int connectorId) {
+    if (drmFd < 0 || connectorId < 0)
+        return -1;
+
+    // Enable universal planes so we see Primary/Overlay/Cursor types
+    drmSetClientCap(drmFd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+
+    // Get connector → encoder → CRTC
+    drmModeConnectorPtr conn = drmModeGetConnector(drmFd, connectorId);
+    if (!conn) return -1;
+
+    uint32_t crtcId = 0;
+    if (conn->encoder_id) {
+        drmModeEncoderPtr enc = drmModeGetEncoder(drmFd, conn->encoder_id);
+        if (enc) {
+            crtcId = enc->crtc_id;
+            drmModeFreeEncoder(enc);
+        }
+    }
+    drmModeFreeConnector(conn);
+
+    if (!crtcId) return -1;
+
+    // Find CRTC index in the resources list
+    drmModeResPtr res = drmModeGetResources(drmFd);
+    if (!res) return -1;
+
+    int crtcIndex = -1;
+    for (int i = 0; i < res->count_crtcs; i++) {
+        if (res->crtcs[i] == crtcId) {
+            crtcIndex = i;
+            break;
+        }
+    }
+    drmModeFreeResources(res);
+    if (crtcIndex < 0) return -1;
+
+    // Scan planes for the PRIMARY one compatible with this CRTC
+    drmModePlaneResPtr planeRes = drmModeGetPlaneResources(drmFd);
+    if (!planeRes) return -1;
+
+    int primaryPlane = -1;
+    for (uint32_t i = 0; i < planeRes->count_planes && primaryPlane < 0; i++) {
+        drmModePlanePtr plane = drmModeGetPlane(drmFd, planeRes->planes[i]);
+        if (!plane) continue;
+
+        if (plane->possible_crtcs & (1u << crtcIndex)) {
+            // Check plane type property
+            drmModeObjectPropertiesPtr props =
+                drmModeObjectGetProperties(drmFd, planeRes->planes[i], DRM_MODE_OBJECT_PLANE);
+            if (props) {
+                for (uint32_t j = 0; j < props->count_props; j++) {
+                    drmModePropertyPtr prop = drmModeGetProperty(drmFd, props->props[j]);
+                    if (prop) {
+                        if (strcmp(prop->name, "type") == 0 &&
+                            props->prop_values[j] == DRM_PLANE_TYPE_PRIMARY) {
+                            primaryPlane = planeRes->planes[i];
+                        }
+                        drmModeFreeProperty(prop);
+                    }
+                    if (primaryPlane >= 0) break;
+                }
+                drmModeFreeObjectProperties(props);
+            }
+        }
+        drmModeFreePlane(plane);
+    }
+    drmModeFreePlaneResources(planeRes);
+
+    LogInfo(VB_MEDIAOUT, "GStreamer DRM: connector %d → CRTC %u (index %d) → primary plane %d\n",
+            connectorId, crtcId, crtcIndex, primaryPlane);
+    return primaryPlane;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -241,15 +361,27 @@ int GStreamerOutput::Start(int msTime) {
             }
             DrmConnectorInfo drmInfo = ResolveDrmConnector(connectorName);
             if (drmInfo.connected && drmInfo.connectorId >= 0) {
-                m_wantHDMI = true;
-                wantHDMI = true;
-                m_hdmiConnectorId = drmInfo.connectorId;
-                m_hdmiCardPath = drmInfo.cardPath;
-                m_hdmiDisplayWidth = drmInfo.displayWidth;
-                m_hdmiDisplayHeight = drmInfo.displayHeight;
-                LogInfo(VB_MEDIAOUT, "GStreamer HDMI output: connector=%s id=%d card=%s resolution=%dx%d\n",
-                        connectorName.c_str(), m_hdmiConnectorId, m_hdmiCardPath.c_str(),
-                        m_hdmiDisplayWidth, m_hdmiDisplayHeight);
+                if (!m_pwVideoSinkName.empty()) {
+                    // PipeWire video routing is active — VideoOutput is a legacy
+                    // setting that shouldn't drive a direct kmssink when PipeWire
+                    // groups define all outputs.  Build the video pipeline (so the
+                    // pipewiresink receives decoded frames) but don't create a
+                    // primary kmssink; consumer kmssinks in VideoOutputManager
+                    // (one per group member) own every HDMI connector.
+                    wantHDMI = true;
+                    LogInfo(VB_MEDIAOUT, "GStreamer: PipeWire video routing active — ignoring VideoOutput=%s for direct kmssink, consumers handle HDMI\n",
+                            connectorName.c_str());
+                } else {
+                    m_wantHDMI = true;
+                    wantHDMI = true;
+                    m_hdmiConnectorId = drmInfo.connectorId;
+                    m_hdmiCardPath = drmInfo.cardPath;
+                    m_hdmiDisplayWidth = drmInfo.displayWidth;
+                    m_hdmiDisplayHeight = drmInfo.displayHeight;
+                    LogInfo(VB_MEDIAOUT, "GStreamer HDMI output: connector=%s id=%d card=%s resolution=%dx%d\n",
+                            connectorName.c_str(), m_hdmiConnectorId, m_hdmiCardPath.c_str(),
+                            m_hdmiDisplayWidth, m_hdmiDisplayHeight);
+                }
             } else if (!drmInfo.connected) {
                 // Configured connector not connected — do NOT fall back to
                 // another connector.  Each HDMI output is independently
@@ -307,6 +439,7 @@ int GStreamerOutput::Start(int msTime) {
     // We still use gst_parse_launch for the audio chain and manually add the video chain.
 
     LogWarn(VB_MEDIAOUT, "GStreamer: Start() building pipeline...");
+
     std::string pipelineSinkName = getSetting("PipeWireSinkName");
 
     // For multi-stream slots > 1, check for a per-slot PipeWire sink setting.
@@ -613,10 +746,8 @@ int GStreamerOutput::Start(int msTime) {
         // Build video sub-chain: queue ! videoconvert ! videoscale ! capsfilter ! kmssink
         // When PipeWire video routing is active, a tee is inserted before kmssink
         // so a deferred pipewiresink can expose the stream in the PipeWire graph.
-        // kmssink MUST be in the primary pipeline to hold DRM master — vc4's
-        // kernel driver allows only one master fd per device, and drmModeSetPlane
-        // requires master.  A consumer-side kmssink (pipewiresrc → kmssink) would
-        // open a second fd and fail with "Permission denied".
+        // All kmssink elements share a single DRM master fd via GetSharedDrmFd()
+        // so multiple HDMI outputs on the same card work simultaneously.
         bool haveHdmiConnector = (m_hdmiConnectorId >= 0);
         GstElement* videoQueue = gst_element_factory_make("queue", "vq");
         GstElement* videoconvert = gst_element_factory_make("videoconvert", "vconv");
@@ -630,12 +761,26 @@ int GStreamerOutput::Start(int msTime) {
                 m_pipeline = nullptr;
                 return 0;
             }
-            g_object_set(m_kmssink,
-                         "driver-name", "vc4",
-                         "connector-id", m_hdmiConnectorId,
-                         "restore-crtc", TRUE,
-                         "skip-vsync", TRUE,
-                         NULL);
+            int sharedFd = GetSharedDrmFd(m_hdmiCardPath);
+            if (sharedFd >= 0) {
+                g_object_set(m_kmssink,
+                             "fd", sharedFd,
+                             "connector-id", m_hdmiConnectorId,
+                             "restore-crtc", TRUE,
+                             "skip-vsync", TRUE,
+                             NULL);
+                int planeId = FindPrimaryPlaneForConnector(sharedFd, m_hdmiConnectorId);
+                if (planeId >= 0) {
+                    g_object_set(m_kmssink, "plane-id", planeId, NULL);
+                }
+            } else {
+                g_object_set(m_kmssink,
+                             "driver-name", "vc4",
+                             "connector-id", m_hdmiConnectorId,
+                             "restore-crtc", TRUE,
+                             "skip-vsync", TRUE,
+                             NULL);
+            }
         }
 
         // Scale video to display resolution if known — fills the entire screen.
@@ -735,13 +880,37 @@ int GStreamerOutput::Start(int msTime) {
                     // no blanking.
                     // skip-vsync=TRUE: required for vc4 atomic modesetting
                     // to avoid double-vsync wait (kmssink + kernel).
-                    g_object_set(dkmsSink,
-                                 "driver-name", "vc4",
-                                 "connector-id", hc.connectorId,
-                                 "sync", TRUE,
-                                 "max-lateness", (gint64)-1,
-                                 "skip-vsync", TRUE,
-                                 NULL);
+                    std::string cardForDkms = hc.cardPath.empty() ? m_hdmiCardPath : hc.cardPath;
+                    int drmFd = cardForDkms.empty() ? -1 : GetSharedDrmFd(cardForDkms);
+                    LogInfo(VB_MEDIAOUT, "GStreamer: dkms_%d cardPath='%s' sharedFd=%d\n",
+                            hc.connectorId, cardForDkms.c_str(), drmFd);
+                    if (drmFd >= 0) {
+                        g_object_set(dkmsSink,
+                                     "fd", drmFd,
+                                     "connector-id", hc.connectorId,
+                                     "sync", TRUE,
+                                     "max-lateness", (gint64)-1,
+                                     "skip-vsync", TRUE,
+                                     NULL);
+                        int planeId = (hc.primaryPlaneId >= 0) ? hc.primaryPlaneId
+                                      : FindPrimaryPlaneForConnector(drmFd, hc.connectorId);
+                        if (planeId >= 0) {
+                            g_object_set(dkmsSink, "plane-id", planeId, NULL);
+                        }
+                        // Verify the fd was accepted by kmssink
+                        gint readbackFd = -1;
+                        g_object_get(dkmsSink, "fd", &readbackFd, NULL);
+                        LogInfo(VB_MEDIAOUT, "GStreamer: dkms_%d fd=%d plane=%d\n",
+                                hc.connectorId, readbackFd, planeId);
+                    } else {
+                        g_object_set(dkmsSink,
+                                     "driver-name", "vc4",
+                                     "connector-id", hc.connectorId,
+                                     "sync", TRUE,
+                                     "max-lateness", (gint64)-1,
+                                     "skip-vsync", TRUE,
+                                     NULL);
+                    }
 
                     GstElement* dQueue = gst_element_factory_make("queue", nullptr);
                     g_object_set(dQueue,

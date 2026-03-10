@@ -202,6 +202,10 @@
                                 status...</span>
                         </div>
                         <div class="toolbar-right">
+                            <a class="btn btn-sm btn-outline-secondary" href="settings.php#settings-av"
+                                title="Back to Pipewire Settings">
+                                <i class="fas fa-arrow-left"></i> Pipewire Settings
+                            </a>
                             <button class="buttons btn-outline-success" onclick="AddSource()">
                                 <i class="fas fa-plus"></i> Add Source
                             </button>
@@ -216,8 +220,7 @@
 
                     <div id="sourcesContainer">
                         <div class="no-sources-msg" id="noSourcesMsg">
-                            <i class="fas fa-video"
-                                style="font-size:2rem; color:var(--bs-secondary-color,#6c757d);"></i>
+                            <i class="fas fa-video" style="font-size:2rem; color:var(--bs-secondary-color,#6c757d);"></i>
                             <h4>No Video Input Sources Configured</h4>
                             <p>Add a source to create a persistent video signal in the PipeWire graph
                                 (test patterns, cameras, etc.).</p>
@@ -497,7 +500,7 @@
                     html += '<div class="col-auto"><label>Encoding:</label></div>';
                     html += '<div class="col-auto">';
                     html += '<select class="form-select form-select-sm" style="width:auto;" onchange="UpdateSourceField(' + index + ',\'encoding\',this.value)">';
-                    var encodings = [{v:'H264',l:'H.264'},{v:'H265',l:'H.265 (HEVC)'},{v:'MP2T',l:'MPEG-TS'},{v:'RAW',l:'Raw Video'},{v:'JPEG',l:'Motion JPEG'}];
+                    var encodings = [{ v: 'H264', l: 'H.264' }, { v: 'H265', l: 'H.265 (HEVC)' }, { v: 'MP2T', l: 'MPEG-TS' }, { v: 'RAW', l: 'Raw Video' }, { v: 'JPEG', l: 'Motion JPEG' }];
                     for (var e = 0; e < encodings.length; e++) {
                         var sel = ((source.encoding || 'H264') === encodings[e].v) ? ' selected' : '';
                         html += '<option value="' + encodings[e].v + '"' + sel + '>' + encodings[e].l + '</option>';

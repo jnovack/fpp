@@ -64,6 +64,7 @@ public:
         std::string cardPath;
         int width = 0;
         int height = 0;
+        int primaryPlaneId = -1; // DRM primary plane for this connector's CRTC
     };
 
     /// Return HDMI consumer info for consumers that match the given stream
@@ -83,6 +84,14 @@ public:
     /// Stop all running consumer pipelines.
     /// Called by GStreamerOut when video playback ends.
     void StopConsumers();
+
+    /// Suspend persistent HDMI consumers so GStreamerOut's pipeline can
+    /// become DRM master.  Only one pipeline at a time can hold DRM master
+    /// on a given DRM device (card1), so persistent consumers must yield.
+    void SuspendPersistentHdmiConsumers();
+
+    /// Resume persistent HDMI consumers after GStreamerOut's pipeline stops.
+    void ResumePersistentHdmiConsumers();
 
     /// Check if any consumers are configured.
     bool HasConsumers() const;
