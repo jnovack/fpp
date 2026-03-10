@@ -455,6 +455,7 @@
 
             // Root <g> for pan/zoom
             const gRoot = svg.append('g').attr('class', 'pw-root');
+            const gBackground = gRoot.append('g').attr('class', 'pw-background-layer');
             const gLinks = gRoot.append('g').attr('class', 'pw-links-layer');
             const gNodes = gRoot.append('g').attr('class', 'pw-nodes-layer');
 
@@ -997,6 +998,62 @@
             // ── Rendering ─────────────────────────────────────────────────
             function render() {
                 layoutGraph();
+
+                // ── Background region boxes ────────────────────────
+                gBackground.selectAll('*').remove();
+
+                // Compute vertical extent of all nodes
+                let contentMaxY = PADDING.top + 200;
+                graphData.nodes.forEach(n => {
+                    contentMaxY = Math.max(contentMaxY, n._y + n._h);
+                });
+
+                const boxPad = 20;
+                const boxTop = PADDING.top - 20;
+                const boxBottom = contentMaxY + boxPad;
+
+                // Split at center of Media Sources column (col 1)
+                const col1Center = PADDING.left + 1 * (NODE_W + PADDING.colGap) + NODE_W / 2;
+                const videoLeft = PADDING.left - boxPad;
+                const audioRight = PADDING.left + 6 * (NODE_W + PADDING.colGap) + NODE_W + boxPad;
+
+                // Video Routing box (col 0 through center of col 1)
+                gBackground.append('rect')
+                    .attr('x', videoLeft).attr('y', boxTop)
+                    .attr('width', col1Center - videoLeft)
+                    .attr('height', boxBottom - boxTop)
+                    .attr('rx', 12)
+                    .attr('fill', 'rgba(13, 202, 240, 0.06)')
+                    .attr('stroke', 'rgba(13, 202, 240, 0.25)')
+                    .attr('stroke-width', 1.5)
+                    .attr('stroke-dasharray', '6 3');
+                gBackground.append('text')
+                    .attr('x', (videoLeft + col1Center) / 2)
+                    .attr('y', boxTop + 14)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('fill', 'rgba(13, 202, 240, 0.5)')
+                    .attr('letter-spacing', '1px')
+                    .text('VIDEO ROUTING');
+
+                // Audio Routing box (center of col 1 through col 6)
+                gBackground.append('rect')
+                    .attr('x', col1Center).attr('y', boxTop)
+                    .attr('width', audioRight - col1Center)
+                    .attr('height', boxBottom - boxTop)
+                    .attr('rx', 12)
+                    .attr('fill', 'rgba(253, 126, 20, 0.06)')
+                    .attr('stroke', 'rgba(253, 126, 20, 0.25)')
+                    .attr('stroke-width', 1.5)
+                    .attr('stroke-dasharray', '6 3');
+                gBackground.append('text')
+                    .attr('x', (col1Center + audioRight) / 2)
+                    .attr('y', boxTop + 14)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('fill', 'rgba(253, 126, 20, 0.5)')
+                    .attr('letter-spacing', '1px')
+                    .text('AUDIO ROUTING');
 
                 // Draw column headers
                 gRoot.selectAll('.pw-col-header').remove();
