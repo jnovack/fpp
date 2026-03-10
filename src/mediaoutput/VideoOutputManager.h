@@ -14,6 +14,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -56,9 +57,28 @@ public:
     /// Stop all consumer pipelines and clean up.
     void Shutdown();
 
+    /// Info about an HDMI consumer for direct kmssink attachment.
+    struct HdmiConsumerInfo {
+        int connectorId = -1;
+        std::string connector;   // e.g. "HDMI-A-2"
+        std::string cardPath;
+        int width = 0;
+        int height = 0;
+    };
+
+    /// Return HDMI consumer info for consumers that match the given stream
+    /// slot but whose connectorId is NOT in skipConnectorIds.
+    std::vector<HdmiConsumerInfo> GetHdmiConsumers(
+        int streamSlot,
+        const std::set<int>& skipConnectorIds = {}) const;
+
     /// Start all configured consumers targeting the given producer node.
     /// Called by GStreamerOut after pipewiresink is attached to PipeWire graph.
-    void StartConsumers(const std::string& producerNodeName, int primaryConnectorId = -1);
+    /// directConnectorIds: HDMI connectors already driven by direct kmssink
+    /// branches in the main pipeline — these will be skipped.
+    void StartConsumers(const std::string& producerNodeName,
+                        int primaryConnectorId = -1,
+                        const std::set<int>& directConnectorIds = {});
 
     /// Stop all running consumer pipelines.
     /// Called by GStreamerOut when video playback ends.
@@ -193,6 +213,7 @@ private:
 
     mutable std::mutex m_mutex;
     std::vector<ConsumerInfo> m_consumers;
+    std::set<int> m_directConnectorIds;   // HDMI connectors handled by direct kmssink
     std::string m_activeProducer;  // node name of the current producer, empty if none
     int m_primaryConnectorId = -1; // DRM connector ID used by primary pipeline's kmssink
     bool m_initialized = false;

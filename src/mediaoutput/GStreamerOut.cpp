@@ -117,6 +117,33 @@ GStreamerOutput::DrmConnectorInfo GStreamerOutput::ResolveDrmConnector(const std
     return info;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Read the maximum per-member delay (ms) across all enabled PipeWire audio
+// output groups.  This compensates the GStreamer ts-offset so that audio
+// through the longest-delayed PipeWire path still lines up with video.
+// ──────────────────────────────────────────────────────────────────────────────
+static int GetMaxPipeWireGroupDelayMs() {
+    std::string configPath = FPP_DIR_CONFIG("/pipewire-audio-groups.json");
+    if (!FileExists(configPath))
+        return 0;
+
+    Json::Value root;
+    if (!LoadJsonFromFile(configPath, root) || !root.isMember("groups"))
+        return 0;
+
+    int maxDelay = 0;
+    for (const auto& group : root["groups"]) {
+        if (!group.get("enabled", false).asBool())
+            continue;
+        for (const auto& member : group["members"]) {
+            int delayMs = member.get("delayMs", 0).asInt();
+            if (delayMs > maxDelay)
+                maxDelay = delayMs;
+        }
+    }
+    return maxDelay;
+}
+
 GStreamerOutput::GStreamerOutput(const std::string& mediaFilename, MediaOutputStatus* status, const std::string& videoOut, int streamSlot)
     : m_videoOut(videoOut), m_streamSlot(streamSlot) {
     LogWarn(VB_MEDIAOUT, "GStreamer: CTOR enter (%s, videoOut=%s, slot=%d)\n", mediaFilename.c_str(), videoOut.c_str(), streamSlot);
@@ -217,44 +244,21 @@ int GStreamerOutput::Start(int msTime) {
                         connectorName.c_str(), m_hdmiConnectorId, m_hdmiCardPath.c_str(),
                         m_hdmiDisplayWidth, m_hdmiDisplayHeight);
             } else if (!drmInfo.connected) {
-                // Configured connector not connected — try other connectors
-                // of the same type (e.g., HDMI-A-1 → HDMI-A-2).
-                std::string prefix;
-                size_t dashPos = connectorName.rfind('-');
-                if (dashPos != std::string::npos) {
-                    prefix = connectorName.substr(0, dashPos + 1);
-                }
-                bool foundAlt = false;
-                if (!prefix.empty()) {
-                    for (int alt = 1; alt <= 4; alt++) {
-                        std::string altName = prefix + std::to_string(alt);
-                        if (altName == connectorName)
-                            continue;
-                        DrmConnectorInfo altInfo = ResolveDrmConnector(altName);
-                        if (altInfo.connected && altInfo.connectorId >= 0) {
-                            m_wantHDMI = true;
-                            wantHDMI = true;
-                            m_hdmiConnectorId = altInfo.connectorId;
-                            m_hdmiCardPath = altInfo.cardPath;
-                            m_hdmiDisplayWidth = altInfo.displayWidth;
-                            m_hdmiDisplayHeight = altInfo.displayHeight;
-                            LogWarn(VB_MEDIAOUT, "GStreamer: %s not connected, auto-fallback to %s (id=%d, %dx%d)\n",
-                                    connectorName.c_str(), altName.c_str(), altInfo.connectorId,
-                                    altInfo.displayWidth, altInfo.displayHeight);
-                            foundAlt = true;
-                            break;
-                        }
-                    }
-                }
-                if (!foundAlt) {
-                    if (!m_pwVideoSinkName.empty()) {
-                        // No connected connector found but PipeWire video routing is active.
-                        // Still build video pipeline — consumers can route to other outputs.
-                        wantHDMI = true;
-                        LogWarn(VB_MEDIAOUT, "GStreamer: %s is not connected, but PipeWire video routing active — building video pipeline without kmssink\n", connectorName.c_str());
-                    } else {
-                        LogWarn(VB_MEDIAOUT, "GStreamer: %s is not connected, disabling video\n", connectorName.c_str());
-                    }
+                // Configured connector not connected — do NOT fall back to
+                // another connector.  Each HDMI output is independently
+                // configured; stealing a different connector would conflict
+                // with whatever that connector is supposed to display.
+                if (!m_pwVideoSinkName.empty()) {
+                    // PipeWire video routing is active — still build the
+                    // video pipeline (without kmssink) so consumers on
+                    // other connectors can display the stream.
+                    // Don't set m_hdmiDisplayWidth/Height — without a local
+                    // kmssink there's no need to software-scale in the main
+                    // pipeline.  Consumer kmssinks do DRM hardware scaling.
+                    wantHDMI = true;
+                    LogWarn(VB_MEDIAOUT, "GStreamer: %s is not connected — building video pipeline without kmssink (PipeWire consumers will handle output)\n", connectorName.c_str());
+                } else {
+                    LogWarn(VB_MEDIAOUT, "GStreamer: %s is not connected, disabling video\n", connectorName.c_str());
                 }
             } else {
                 LogWarn(VB_MEDIAOUT, "GStreamer: could not resolve connector ID for %s\n", connectorName.c_str());
@@ -310,6 +314,13 @@ int GStreamerOutput::Start(int msTime) {
     }
     LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s' (slot %d)\n", pipelineSinkName.c_str(), m_streamSlot);
 
+    // Compute audio ts-offset: base 250ms (video decode + DRM startup) plus
+    // the maximum per-member delay across all PipeWire output groups.
+    int maxGroupDelayMs = GetMaxPipeWireGroupDelayMs();
+    gint64 audioTsOffset = (gint64)(250 + maxGroupDelayMs) * GST_MSECOND;
+    LogInfo(VB_MEDIAOUT, "GStreamer: audio ts-offset=%dms (base=250ms + maxGroupDelay=%dms)\n",
+            250 + maxGroupDelayMs, maxGroupDelayMs);
+
     // PipeWireVideoSinkName was already read above (before connector check)
 
     // Stream identity: use slot number for PipeWire node naming
@@ -355,6 +366,7 @@ int GStreamerOutput::Start(int msTime) {
             g_object_set(sink, "target-object", pipelineSinkName.c_str(), NULL);
             // sync=TRUE (default) — pipewiresink provides the pipeline clock
             // (PipeWire graph clock), so PTS-vs-clock timing is correct.
+            g_object_set(sink, "ts-offset", audioTsOffset, NULL);
             // Set stream identity so PipeWire shows a meaningful node name
             GstStructure* props = gst_structure_new("props",
                 "node.name", G_TYPE_STRING, streamNodeName.c_str(),
@@ -519,6 +531,7 @@ int GStreamerOutput::Start(int msTime) {
             g_object_set(sink, "target-object", pipelineSinkName.c_str(), NULL);
             // sync=TRUE (default) — pipewiresink provides the pipeline clock
             // (PipeWire graph clock), so PTS-vs-clock timing is correct.
+            g_object_set(sink, "ts-offset", audioTsOffset, NULL);
             // Set stream identity so PipeWire shows a meaningful node name
             GstStructure* props = gst_structure_new("props",
                 "node.name", G_TYPE_STRING, streamNodeName.c_str(),
@@ -667,6 +680,7 @@ int GStreamerOutput::Start(int msTime) {
                 LogInfo(VB_MEDIAOUT, "GStreamer: video tee active — kmssink direct, pipewiresink deferred\n");
             } else {
                 // No primary HDMI — vtee routes only to deferred pipewiresink
+                // (and potentially direct kmssink branches added in the deferred thread).
                 LogInfo(VB_MEDIAOUT, "GStreamer: video tee active — no kmssink (HDMI disconnected), pipewiresink deferred\n");
             }
         } else if (haveHdmiConnector) {
@@ -863,11 +877,96 @@ int GStreamerOutput::Start(int msTime) {
                 return;
             }
 
+            // ── Direct kmssink branches for HDMI consumers ──
+            // Added BEFORE pipewiresink so video starts immediately.
+            // kmssink talks to DRM/KMS hardware — no PipeWire cold-start.
+            // When direct kmssinks exist, they pace decode via sync=TRUE
+            // and a non-leaky queue, so pipewiresink can be leaky/async.
+            std::set<int> directConnectorIds;
+            if (m_hdmiConnectorId >= 0)
+                directConnectorIds.insert(m_hdmiConnectorId);
+
+            auto hdmiConsumers = VideoOutputManager::Instance().GetHdmiConsumers(
+                m_streamSlot, directConnectorIds);
+
+            bool haveDirectKmsSink = false;
+            for (const auto& hc : hdmiConsumers) {
+                if (!hc.connector.empty()) {
+                    auto drmCheck = ResolveDrmConnector(hc.connector);
+                    if (!drmCheck.connected) {
+                        LogInfo(VB_MEDIAOUT, "GStreamer: skipping direct kmssink for connector %d (%s) — not connected\n",
+                                hc.connectorId, hc.connector.c_str());
+                        continue;
+                    }
+                }
+
+                std::string sinkName = "dkms_" + std::to_string(hc.connectorId);
+                GstElement* dkmsSink = gst_element_factory_make("kmssink", sinkName.c_str());
+                if (!dkmsSink) {
+                    LogWarn(VB_MEDIAOUT, "GStreamer: kmssink not available for connector %d\n", hc.connectorId);
+                    continue;
+                }
+
+                // sync=TRUE:  pace video rendering to PTS timestamps.
+                //             The non-leaky queue back-pressures the tee,
+                //             which paces the decoder to real-time.
+                // async=FALSE: don't stall the PLAYING pipeline for preroll.
+                //              First few frames whose PTS is already "late"
+                //              (pipeline has been playing ~200ms) render immediately,
+                //              then kmssink settles into PTS-driven cadence.
+                g_object_set(dkmsSink,
+                             "driver-name", "vc4",
+                             "connector-id", hc.connectorId,
+                             "sync", TRUE,
+                             "async", FALSE,
+                             "restore-crtc", TRUE,
+                             "skip-vsync", TRUE,
+                             NULL);
+
+                GstElement* dQueue = gst_element_factory_make("queue", nullptr);
+                // Non-leaky: back-pressure from kmssink sync=TRUE reaches
+                // the tee and paces the whole video branch.
+                g_object_set(dQueue,
+                             "max-size-buffers", 3,
+                             "max-size-bytes", 0,
+                             "max-size-time", (guint64)0,
+                             NULL);
+
+                // No videoconvert needed — vc4 DRM supports NV12/I420 natively,
+                // so kmssink negotiates directly with the decoder's output format.
+                // This avoids expensive CPU color conversion on the Pi.
+                gst_bin_add_many(GST_BIN(m_pipeline), dQueue, dkmsSink, NULL);
+                gst_element_link(dQueue, dkmsSink);
+
+                gst_element_sync_state_with_parent(dQueue);
+                gst_element_sync_state_with_parent(dkmsSink);
+
+                GstPad* teeSrc2 = gst_element_request_pad_simple(vtee, "src_%u");
+                GstPad* dQSink = gst_element_get_static_pad(dQueue, "sink");
+                GstPadLinkReturn lr = gst_pad_link(teeSrc2, dQSink);
+                gst_object_unref(teeSrc2);
+                gst_object_unref(dQSink);
+
+                if (lr == GST_PAD_LINK_OK) {
+                    directConnectorIds.insert(hc.connectorId);
+                    m_directConnectorIds.insert(hc.connectorId);
+                    haveDirectKmsSink = true;
+                    LogInfo(VB_MEDIAOUT, "GStreamer: direct kmssink for connector %d (%dx%d) attached to vtee (sync=TRUE, pacer)\n",
+                            hc.connectorId, hc.width, hc.height);
+                } else {
+                    LogWarn(VB_MEDIAOUT, "GStreamer: failed to link vtee → direct kmssink for connector %d (ret=%d)\n",
+                            hc.connectorId, lr);
+                }
+            }
+
+            // ── pipewiresink for PipeWire consumers (overlay, RTP, etc.) ──
             GstElement* pwvideosink = gst_element_factory_make("pipewiresink", "pwvideosink");
             if (!pwvideosink) {
                 LogWarn(VB_MEDIAOUT, "GStreamer: pipewiresink not available\n");
                 gst_object_unref(vtee);
                 gst_object_unref(m_pipeline);
+                // Direct kmssinks already attached — video will still play on HDMI.
+                VideoOutputManager::Instance().StartConsumers("", m_hdmiConnectorId, directConnectorIds);
                 return;
             }
 
@@ -882,18 +981,40 @@ int GStreamerOutput::Start(int msTime) {
                 NULL);
             g_object_set(pwvideosink, "stream-properties", vprops, NULL);
             gst_structure_free(vprops);
-            g_object_set(pwvideosink, "async", FALSE, "sync", FALSE, NULL);
+
+            // Pacing strategy depends on what's available:
+            //  - Primary kmssink OR direct kmssink: they pace via sync=TRUE,
+            //    pipewiresink is a follower (sync=FALSE, leaky queue).
+            //  - No kmssink at all: pipewiresink must pace (sync=TRUE,
+            //    non-leaky queue). PipeWire cold-start may delay first frame.
+            bool kmsPaces = m_kmssink || haveDirectKmsSink;
+            if (kmsPaces) {
+                g_object_set(pwvideosink, "async", FALSE, "sync", FALSE, NULL);
+                LogInfo(VB_MEDIAOUT, "GStreamer: pipewiresink sync=FALSE (kmssink paces)\n");
+            } else {
+                g_object_set(pwvideosink, "sync", TRUE, NULL);
+                LogInfo(VB_MEDIAOUT, "GStreamer: pipewiresink sync=TRUE (no kmssink, pipewiresink paces)\n");
+            }
 
             GstElement* pwQueue = gst_element_factory_make("queue", "vpwq");
-            // MUST be leaky — if pipewiresink or its PipeWire consumers can't
-            // keep up (x264enc CPU load, PipeWire cold-start), a non-leaky queue
-            // blocks the tee, which starves kmssink and freezes HDMI output.
-            g_object_set(pwQueue,
-                         "leaky", 2,               // downstream: drop oldest frames
-                         "max-size-buffers", 2,
-                         "max-size-bytes", 0,
-                         "max-size-time", (guint64)0,
-                         NULL);
+            if (kmsPaces) {
+                // kmssink paces decode — pipewiresink queue MUST be leaky to
+                // avoid blocking the tee (PipeWire cold-start, consumer load).
+                g_object_set(pwQueue,
+                             "leaky", 2,
+                             "max-size-buffers", 2,
+                             "max-size-bytes", 0,
+                             "max-size-time", (guint64)0,
+                             NULL);
+            } else {
+                // No kmssink — pipewiresink sync=TRUE paces decode.
+                // Non-leaky so back-pressure reaches the tee.
+                g_object_set(pwQueue,
+                             "max-size-buffers", 3,
+                             "max-size-bytes", 0,
+                             "max-size-time", (guint64)0,
+                             NULL);
+            }
 
             gst_bin_add_many(GST_BIN(m_pipeline), pwQueue, pwvideosink, NULL);
             if (!gst_element_link(pwQueue, pwvideosink)) {
@@ -913,7 +1034,6 @@ int GStreamerOutput::Start(int msTime) {
             }
             gst_object_unref(teeSrc);
             gst_object_unref(pwQSink);
-            gst_object_unref(vtee);
 
             // Check actual element states after linking
             GstState pwState, pwPending;
@@ -924,9 +1044,23 @@ int GStreamerOutput::Start(int msTime) {
             LogInfo(VB_MEDIAOUT, "GStreamer: pipewiresink attached to vtee (node=%s)\n",
                     videoNodeName.c_str());
 
-            // Start consumer pipelines — they connect to the PipeWire video node
-            // Pass the primary connector ID so consumers skip that connector
-            VideoOutputManager::Instance().StartConsumers(videoNodeName, m_hdmiConnectorId);
+            // Wait for the first video buffer(s) to flow through pipewiresink
+            // so its internal PipeWire buffer pool becomes active.  Without
+            // this, the consumer's pipewiresrc connection triggers
+            // on_param_changed in the PipeWire thread, which calls
+            // g_cond_wait (waiting for pool activation) while holding the
+            // PipeWire thread loop lock.  The streaming thread then can't
+            // push data (needs the same pw_thread_loop_lock), so the pool
+            // never activates — classic deadlock.  Once the pool IS active,
+            // on_param_changed's while-loop exits immediately.
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+            // Done with vtee — release the ref from gst_bin_get_by_name.
+            gst_object_unref(vtee);
+
+            // Start remaining consumer pipelines (overlay, RTP) via PipeWire.
+            // HDMI consumers handled by direct kmssink above are skipped.
+            VideoOutputManager::Instance().StartConsumers(videoNodeName, m_hdmiConnectorId, directConnectorIds);
             gst_object_unref(m_pipeline);
         }).detach();
     }
@@ -1004,22 +1138,14 @@ int GStreamerOutput::Stop(void) {
             VideoOutputManager::Instance().StopConsumers();
         }
 
-        // Flush pipewiresink before tearing down the pipeline.  If the
-        // pipewiresink streaming thread is blocked waiting for PipeWire
-        // (target node missing, PipeWire restarted, etc.), the flush-start
-        // event unblocks the chain function so gst_element_set_state(NULL)
-        // can join the thread without hanging or triggering SIGBUS.
-        {
-            GstElement* pwsink = gst_bin_get_by_name(GST_BIN(m_pipeline), "pwsink");
-            if (pwsink) {
-                GstPad* sinkPad = gst_element_get_static_pad(pwsink, "sink");
-                if (sinkPad) {
-                    gst_pad_send_event(sinkPad, gst_event_new_flush_start());
-                    gst_object_unref(sinkPad);
-                }
-                gst_object_unref(pwsink);
-            }
-        }
+        // NOTE: Do NOT pre-disconnect pipewiresink elements here.
+        // Any operation that triggers gst_pipewire_sink_change_state or
+        // gst_pipewire_sink_event will call pw_thread_loop_lock, which
+        // deadlocks if the PipeWire callback thread is inside
+        // on_param_changed.  The 200ms delay before StartConsumers in
+        // the deferred-attach thread ensures the buffer pool is active so
+        // on_param_changed never blocks, and the pipeline NULL below can
+        // proceed normally.
 
         Stopping();
         LogDebug(VB_MEDIAOUT, "GStreamerOutput::Stop() - setting pipeline to NULL\n");
@@ -1057,18 +1183,26 @@ int GStreamerOutput::Process(void) {
     // Update position
     if (m_playing) {
         gint64 pos = 0, dur = 0;
-        // When kmssink is present, query position from it specifically.
-        // The pipeline-level position query returns the demuxer's read position,
-        // which races ahead of actual playout when the audio path has leaky queues.
-        // kmssink with sync=TRUE reflects the actual video playout position.
-        GstElement* posSource = m_kmssink ? m_kmssink : m_pipeline;
+        // Query position from a sync'd sink, NOT the pipeline.
+        // Pipeline-level queries return the demuxer's read-ahead position,
+        // which races far ahead when sinks use leaky queues or async=FALSE.
+        // Prefer kmssink (sync=TRUE, video playout position), then the audio
+        // pipewiresink "pwsink" (sync=TRUE, PipeWire clock).
+        GstElement* posSource = nullptr;
+        bool ownPosSource = false;
+        if (m_kmssink) {
+            posSource = m_kmssink;
+        } else {
+            posSource = gst_bin_get_by_name(GST_BIN(m_pipeline), "pwsink");
+            if (posSource) ownPosSource = true;
+        }
+        if (!posSource) posSource = m_pipeline;
         bool havePos = gst_element_query_position(posSource, GST_FORMAT_TIME, &pos);
         bool haveDur = gst_element_query_duration(m_pipeline, GST_FORMAT_TIME, &dur);
+        if (ownPosSource) gst_object_unref(posSource);
 
         // One-shot: log pipeline clock and sink sync state on first position update
-        static bool clockLogged = false;
-        if (havePos && !clockLogged) {
-            clockLogged = true;
+        if (havePos && m_wallStartMs == 0) {
             m_wallStartMs = GetTimeMS();  // record wall time at first pos
             GstClock* clock = gst_pipeline_get_clock(GST_PIPELINE(m_pipeline));
             LogInfo(VB_MEDIAOUT, "GStreamer: pipeline clock=%s pos=%.1fs\n",
@@ -1095,9 +1229,8 @@ int GStreamerOutput::Process(void) {
             uint64_t wallMs = GetTimeMS() - m_wallStartMs;
             float wallSec = wallMs / 1000.0f;
             float streamSec = (float)pos / GST_SECOND;
-            static uint64_t lastWallLog = 0;
-            if (wallMs - lastWallLog > 5000) {
-                lastWallLog = wallMs;
+            if (wallMs - m_lastWallLogMs > 5000) {
+                m_lastWallLogMs = wallMs;
                 float ratio = (wallSec > 0.1f) ? streamSec / wallSec : 0.0f;
                 LogInfo(VB_MEDIAOUT, "GStreamer: wall=%.1fs stream=%.1fs ratio=%.2fx\n",
                         wallSec, streamSec, ratio);
@@ -1298,8 +1431,11 @@ GstBusSyncReply GStreamerOutput::BusSyncHandler(GstBus* bus, GstMessage* msg, gp
         // is a secondary tee branch for PipeWire graph visibility only.
         bool isAES67Branch = (strncmp(srcName, "aes67_", 6) == 0);
         bool isVideoPWSink = (strcmp(srcName, "pwvideosink") == 0);
+        // Direct kmssink branches (dkms_*) may fail if a display is
+        // disconnected during playback — treat as non-fatal.
+        bool isDirectKmsSink = (strncmp(srcName, "dkms_", 5) == 0);
 
-        if (isAES67Branch || isVideoPWSink) {
+        if (isAES67Branch || isVideoPWSink || isDirectKmsSink) {
             LogWarn(VB_MEDIAOUT, "GStreamer non-fatal error (src=%s): %s\n",
                     srcName, err->message);
             LogDebug(VB_MEDIAOUT, "GStreamer AES67 branch debug: %s\n",
@@ -2027,8 +2163,8 @@ void GStreamerOutput::FlushPipeWireDelayBuffers() {
 
         // Phase 1: set all delays to 0 (clears ring-buffers)
         for (const auto& d : delays) {
-            // Find node ID
-            std::string findCmd = std::string(env) + " pw-cli ls Node 2>/dev/null | grep -B1 'node.name = \"" + d.fxNodeName + "\"' | head -1 | awk '{print $2}'";
+            // Find node ID (timeout prevents pw-cli hangs)
+            std::string findCmd = std::string(env) + " timeout 3 pw-cli ls Node 2>/dev/null | grep -B1 'node.name = \"" + d.fxNodeName + "\"' | head -1 | awk '{print $2}'";
             FILE* fp = popen(findCmd.c_str(), "r");
             if (!fp) continue;
             char buf[64] = {};
@@ -2045,7 +2181,7 @@ void GStreamerOutput::FlushPipeWireDelayBuffers() {
                 params += channelLabels[ch];
                 params += ":Delay (s)\" 0";
             }
-            std::string cmd = std::string(env) + " pw-cli set-param " + std::to_string(nodeId)
+            std::string cmd = std::string(env) + " timeout 3 pw-cli set-param " + std::to_string(nodeId)
                 + " Props '{ params = [ " + params + " ] }' 2>/dev/null";
             system(cmd.c_str());
         }
@@ -2055,7 +2191,7 @@ void GStreamerOutput::FlushPipeWireDelayBuffers() {
 
         // Phase 2: restore original delay values
         for (const auto& d : delays) {
-            std::string findCmd = std::string(env) + " pw-cli ls Node 2>/dev/null | grep -B1 'node.name = \"" + d.fxNodeName + "\"' | head -1 | awk '{print $2}'";
+            std::string findCmd = std::string(env) + " timeout 3 pw-cli ls Node 2>/dev/null | grep -B1 'node.name = \"" + d.fxNodeName + "\"' | head -1 | awk '{print $2}'";
             FILE* fp = popen(findCmd.c_str(), "r");
             if (!fp) continue;
             char buf[64] = {};
@@ -2072,7 +2208,7 @@ void GStreamerOutput::FlushPipeWireDelayBuffers() {
                 params += ":Delay (s)\" ";
                 params += std::to_string(d.delaySec);
             }
-            std::string cmd = std::string(env) + " pw-cli set-param " + std::to_string(nodeId)
+            std::string cmd = std::string(env) + " timeout 3 pw-cli set-param " + std::to_string(nodeId)
                 + " Props '{ params = [ " + params + " ] }' 2>/dev/null";
             system(cmd.c_str());
         }

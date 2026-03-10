@@ -78,6 +78,7 @@ private:
     gint64 m_maxDuration = 0;   // highest observed duration (handles VBR fluctuations)
     uint64_t m_stallStartMs = 0;
     uint64_t m_wallStartMs = 0;
+    uint64_t m_lastWallLogMs = 0;
     static constexpr int STALL_TIMEOUT_MS = 5000; // 5 seconds before declaring stall
 
     void ProcessMessages();
@@ -120,6 +121,7 @@ private:
     // tee'd to both kmssink (HDMI) and pipewiresink (PipeWire graph node).
     std::string m_pwVideoSinkName;                  // target-object for video pipewiresink
     bool m_videoPipeWireRouting = false;             // true when video goes through PipeWire
+    std::set<int> m_directConnectorIds;                // HDMI connectors driven by direct kmssink on vtee
 
     // Resolve connector name (e.g., "HDMI-A-1") to DRM card path, connector ID,
     // and display resolution by scanning sysfs.  Works on all Pi models.

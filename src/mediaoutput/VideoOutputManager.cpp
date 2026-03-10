@@ -147,7 +147,9 @@ void VideoOutputManager::Shutdown() {
     LogInfo(VB_MEDIAOUT, "VideoOutputManager: Shutdown complete\n");
 }
 
-void VideoOutputManager::StartConsumers(const std::string& producerNodeName, int primaryConnectorId) {
+void VideoOutputManager::StartConsumers(const std::string& producerNodeName,
+                                        int primaryConnectorId,
+                                        const std::set<int>& directConnectorIds) {
     bool shouldStartSAP = false;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -157,6 +159,7 @@ void VideoOutputManager::StartConsumers(const std::string& producerNodeName, int
 
         m_activeProducer = producerNodeName;
         m_primaryConnectorId = primaryConnectorId;
+        m_directConnectorIds = directConnectorIds;
 
         // Extract stream slot number from producer node name (e.g. "fppd_video_stream_2" → 2)
         int producerSlot = 0;
@@ -196,6 +199,36 @@ void VideoOutputManager::StartConsumers(const std::string& producerNodeName, int
     // Start SAP announcer outside the lock (SAPAnnounceLoop needs m_mutex)
     if (shouldStartSAP)
         StartSAPAnnouncer();
+}
+
+std::vector<VideoOutputManager::HdmiConsumerInfo> VideoOutputManager::GetHdmiConsumers(
+    int streamSlot, const std::set<int>& skipConnectorIds) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::vector<HdmiConsumerInfo> result;
+    for (const auto& c : m_consumers) {
+        if (c.type != "hdmi" || c.connectorId <= 0)
+            continue;
+        // Only on-demand consumers (no fixed sourceNode)
+        if (!c.sourceNode.empty())
+            continue;
+        // Stream slot filter
+        if (!c.streamSlots.empty() && streamSlot > 0) {
+            bool match = false;
+            for (int s : c.streamSlots)
+                if (s == streamSlot) { match = true; break; }
+            if (!match) continue;
+        }
+        if (skipConnectorIds.count(c.connectorId))
+            continue;
+        HdmiConsumerInfo info;
+        info.connectorId = c.connectorId;
+        info.connector = c.connector;
+        info.cardPath = c.cardPath;
+        info.width = c.width;
+        info.height = c.height;
+        result.push_back(info);
+    }
+    return result;
 }
 
 void VideoOutputManager::StopConsumers() {
@@ -336,9 +369,13 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
     std::string pipelineDesc;
     std::string nodeDesc = "FPP Video: " + consumer.name;
 
-    // Common source: pipewiresrc with Stream/Input/Video media class
-    // The pipewiresrc will wait for a producer to connect via PipeWire
-    pipelineDesc = "pipewiresrc name=src do-timestamp=true ! videoconvert ! videoscale ! ";
+    // Common source: pipewiresrc with Stream/Input/Video media class.
+    // do-timestamp=false preserves the producer's original presentation
+    // timestamps through PipeWire, so the consumer's sink can pace
+    // rendering against the content clock rather than PipeWire's
+    // Dummy-Driver schedule (which runs at a default 25fps that rarely
+    // matches the actual content framerate).
+    pipelineDesc = "pipewiresrc name=src do-timestamp=false ! videoconvert ! videoscale ! ";
 
     if (consumer.type == "hdmi") {
         if (consumer.connectorId <= 0 || consumer.cardPath.empty()) {
@@ -347,14 +384,21 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
         }
 
         // Check for conflict with the primary video output — the main GStreamerOut
-        // pipeline always has a direct kmssink on the primary connector (even when
-        // PipeWire video routing is active, kmssink stays in the primary pipeline
-        // to hold DRM master).  Two kmssinks cannot share the same DRM CRTC/connector.
-        // Use the actual connector ID (which may differ from VideoOutput setting due to
-        // auto-fallback when the configured connector is disconnected).
+        // pipeline may have a direct kmssink on the primary connector.
+        // Two kmssinks cannot share the same DRM CRTC/connector.
+        // primaryConnectorId is -1 when the primary connector is disconnected
+        // (no kmssink in the main pipeline), so no consumer is skipped.
         if (m_primaryConnectorId >= 0 && consumer.connectorId == m_primaryConnectorId) {
             LogWarn(VB_MEDIAOUT, "VideoOutputManager: Skipping HDMI consumer '%s' — "
                     "connector %s (id=%d) is used by the primary video output\n",
+                    consumer.name.c_str(), consumer.connector.c_str(), consumer.connectorId);
+            return false;
+        }
+        // Also skip connectors handled by direct kmssink branches on the
+        // producer's video tee (avoids DRM CRTC conflicts).
+        if (m_directConnectorIds.count(consumer.connectorId)) {
+            LogInfo(VB_MEDIAOUT, "VideoOutputManager: Skipping HDMI consumer '%s' — "
+                    "connector %s (id=%d) handled by direct kmssink in main pipeline\n",
                     consumer.name.c_str(), consumer.connector.c_str(), consumer.connectorId);
             return false;
         }
@@ -370,7 +414,9 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
             pipelineDesc += "video/x-raw,format=BGRx ! ";
         }
 
-        pipelineDesc += "kmssink name=sink driver-name=vc4"
+        // kmssink sync=true paces frames against the original presentation
+        // timestamps from the producer (preserved by do-timestamp=false).
+        pipelineDesc += "kmssink name=sink sync=true driver-name=vc4"
                      " connector-id=" + std::to_string(consumer.connectorId)
                      + " restore-crtc=true skip-vsync=true";
 
