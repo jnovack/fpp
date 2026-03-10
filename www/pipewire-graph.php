@@ -1031,8 +1031,8 @@
                     .attr('x', (videoLeft + col1Center) / 2)
                     .attr('y', boxTop + 14)
                     .attr('text-anchor', 'middle')
-                    .attr('font-size', '11px').attr('font-weight', '700')
-                    .attr('fill', 'rgba(13, 202, 240, 0.5)')
+                    .attr('font-size', '14px').attr('font-weight', '700')
+                    .attr('fill', 'rgba(13, 40, 46, 0.5)')
                     .attr('letter-spacing', '1px')
                     .text('VIDEO ROUTING');
 
@@ -1050,7 +1050,7 @@
                     .attr('x', (col1Center + audioRight) / 2)
                     .attr('y', boxTop + 14)
                     .attr('text-anchor', 'middle')
-                    .attr('font-size', '11px').attr('font-weight', '700')
+                    .attr('font-size', '14px').attr('font-weight', '700')
                     .attr('fill', 'rgba(253, 126, 20, 0.5)')
                     .attr('letter-spacing', '1px')
                     .text('AUDIO ROUTING');
