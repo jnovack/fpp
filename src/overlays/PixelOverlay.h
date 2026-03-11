@@ -13,7 +13,7 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <httpserver.hpp>
+#include "fpphttp.h"
 #include <list>
 #include <map>
 #include <mutex>
@@ -24,14 +24,14 @@ class PixelOverlayState;
 class PixelOverlayModel;
 class OverlayRange;
 
-class PixelOverlayManager : public httpserver::http_resource {
+class PixelOverlayManager {
 public:
     static PixelOverlayManager INSTANCE;
 
-    virtual std::shared_ptr<httpserver::http_response> render_GET(const httpserver::http_request& req) override;
-    virtual std::shared_ptr<httpserver::http_response> render_POST(const httpserver::http_request& req) override;
-    virtual std::shared_ptr<httpserver::http_response> render_PUT(const httpserver::http_request& req) override;
-    virtual std::shared_ptr<httpserver::http_response> render_HEAD(const httpserver::http_request& req) override;
+    HttpResponsePtr render_GET(const HttpRequestPtr& req);
+    HttpResponsePtr render_POST(const HttpRequestPtr& req);
+    HttpResponsePtr render_PUT(const HttpRequestPtr& req);
+    HttpResponsePtr render_HEAD(const HttpRequestPtr& req);
 
     bool hasActiveOverlays();
     void doOverlays(uint8_t* channels);

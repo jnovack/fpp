@@ -12,24 +12,22 @@
  */
 
 #include <ctime>
-#include <httpserver.hpp>
+#include "fpphttp.h"
 
 #define FPP_HTTP_PORT 32322
 #define FPP_BIND_ADDRESS "127.0.0.1"
 
 #define FPPD_API_VERSION "v1"
 
-using namespace httpserver;
-
-class PlayerResource : public http_resource {
+class PlayerResource {
 public:
     PlayerResource();
     ~PlayerResource();
 
-    std::shared_ptr<http_response> render_GET(const http_request& req);
-    std::shared_ptr<http_response> render_DELETE(const http_request& req);
-    std::shared_ptr<http_response> render_POST(const http_request& req);
-    std::shared_ptr<http_response> render_PUT(const http_request& req);
+    HttpResponsePtr render_GET(const HttpRequestPtr& req);
+    HttpResponsePtr render_DELETE(const HttpRequestPtr& req);
+    HttpResponsePtr render_POST(const HttpRequestPtr& req);
+    HttpResponsePtr render_PUT(const HttpRequestPtr& req);
 
     void periodicWork();
 private:
@@ -67,8 +65,6 @@ public:
     void Init();
     void periodicWork();
 private:
-    create_webserver m_params;
-    webserver* m_ws;
     PlayerResource* m_pr;
-
+    std::thread* m_serverThread = nullptr;
 };

@@ -32,7 +32,7 @@ ARG PACKAGE_LIST="alsa-utils arping avahi-daemon avahi-utils locales nano net-to
     php${PHPVER} php${PHPVER}-cli php${PHPVER}-fpm php${PHPVER}-common php${PHPVER}-curl php-pear \
     php${PHPVER}-bcmath php${PHPVER}-sqlite3 php${PHPVER}-zip php${PHPVER}-xml \
     libavcodec-dev libavformat-dev libswresample-dev libswscale-dev libavdevice-dev libavfilter-dev libtag1-dev \
-    vorbis-tools libgraphicsmagick++-dev graphicsmagick-libmagick-dev-compat libmicrohttpd-dev \
+    vorbis-tools libgraphicsmagick++-dev graphicsmagick-libmagick-dev-compat libdrogon-dev \
     gettext x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain \
     libmosquitto-dev mosquitto-clients mosquitto libzstd-dev xz-utils zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev \
     fonts-freefont-ttf flex bison pkg-config libasound2-dev mesa-common-dev qrencode libusb-1.0-0-dev \

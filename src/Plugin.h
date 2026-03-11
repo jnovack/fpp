@@ -15,16 +15,23 @@
 #include <map>
 #include <string>
 
+// Increment this when the plugin ABI changes (e.g. virtual method signatures)
+#define FPP_PLUGIN_API_VERSION 2
+
+// Plugins compiled with these headers will export their API version.
+// weak linkage allows multiple TUs to define this; visibility ensures .so export.
+#ifdef __cplusplus
+extern "C" {
+__attribute__((weak, visibility("default"))) int fpp_plugin_api_version() { return FPP_PLUGIN_API_VERSION; }
+}
+#endif
+
 #if __has_include(<jsoncpp/json/json.h>)
 #include <jsoncpp/json/json.h>
 #elif __has_include(<json/json.h>)
 #include <json/json.h>
 #endif
 
-namespace httpserver
-{
-    class webserver;
-}
 class MediaDetails;
 class ChannelOutput;
 
@@ -90,8 +97,8 @@ namespace FPPPlugins
         virtual ~APIProviderPlugin() {}
 
         // Register/Handle API routines
-        virtual void registerApis(httpserver::webserver* m_ws) {}
-        virtual void unregisterApis(httpserver::webserver* m_ws) {}
+        virtual void registerApis() {}
+        virtual void unregisterApis() {}
         virtual void addControlCallbacks(std::map<int, std::function<bool(int)>>& callbacks) {}
     };
 }

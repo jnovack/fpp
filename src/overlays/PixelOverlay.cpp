@@ -455,13 +455,14 @@ Json::Value PixelOverlayManager::getModelsAsJson() {
     }
     return ret;
 }
-std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_HEAD(const httpserver::http_request& req) {
+HttpResponsePtr PixelOverlayManager::render_HEAD(const HttpRequestPtr& req) {
     return render_GET(req);
 }
 
-std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const httpserver::http_request& req) {
-    std::string p1 = req.get_path_pieces()[0];
-    int plen = req.get_path_pieces().size();
+HttpResponsePtr PixelOverlayManager::render_GET(const HttpRequestPtr& req) {
+    auto parts = getPathPieces(req->path());
+    std::string p1 = parts[0];
+    int plen = parts.size();
     LogDebug(VB_CHANNELOUT, "PixelOverlayManager::render_GET():   %s\n", p1.c_str());
     if (p1 == "models") {
         Json::Value result;
@@ -469,10 +470,10 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const
         if (plen == 1) {
             std::unique_lock<std::recursive_mutex> lock(modelsLock);
             bool simple = false;
-            if (std::string(req.get_arg("simple")) == "true") {
+            if (getRequestArg(req, "simple") == "true") {
                 simple = true;
             }
-            if (std::string(req.get_arg("all")) == "true") {
+            if (getRequestArg(req, "all") == "true") {
                 result.append("--All Models--");
             }
             for (auto& mn : modelNames) {
@@ -487,27 +488,27 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const
                 }
             }
         } else {
-            std::string model = req.get_path_pieces()[1];
+            std::string model = parts[1];
             std::string type;
             std::unique_lock<std::recursive_mutex> lock(modelsLock);
             auto it = models.find(model);
             if (it != models.end() && it->second.model) {
                 it->second.model->toJson(result);
             } else {
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Model not found: " + req.get_path_pieces()[1], 404));
+                return makeStringResponse("Model not found: " + parts[1], 404);
             }
         }
         if (empty && plen == 1) {
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("[]", 200, "application/json"));
+            return makeStringResponse("[]", 200, "application/json");
         } else {
             std::string resultStr = SaveJsonToString(result, "");
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+            return makeStringResponse(resultStr, 200, "application/json");
         }
     } else if (p1 == "overlays") {
-        std::string p2 = req.get_path_pieces()[1];
-        std::string p3 = req.get_path_pieces().size() > 2 ? req.get_path_pieces()[2] : "";
-        std::string p4 = req.get_path_pieces().size() > 3 ? req.get_path_pieces()[3] : "";
-        std::string p5 = req.get_path_pieces().size() > 4 ? req.get_path_pieces()[4] : "";
+        std::string p2 = plen > 1 ? parts[1] : "";
+        std::string p3 = plen > 2 ? parts[2] : "";
+        std::string p4 = plen > 3 ? parts[3] : "";
+        std::string p5 = plen > 4 ? parts[4] : "";
         Json::Value result;
         if (p2 == "fonts") {
             for (auto& a : fonts) {
@@ -554,7 +555,7 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const
                     result["effectRunning"] = m->getRunningEffect() != nullptr;
                 } else if (p4 == "clear") {
                     m->clear();
-                    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                    return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                 } else {
                     m->toJson(result);
                     result["isActive"] = (int)m->getState().getState();
@@ -572,7 +573,7 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const
             }
         } else if (p2 == "effects") {
             if (p3 == "") {
-                bool fullResult = std::string(req.get_arg("full")) == "true";
+                bool fullResult = getRequestArg(req, "full") == "true";
                 for (auto& a : PixelOverlayEffect::GetPixelOverlayEffects()) {
                     if (fullResult) {
                         result.append(PixelOverlayEffect::GetPixelOverlayEffect(a)->getDescription());
@@ -590,14 +591,15 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const
             result = getActiveOverlayEffects();
         }
         std::string resultStr = SaveJsonToString(result, "");
-        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+        return makeStringResponse(resultStr, 200, "application/json");
     }
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not found: " + p1, 404));
+    return makeStringResponse("Not found: " + p1, 404);
 }
-std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_POST(const httpserver::http_request& req) {
-    std::string p1 = req.get_path_pieces()[0];
+HttpResponsePtr PixelOverlayManager::render_POST(const HttpRequestPtr& req) {
+    auto parts = getPathPieces(req->path());
+    std::string p1 = parts[0];
     if (p1 == "models") {
-        std::string p2 = req.get_path_pieces().size() > 1 ? req.get_path_pieces()[1] : "";
+        std::string p2 = parts.size() > 1 ? parts[1] : "";
         if (p2 == "raw") {
             // upload of raw file
             char filename[2048];
@@ -606,36 +608,39 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_POST(cons
             int fp = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0666);
             if (fp == -1) {
                 LogErr(VB_CHANNELOUT, "Could not open Channel Memory Map config file %s\n", filename);
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Could not open Channel Memory Map config file", 500));
+                return makeStringResponse("Could not open Channel Memory Map config file", 500);
             }
-            write(fp, std::string(req.get_content()).c_str(), req.get_content().length());
+            std::string content(getRequestContent(req));
+            write(fp, content.c_str(), content.length());
             close(fp);
             std::string nvresults;
             urlPut("http://127.0.0.1/api/settings/restartFlag", "1", nvresults);
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
-        } else if (req.get_path_pieces().size() == 1) {
+            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
+        } else if (parts.size() == 1) {
             char filename[2048];
             strcpy(filename, FPP_DIR_CONFIG("/model-overlays.json").c_str());
 
             int fp = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0666);
             if (fp == -1) {
                 LogErr(VB_CHANNELOUT, "Could not open Channel Memory Map config file %s\n", filename);
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Could not open Channel Memory Map config file", 500));
+                return makeStringResponse("Could not open Channel Memory Map config file", 500);
             }
-            write(fp, std::string(req.get_content()).c_str(), req.get_content().length());
+            std::string content(getRequestContent(req));
+            write(fp, content.c_str(), content.length());
             close(fp);
             std::string nvresults;
             urlPut("http://127.0.0.1/api/settings/restartFlag", "1", nvresults);
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
         }
     }
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("POST Not found " + std::string(req.get_path()), 404));
+    return makeStringResponse("POST Not found " + req->path(), 404);
 }
-std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_PUT(const httpserver::http_request& req) {
-    std::string p1 = req.get_path_pieces()[0];
-    std::string p2 = req.get_path_pieces().size() > 1 ? req.get_path_pieces()[1] : "";
-    std::string p3 = req.get_path_pieces().size() > 2 ? req.get_path_pieces()[2] : "";
-    std::string p4 = req.get_path_pieces().size() > 3 ? req.get_path_pieces()[3] : "";
+HttpResponsePtr PixelOverlayManager::render_PUT(const HttpRequestPtr& req) {
+    auto parts = getPathPieces(req->path());
+    std::string p1 = parts[0];
+    std::string p2 = parts.size() > 1 ? parts[1] : "";
+    std::string p3 = parts.size() > 2 ? parts[2] : "";
+    std::string p4 = parts.size() > 3 ? parts[3] : "";
     if (p1 == "overlays") {
         if (p2 == "model") {
             std::unique_lock<std::recursive_mutex> lock(modelsLock);
@@ -644,55 +649,55 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_PUT(const
             if (m) {
                 if (p4 == "state") {
                     Json::Value root;
-                    if (LoadJsonFromString(std::string(req.get_content()), root)) {
+                    if (LoadJsonFromString(std::string(getRequestContent(req)), root)) {
                         if (root.isMember("State")) {
                             m->setState(PixelOverlayState(root["State"].asInt()));
-                            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                         } else {
-                            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Invalid request " + std::string(req.get_content()), 500));
+                            return makeStringResponse("Invalid request " + std::string(getRequestContent(req)), 500);
                         }
                     } else {
-                        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Could not parse request " + std::string(req.get_content()), 500));
+                        return makeStringResponse("Could not parse request " + std::string(getRequestContent(req)), 500);
                     }
                 } else if (p4 == "fill") {
                     Json::Value root;
-                    if (LoadJsonFromString(std::string(req.get_content()), root)) {
+                    if (LoadJsonFromString(std::string(getRequestContent(req)), root)) {
                         if (root.isMember("RGB")) {
                             m->fill(root["RGB"][0].asInt(),
                                     root["RGB"][1].asInt(),
                                     root["RGB"][2].asInt());
                             m->flushOverlayBuffer();
-                            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                         } else if (root.isMember("Value")) {
                             m->fill(root["Value"].asInt(),
                                     root["Value"].asInt(),
                                     root["Value"].asInt());
-                            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                         }
                     }
                 } else if (p4 == "pixel") {
                     Json::Value root;
-                    if (LoadJsonFromString(std::string(req.get_content()), root)) {
+                    if (LoadJsonFromString(std::string(getRequestContent(req)), root)) {
                         if (root.isMember("RGB")) {
                             m->setPixelValue(root["X"].asInt(),
                                              root["Y"].asInt(),
                                              root["RGB"][0].asInt(),
                                              root["RGB"][1].asInt(),
                                              root["RGB"][2].asInt());
-                            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                         }
                     }
                 } else if (p4 == "save") {
                     Json::Value root;
-                    if (LoadJsonFromString(std::string(req.get_content()), root)) {
+                    if (LoadJsonFromString(std::string(getRequestContent(req)), root)) {
                         if (root.isMember("File")) {
                             m->saveOverlayAsImage(root["File"].asString());
-                            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                         }
                     }
                 } else if (p4 == "text") {
                     Json::Value root;
-                    if (LoadJsonFromString(std::string(req.get_content()), root)) {
+                    if (LoadJsonFromString(std::string(getRequestContent(req)), root)) {
                         if (root.isMember("Message")) {
                             std::string color = root["Color"].asString();
                             unsigned int x = mapColor(color);
@@ -728,25 +733,25 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_PUT(const
                             args.push_back(msg);
                             lock.unlock();
                             CommandManager::INSTANCE.run("Overlay Model Effect", args);
-                            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                         }
                     }
                 } else if (p4 == "mmap") {
                     // Force mmap the overlay buffer so external programs can have access to it
                     m->getOverlayBuffer();
-                    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                    return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                 } else {
-                    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Model Command Not found " + p4, 404));
+                    return makeStringResponse("Model Command Not found " + p4, 404);
                 }
             } else {
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Model Not found " + p3, 404));
+                return makeStringResponse("Model Not found " + p3, 404);
             }
         } else if (p2 == "range") {
             int val = -1;
             bool deleteAll = false;
             if (p4 == "") {
                 Json::Value root;
-                if (LoadJsonFromString(std::string(req.get_content()), root)) {
+                if (LoadJsonFromString(std::string(getRequestContent(req)), root)) {
                     if (root.isMember("delete") && root["delete"].asBool()) {
                         val = -1;
                     } else if (root.isMember("deleteAll") && root["deleteAll"].asBool()) {
@@ -760,7 +765,7 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_PUT(const
                             std::this_thread::sleep_for(std::chrono::milliseconds(125));
                             numActive--;
                         }
-                        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+                        return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
                     } else if (root.isMember("Value")) {
                         val = root["Value"].asInt();
                     }
@@ -817,10 +822,10 @@ std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_PUT(const
                     numActive--;
                 }
             }
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("{ \"Status\": \"OK\", \"Message\": \"\"}", 200));
+            return makeStringResponse("{ \"Status\": \"OK\", \"Message\": \"\"}", 200);
         }
     }
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("PUT Not found " + std::string(req.get_path()), 404));
+    return makeStringResponse("PUT Not found " + req->path(), 404);
 }
 
 class OverlayCommand : public Command {

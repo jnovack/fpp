@@ -15,7 +15,6 @@
 #include <cinttypes>
 #include <cmath>
 #include <fcntl.h>
-#include <httpserver.hpp>
 #include <list>
 #include <map>
 #include <stdint.h>
@@ -940,10 +939,11 @@ void OutputMonitor::setSmartReceiverInfo(int port, int index, bool enabled, bool
     }
 }
 
-std::shared_ptr<httpserver::http_response> OutputMonitor::render_GET(const httpserver::http_request& req) {
-    int plen = req.get_path_pieces().size();
-    if (plen > 1 && req.get_path_pieces()[1] == "ports") {
-        if (plen > 2 && req.get_path_pieces()[2] == "list") {
+HttpResponsePtr OutputMonitor::render_GET(const HttpRequestPtr& req) {
+    auto parts = getPathPieces(req->path());
+    int plen = parts.size();
+    if (plen > 1 && parts[1] == "ports") {
+        if (plen > 2 && parts[2] == "list") {
             Json::Value result;
             result.append("--ALL--");
             for (auto a : portPins) {
@@ -958,12 +958,12 @@ std::shared_ptr<httpserver::http_response> OutputMonitor::render_GET(const https
                 }
             }
             std::string resultStr = SaveJsonToString(result);
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+            return makeStringResponse(resultStr, 200, "application/json");
         }
         if (portPins.empty()) {
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("[]", 200, "application/json"));
+            return makeStringResponse("[]", 200, "application/json");
         }
-        if (plen > 2 && req.get_path_pieces()[2] == "pixelCount") {
+        if (plen > 2 && parts[2] == "pixelCount") {
             std::vector<std::string> args;
             args.push_back("50");
             args.push_back("Output Specific");
@@ -971,7 +971,7 @@ std::shared_ptr<httpserver::http_response> OutputMonitor::render_GET(const https
             args.push_back("999");
             CommandManager::INSTANCE.run("Test Start", args);
         }
-        if (plen > 2 && req.get_path_pieces()[2] == "stop") {
+        if (plen > 2 && parts[2] == "stop") {
             std::vector<std::string> args;
             CommandManager::INSTANCE.run("Test Stop", args);
         }
@@ -979,7 +979,7 @@ std::shared_ptr<httpserver::http_response> OutputMonitor::render_GET(const https
         Json::Value result = Json::arrayValue;
         GetCurrentPortStatusJson(result);
         std::string resultStr = SaveJsonToString(result);
-        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+        return makeStringResponse(resultStr, 200, "application/json");
     }
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+    return makeStringResponse("Not Found", 404, "text/plain");
 }

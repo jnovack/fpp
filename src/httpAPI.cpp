@@ -10,6 +10,13 @@
  * included LICENSE.LGPL file.
  */
 
+// Include drogon framework header before FPP headers to avoid
+// macro conflicts between trantor's LOG_* macros and FPP's LogLevel enum
+#include <drogon/HttpAppFramework.h>
+#undef LOG_WARN
+#undef LOG_INFO
+#undef LOG_DEBUG
+
 #include "fpp-pch.h"
 
 #ifdef PLATFORM_OSX
@@ -26,7 +33,6 @@
 #include <ctime>
 #include <cxxabi.h>
 #include <fstream>
-#include <httpserver.hpp>
 #include <iomanip>
 #include <iostream>
 #include <list>
@@ -247,76 +253,173 @@ APIServer::APIServer() {
  *
  */
 APIServer::~APIServer() {
-    m_ws->sweet_kill();
-    m_ws->stop();
-
-    PluginManager::INSTANCE.unregisterApis(m_ws);
-
-    m_ws->unregister_resource("/fppd/ports");
-    m_ws->unregister_resource("/fppd/testing");
-    m_ws->unregister_resource("/fppd");
-    m_ws->unregister_resource("/models");
-    m_ws->unregister_resource("/overlays");
-    m_ws->unregister_resource("/command");
-    m_ws->unregister_resource("/commands");
-    m_ws->unregister_resource("/commandPresets");
-    m_ws->unregister_resource("/gpio");
-
+    drogon::app().quit();
+    // Thread is detached, give it a moment to finish after quit signal
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     delete m_pr;
-    delete m_ws;
-
-    m_ws = NULL;
+    m_pr = nullptr;
 }
 
 /*
  *
  */
 void APIServer::Init(void) {
-
-    // Create a socket for the webserver to bind to, so we only allow access via 127.0.0.1
-    struct sockaddr_in bind_addr;
-    memset(&bind_addr, 0, sizeof(bind_addr));
-    bind_addr.sin_family = AF_INET;
-    bind_addr.sin_port = htons(FPP_HTTP_PORT); 
-    inet_pton(AF_INET, FPP_BIND_ADDRESS, &bind_addr.sin_addr);
-
-    m_params = create_webserver(FPP_HTTP_PORT).max_threads(10).bind_address(reinterpret_cast<struct sockaddr*>(&bind_addr));;
-
-    m_ws = new webserver(m_params);
-
     m_pr = new PlayerResource;
-    m_ws->register_resource("/fppd/ports", &OutputMonitor::INSTANCE, true);
-    m_ws->register_resource("/fppd/testing", &ChannelTester::INSTANCE, true);
-    m_ws->register_resource("/fppd", m_pr, true);
-    m_ws->register_resource("/models", &PixelOverlayManager::INSTANCE, true);
-    m_ws->register_resource("/overlays", &PixelOverlayManager::INSTANCE, true);
-    m_ws->register_resource("/command", &CommandManager::INSTANCE, true);
-    m_ws->register_resource("/commands", &CommandManager::INSTANCE, true);
-    m_ws->register_resource("/commandPresets", &CommandManager::INSTANCE, true);
-    m_ws->register_resource("/gpio", &GPIOManager::INSTANCE, true);
-    m_ws->register_resource("/player", &Player::INSTANCE, true);
 
-    PluginManager::INSTANCE.registerApis(m_ws);
+    auto& app = drogon::app();
 
-    m_ws->start(false);
+    // Register all handlers with path patterns that match the old libhttpserver routes.
+    // The "true" flag in the old register_resource() meant "family" (prefix match),
+    // so we register with {1} catch-all patterns.
+
+    // PlayerResource (/fppd/*)
+    auto handleFppd = [this](const HttpRequestPtr& req,
+                             std::function<void(const HttpResponsePtr&)>&& callback) {
+        HttpResponsePtr resp;
+        if (req->method() == drogon::Get || req->isHead())
+            resp = m_pr->render_GET(req);
+        else if (req->method() == drogon::Post)
+            resp = m_pr->render_POST(req);
+        else if (req->method() == drogon::Put)
+            resp = m_pr->render_PUT(req);
+        else if (req->method() == drogon::Delete)
+            resp = m_pr->render_DELETE(req);
+        else
+            resp = makeStringResponse("Method Not Allowed", 405);
+        callback(resp);
+    };
+    // Register /fppd exact match first; the catch-all regex is registered after
+    // the more specific /fppd/* routes below so they take priority.
+    app.registerHandler("/fppd", handleFppd, {drogon::Get, drogon::Post, drogon::Put, drogon::Delete, drogon::Head});
+
+    // OutputMonitor (/fppd/ports/*)
+    auto handlePorts = [](const HttpRequestPtr& req,
+                          std::function<void(const HttpResponsePtr&)>&& callback) {
+        callback(OutputMonitor::INSTANCE.render_GET(req));
+    };
+    app.registerHandlerViaRegex("/fppd/ports", handlePorts, {drogon::Get, drogon::Head});
+    app.registerHandlerViaRegex("/fppd/ports/.*", handlePorts, {drogon::Get, drogon::Head});
+
+    // ChannelTester (/fppd/testing/*)
+    auto handleTesting = [](const HttpRequestPtr& req,
+                            std::function<void(const HttpResponsePtr&)>&& callback) {
+        HttpResponsePtr resp;
+        if (req->method() == drogon::Get || req->isHead())
+            resp = ChannelTester::INSTANCE.render_GET(req);
+        else if (req->method() == drogon::Post)
+            resp = ChannelTester::INSTANCE.render_POST(req);
+        else
+            resp = makeStringResponse("Method Not Allowed", 405);
+        callback(resp);
+    };
+    app.registerHandlerViaRegex("/fppd/testing(/.*)?", handleTesting, {drogon::Get, drogon::Post, drogon::Head});
+
+    // PlayerResource catch-all for all other /fppd/* paths (registered AFTER
+    // specific /fppd/ports and /fppd/testing routes so they match first)
+    app.registerHandlerViaRegex("/fppd/.*", handleFppd, {drogon::Get, drogon::Post, drogon::Put, drogon::Delete, drogon::Head});
+
+    // PixelOverlayManager (/models/*, /overlays/*)
+    auto handleModels = [](const HttpRequestPtr& req,
+                           std::function<void(const HttpResponsePtr&)>&& callback) {
+        HttpResponsePtr resp;
+        if (req->method() == drogon::Get || req->isHead())
+            resp = PixelOverlayManager::INSTANCE.render_GET(req);
+        else if (req->method() == drogon::Post)
+            resp = PixelOverlayManager::INSTANCE.render_POST(req);
+        else if (req->method() == drogon::Put)
+            resp = PixelOverlayManager::INSTANCE.render_PUT(req);
+        else
+            resp = makeStringResponse("Method Not Allowed", 405);
+        callback(resp);
+    };
+    app.registerHandler("/models", handleModels, {drogon::Get, drogon::Post, drogon::Put, drogon::Head});
+    app.registerHandlerViaRegex("/models/.*", handleModels, {drogon::Get, drogon::Post, drogon::Put, drogon::Head});
+    app.registerHandler("/overlays", handleModels, {drogon::Get, drogon::Post, drogon::Put, drogon::Head});
+    app.registerHandlerViaRegex("/overlays/.*", handleModels, {drogon::Get, drogon::Post, drogon::Put, drogon::Head});
+
+    // CommandManager (/command/*, /commands/*, /commandPresets/*)
+    auto handleCommands = [](const HttpRequestPtr& req,
+                             std::function<void(const HttpResponsePtr&)>&& callback) {
+        HttpResponsePtr resp;
+        if (req->method() == drogon::Get || req->isHead())
+            resp = CommandManager::INSTANCE.render_GET(req);
+        else if (req->method() == drogon::Post)
+            resp = CommandManager::INSTANCE.render_POST(req);
+        else
+            resp = makeStringResponse("Method Not Allowed", 405);
+        callback(resp);
+    };
+    app.registerHandler("/command", handleCommands, {drogon::Get, drogon::Post, drogon::Head});
+    app.registerHandlerViaRegex("/command/.*", handleCommands, {drogon::Get, drogon::Post, drogon::Head});
+    app.registerHandler("/commands", handleCommands, {drogon::Get, drogon::Post, drogon::Head});
+    app.registerHandlerViaRegex("/commands/.*", handleCommands, {drogon::Get, drogon::Post, drogon::Head});
+    app.registerHandler("/commandPresets", handleCommands, {drogon::Get, drogon::Post, drogon::Head});
+    app.registerHandlerViaRegex("/commandPresets/.*", handleCommands, {drogon::Get, drogon::Post, drogon::Head});
+
+    // GPIOManager (/gpio/*)
+    auto handleGpio = [](const HttpRequestPtr& req,
+                         std::function<void(const HttpResponsePtr&)>&& callback) {
+        HttpResponsePtr resp;
+        if (req->method() == drogon::Get || req->isHead())
+            resp = GPIOManager::INSTANCE.render_GET(req);
+        else if (req->method() == drogon::Post)
+            resp = GPIOManager::INSTANCE.render_POST(req);
+        else
+            resp = makeStringResponse("Method Not Allowed", 405);
+        callback(resp);
+    };
+    app.registerHandler("/gpio", handleGpio, {drogon::Get, drogon::Post, drogon::Head});
+    app.registerHandlerViaRegex("/gpio/.*", handleGpio, {drogon::Get, drogon::Post, drogon::Head});
+
+    // Player (/player/*)
+    auto handlePlayer = [](const HttpRequestPtr& req,
+                           std::function<void(const HttpResponsePtr&)>&& callback) {
+        HttpResponsePtr resp;
+        if (req->method() == drogon::Get || req->isHead())
+            resp = Player::INSTANCE.render_GET(req);
+        else if (req->method() == drogon::Post)
+            resp = Player::INSTANCE.render_POST(req);
+        else if (req->method() == drogon::Put)
+            resp = Player::INSTANCE.render_PUT(req);
+        else
+            resp = makeStringResponse("Method Not Allowed", 405);
+        callback(resp);
+    };
+    app.registerHandler("/player", handlePlayer, {drogon::Get, drogon::Post, drogon::Put, drogon::Head});
+    app.registerHandlerViaRegex("/player/.*", handlePlayer, {drogon::Get, drogon::Post, drogon::Put, drogon::Head});
+
+    // Let plugins register their own routes
+    PluginManager::INSTANCE.registerApis();
+
+    // Configure and start drogon in a separate thread (since app().run() blocks)
+    app.addListener(FPP_BIND_ADDRESS, FPP_HTTP_PORT);
+    app.setThreadNum(10);
+    app.disableSession();
+
+    m_serverThread = new std::thread([]() {
+        drogon::app().run();
+    });
+    // Detach so that if exit() is called unexpectedly (e.g., from e131bridge
+    // socket failures), the std::thread destructor won't call std::terminate()
+    m_serverThread->detach();
 }
 
 /*
  *
  */
-void LogRequest(const http_request& req) {
-    LogDebug(VB_HTTP, "API Req: %s%s\n", std::string(req.get_path()).c_str(),
-             std::string(req.get_querystring()).c_str());
+void LogRequest(const HttpRequestPtr& req) {
+    LogDebug(VB_HTTP, "API Req: %s%s\n", req->path().c_str(),
+             req->query().c_str());
 }
 
 /*
  *
  */
-void LogResponse(const http_request& req, int responseCode, const std::string& content) {
+void LogResponse(const HttpRequestPtr& req, int responseCode, const std::string& content) {
     if (WillLog(LOG_EXCESSIVE, VB_HTTP)) {
         LogExcess(VB_HTTP, "API Res: %s%s %d %s\n",
-                  std::string(req.get_path()).c_str(),
-                  std::string(req.get_querystring()).c_str(),
+                  req->path().c_str(),
+                  req->query().c_str(),
                   responseCode,
                   content.c_str());
     }
@@ -343,16 +446,17 @@ PlayerResource::~PlayerResource() {
 /*
  *
  */
-std::shared_ptr<httpserver::http_response> PlayerResource::render_GET(const http_request& req) {
+HttpResponsePtr PlayerResource::render_GET(const HttpRequestPtr& req) {
     LogRequest(req);
 
     Json::Value result;
     std::string resultStr = "";
-    std::string url(req.get_path());
+    std::string url(req->path());
 
-    replaceStart(url, "/fppd/", "");
+    if (!replaceStart(url, "/fppd/", ""))
+        replaceStart(url, "/fppd", "");
 
-    LogDebug(VB_HTTP, "URL: %s %s\n", url.c_str(), std::string(req.get_querystring()).c_str());
+    LogDebug(VB_HTTP, "URL: %s %s\n", url.c_str(), req->query().c_str());
 
     // Keep IF statement in alphabetical order
     if (url == "effects") {
@@ -376,14 +480,14 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_GET(const http
     } else if (url == "multiSyncSystems") {
         bool localOnly = false;
 
-        if (std::string(req.get_arg("localOnly")) == "1")
+        if (getRequestArg(req, "localOnly") == "1")
             localOnly = true;
 
         GetMultiSyncSystems(result, localOnly);
     } else if (url == "multiSyncStats") {
         bool reset = false;
 
-        if (std::string(req.get_arg("reset")) == "1")
+        if (getRequestArg(req, "reset") == "1")
             reset = true;
 
         GetMultiSyncStats(result, reset);
@@ -405,13 +509,13 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_GET(const http
 
         SetOKResult(result, "");
     } else if (url == "volume") {
-        if (std::string(req.get_arg("set")) != "") {
-            int i = std::atoi(std::string(req.get_arg("set")).c_str());
+        if (getRequestArg(req, "set") != "") {
+            int i = std::atoi(getRequestArg(req, "set").c_str());
             setVolume(i);
         }
-        if (std::string(req.get_arg("simple")) == "true") {
+        if (getRequestArg(req, "simple") == "true") {
             std::string v = std::to_string(getVolume());
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(v, 200, "text/plain"));
+            return makeStringResponse(v, 200, "text/plain");
         }
         result["volume"] = getVolume();
         SetOKResult(result, "");
@@ -451,27 +555,28 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_GET(const http
     }
     LogResponse(req, responseCode, resultStr);
 
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, responseCode, "application/json"));
+    return makeStringResponse(resultStr, responseCode, "application/json");
 }
 
 /*
  *
  */
-std::shared_ptr<httpserver::http_response> PlayerResource::render_POST(const http_request& req) {
+HttpResponsePtr PlayerResource::render_POST(const HttpRequestPtr& req) {
     LogRequest(req);
 
     Json::Value data;
     Json::Value result;
-    std::string url(req.get_path());
+    std::string url(req->path());
 
-    replaceStart(url, "/fppd/", "");
+    if (!replaceStart(url, "/fppd/", ""))
+        replaceStart(url, "/fppd", "");
 
-    LogDebug(VB_HTTP, "POST URL: %s %s\n", url.c_str(), std::string(req.get_querystring()).c_str());
+    LogDebug(VB_HTTP, "POST URL: %s %s\n", url.c_str(), req->query().c_str());
 
-    if (req.get_content() != "") {
-        if (!LoadJsonFromString(std::string(req.get_content()), data)) {
+    if (getRequestContent(req) != "") {
+        if (!LoadJsonFromString(getRequestContent(req), data)) {
             LogErr(VB_CHANNELOUT, "Error parsing POST content\n");
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Error parsing POST content", 400));
+            return makeStringResponse("Error parsing POST content", 400);
         }
     }
 
@@ -492,11 +597,11 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_POST(const htt
     } else if (replaceStart(url, "playlists/")) {
         if (url == "stop") {
             // Stop all running playlists
-            LogDebug(VB_HTTP, "API - Stopping all running playlists w/ content '%s'\n", std::string(req.get_content()).c_str());
+            LogDebug(VB_HTTP, "API - Stopping all running playlists w/ content '%s'\n", getRequestContent(req).c_str());
         } else if (endsWith(url, "/start")) {
             // Start a playlist
             replaceEnd(url, "/start", "");
-            LogDebug(VB_HTTP, "API - Starting playlist '%s' w/ content '%s'\n", url.c_str(), std::string(req.get_content()).c_str());
+            LogDebug(VB_HTTP, "API - Starting playlist '%s' w/ content '%s'\n", url.c_str(), getRequestContent(req).c_str());
         } else if (endsWith(url, "/nextItem")) {
             replaceEnd(url, "/nextItem", "");
             LogDebug(VB_HTTP, "API - Skipping to next entry in playlist '%s'\n", url.c_str());
@@ -516,7 +621,7 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_POST(const htt
             LogDebug(VB_HTTP, "API - Jumping to item %d in playlist '%s'\n", item, playlistName.c_str());
         } else if (endsWith(url, "/stop")) {
             replaceEnd(url, "/stop", "");
-            LogDebug(VB_HTTP, "API - Stopping playlist '%s' w/ content '%s'\n", url.c_str(), std::string(req.get_content()).c_str());
+            LogDebug(VB_HTTP, "API - Stopping playlist '%s' w/ content '%s'\n", url.c_str(), getRequestContent(req).c_str());
         }
     } else if (url == "schedule") {
         PostSchedule(data, result);
@@ -582,21 +687,22 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_POST(const htt
     std::string resultStr = SaveJsonToString(result);
     LogResponse(req, result["respCode"].asInt(), resultStr);
 
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr.c_str(), result["respCode"].asInt(), "application/json"));
+    return makeStringResponse(resultStr.c_str(), result["respCode"].asInt(), "application/json");
 }
 
 /*
  *
  */
-std::shared_ptr<httpserver::http_response> PlayerResource::render_DELETE(const http_request& req) {
+HttpResponsePtr PlayerResource::render_DELETE(const HttpRequestPtr& req) {
     LogRequest(req);
 
     Json::Value result;
-    std::string url(req.get_path());
+    std::string url(req->path());
 
-    replaceStart(url, "/fppd/", "");
+    if (!replaceStart(url, "/fppd/", ""))
+        replaceStart(url, "/fppd", "");
 
-    LogDebug(VB_HTTP, "DELETE URL: %s %s\n", url.c_str(), std::string(req.get_querystring()).c_str());
+    LogDebug(VB_HTTP, "DELETE URL: %s %s\n", url.c_str(), req->query().c_str());
 
     // Keep IF statement in alphabetical order
     if (url == "e131stats") {
@@ -621,21 +727,22 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_DELETE(const h
 
     LogResponse(req, result["respCode"].asInt(), resultStr);
 
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr.c_str(), result["respCode"].asInt()));
+    return makeStringResponse(resultStr.c_str(), result["respCode"].asInt());
 }
 
 /*
  *
  */
-std::shared_ptr<httpserver::http_response> PlayerResource::render_PUT(const http_request& req) {
+HttpResponsePtr PlayerResource::render_PUT(const HttpRequestPtr& req) {
     LogRequest(req);
 
     Json::Value result;
-    std::string url(req.get_path());
+    std::string url(req->path());
 
-    replaceStart(url, "/fppd/", "");
+    if (!replaceStart(url, "/fppd/", ""))
+        replaceStart(url, "/fppd", "");
 
-    LogDebug(VB_HTTP, "PUT URL: %s %s\n", url.c_str(), std::string(req.get_querystring()).c_str());
+    LogDebug(VB_HTTP, "PUT URL: %s %s\n", url.c_str(), req->query().c_str());
 
     // Keep IF statement in alphabetical order
     if (replaceStart(url, "playlists/")) {
@@ -662,7 +769,7 @@ std::shared_ptr<httpserver::http_response> PlayerResource::render_PUT(const http
 
     LogResponse(req, result["respCode"].asInt(), resultStr);
 
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr.c_str(), result["respCode"].asInt()));
+    return makeStringResponse(resultStr.c_str(), result["respCode"].asInt());
 }
 
 /*

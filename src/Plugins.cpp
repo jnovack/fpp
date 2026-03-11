@@ -520,6 +520,21 @@ FPPPlugins::Plugin* PluginManager::loadSHLIBPlugin(const std::string& shlibName)
         LogErr(VB_PLUGIN, "Failed to load shlib: %s\n", er);
         return nullptr;
     }
+    // Check plugin API version to prevent crashes from ABI-incompatible plugins
+    int (*vfptr)();
+    *(void**)(&vfptr) = dlsym(handle, "fpp_plugin_api_version");
+    if (vfptr == nullptr) {
+        LogErr(VB_PLUGIN, "Plugin %s was compiled against an older FPP API and is not compatible. Please update and rebuild the plugin.\n", shlibName.c_str());
+        dlclose(handle);
+        return nullptr;
+    }
+    int pluginVersion = vfptr();
+    if (pluginVersion != FPP_PLUGIN_API_VERSION) {
+        LogErr(VB_PLUGIN, "Plugin %s API version %d does not match FPP API version %d. Please update and rebuild the plugin.\n", shlibName.c_str(), pluginVersion, FPP_PLUGIN_API_VERSION);
+        dlclose(handle);
+        return nullptr;
+    }
+
     FPPPlugin* (*fptr)();
     *(void**)(&fptr) = dlsym(handle, "createPlugin");
     if (fptr == nullptr) {
@@ -565,14 +580,14 @@ void PluginManager::mediaCallback(const Json::Value& playlist, const MediaDetail
         a->mediaCallback(playlist, mediaDetails);
     }
 }
-void PluginManager::registerApis(httpserver::webserver* m_ws) {
+void PluginManager::registerApis() {
     for (auto a : mAPIProviderPlugins) {
-        a->registerApis(m_ws);
+        a->registerApis();
     }
 }
-void PluginManager::unregisterApis(httpserver::webserver* m_ws) {
+void PluginManager::unregisterApis() {
     for (auto a : mAPIProviderPlugins) {
-        a->unregisterApis(m_ws);
+        a->unregisterApis();
     }
 }
 void PluginManager::modifySequenceData(int ms, uint8_t* seqData) {

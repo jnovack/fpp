@@ -12,12 +12,12 @@
  */
 
 #include <ctime>
-#include <httpserver.hpp>
+#include "fpphttp.h"
 #include <map>
 
 #include "playlist/Playlist.h"
 
-class Player : public httpserver::http_resource {
+class Player {
 public:
     Player();
     ~Player();
@@ -83,9 +83,9 @@ public:
     Json::Value GetStatusJSON();
     void GetCurrentStatus(Json::Value& result);
 
-    virtual std::shared_ptr<httpserver::http_response> render_GET(const httpserver::http_request& req) override;
-    virtual std::shared_ptr<httpserver::http_response> render_POST(const httpserver::http_request& req) override;
-    virtual std::shared_ptr<httpserver::http_response> render_PUT(const httpserver::http_request& req) override;
+    virtual HttpResponsePtr render_GET(const HttpRequestPtr& req);
+    virtual HttpResponsePtr render_POST(const HttpRequestPtr& req);
+    virtual HttpResponsePtr render_PUT(const HttpRequestPtr& req);
 
     static Player INSTANCE;
 

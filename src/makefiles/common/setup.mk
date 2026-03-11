@@ -96,5 +96,6 @@ endif
 
 CFLAGS+=$(OPTIMIZE_FLAGS) -pipe \
 	-I $(SRCDIR) \
+	-I /usr/include/jsoncpp \
 	-fpic
 

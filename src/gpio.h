@@ -12,19 +12,19 @@
  */
 #include <functional>
 #include <map>
-#include <httpserver.hpp>
+#include "fpphttp.h"
 #include "config.h"
 
 constexpr uint32_t DEFAULT_GPIO_DEBOUNCE_TIME = 100000;
 
 class PinCapabilities;
 
-class GPIOManager : public httpserver::http_resource {
+class GPIOManager {
 public:
     static GPIOManager INSTANCE;
     std::map<std::string, bool> fppCommandLastValue;
-    virtual std::shared_ptr<httpserver::http_response> render_GET(const httpserver::http_request& req) override;
-    virtual std::shared_ptr<httpserver::http_response> render_POST(const httpserver::http_request& req) override;
+    HttpResponsePtr render_GET(const HttpRequestPtr& req);
+    HttpResponsePtr render_POST(const HttpRequestPtr& req);
     void Initialize(std::map<int, std::function<bool(int)>>& callbacks);
     void CheckGPIOInputs(void);
     void Cleanup();

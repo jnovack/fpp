@@ -12,7 +12,7 @@
  */
 
 #include <atomic>
-#include <httpserver.hpp>
+#include "fpphttp.h"
 #include <list>
 #include <map>
 #include <span>
@@ -127,7 +127,7 @@ public:
     std::string description;
 };
 
-class CommandManager : public httpserver::http_resource {
+class CommandManager {
 public:
     void Init();
     void Cleanup();
@@ -143,8 +143,8 @@ public:
     virtual std::unique_ptr<Command::Result> run(const std::string& command, const Json::Value& argsArray);
     virtual std::unique_ptr<Command::Result> run(const Json::Value& command);
 
-    virtual std::shared_ptr<httpserver::http_response> render_GET(const httpserver::http_request& req) override;
-    virtual std::shared_ptr<httpserver::http_response> render_POST(const httpserver::http_request& req) override;
+    HttpResponsePtr render_GET(const HttpRequestPtr& req);
+    HttpResponsePtr render_POST(const HttpRequestPtr& req);
 
     int TriggerPreset(int slot, std::map<std::string, std::string>& keywords);
     int TriggerPreset(int slot);

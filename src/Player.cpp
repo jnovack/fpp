@@ -15,7 +15,6 @@
 #include <cstdlib>
 #include <ctime>
 #include <functional>
-#include <httpserver.hpp>
 #include <string>
 #include <vector>
 
@@ -375,36 +374,36 @@ Json::Value Player::GetStatusJSON() {
     return result;
 }
 
-std::shared_ptr<httpserver::http_response> Player::render_GET(const httpserver::http_request& req) {
-    int plen = req.get_path_pieces().size();
-    std::string p1 = req.get_path_pieces()[0];
+HttpResponsePtr Player::render_GET(const HttpRequestPtr& req) {
+    auto pieces = getPathPieces(req->path());
+    int plen = pieces.size();
 
     Json::Value result;
 
-    if ((plen == 1) || ((plen == 2) && (req.get_path_pieces()[1] == "status"))) {
+    if ((plen == 1) || ((plen == 2) && (pieces[1] == "status"))) {
         result = GetStatusJSON();
-        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(SaveJsonToString(result, "  "), 200, "application/json"));
-    } else if ((plen == 2) && (req.get_path_pieces()[1] == "current")) {
+        return makeStringResponse(SaveJsonToString(result, "  "), 200, "application/json");
+    } else if ((plen == 2) && (pieces[1] == "current")) {
         Json::Value result;
         Json::Value pl;
         pl = playlist->GetInfo();
         result["playlist"] = pl;
-        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(SaveJsonToString(result, "  "), 200, "application/json"));
+        return makeStringResponse(SaveJsonToString(result, "  "), 200, "application/json");
     }
 
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+    return makeStringResponse("Not Found", 404, "text/plain");
 }
 
-std::shared_ptr<httpserver::http_response> Player::render_POST(const httpserver::http_request& req) {
-    int plen = req.get_path_pieces().size();
-    std::string p1 = req.get_path_pieces()[0];
+HttpResponsePtr Player::render_POST(const HttpRequestPtr& req) {
+    auto pieces = getPathPieces(req->path());
+    int plen = pieces.size();
 
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+    return makeStringResponse("Not Found", 404, "text/plain");
 }
 
-std::shared_ptr<httpserver::http_response> Player::render_PUT(const httpserver::http_request& req) {
-    int plen = req.get_path_pieces().size();
-    std::string p1 = req.get_path_pieces()[0];
+HttpResponsePtr Player::render_PUT(const HttpRequestPtr& req) {
+    auto pieces = getPathPieces(req->path());
+    int plen = pieces.size();
 
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+    return makeStringResponse("Not Found", 404, "text/plain");
 }

@@ -293,23 +293,24 @@ std::unique_ptr<Command::Result> CommandManager::run(const Json::Value& cmd) {
     return run(command, cmd["args"]);
 }
 
-std::shared_ptr<httpserver::http_response> CommandManager::render_GET(const httpserver::http_request& req) {
-    int plen = req.get_path_pieces().size();
-    std::string p1 = req.get_path_pieces()[0];
+HttpResponsePtr CommandManager::render_GET(const HttpRequestPtr& req) {
+    auto parts = getPathPieces(req->path());
+    int plen = parts.size();
+    std::string p1 = parts[0];
 
     if (p1 == "commands") {
         if (plen > 1) {
-            std::string command = req.get_path_pieces()[1];
+            std::string command = parts[1];
             auto f = commands.find(command);
             if (f != commands.end()) {
                 Json::Value result = f->second->getDescription();
                 std::string resultStr = SaveJsonToString(result, "  ");
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+                return makeStringResponse(resultStr, 200, "application/json");
             }
         } else {
             Json::Value result = getDescriptions();
             std::string resultStr = SaveJsonToString(result, "  ");
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+            return makeStringResponse(resultStr, 200, "application/json");
         }
     } else if (p1 == "commandPresets") {
         std::string commandsFile = FPP_DIR_CONFIG("/commandPresets.json");
@@ -320,16 +321,16 @@ std::shared_ptr<httpserver::http_response> CommandManager::render_GET(const http
         }
         if (plen > 1) {
             if (allCommands.isMember("commands")) {
-                std::string p2 = req.get_path_pieces()[1];
+                std::string p2 = parts[1];
                 for (int x = 0; x < allCommands["commands"].size(); x++) {
                     if (allCommands["commands"][x]["name"].asString() == p2) {
                         std::string resultStr = SaveJsonToString(allCommands["commands"][x], "  ");
-                        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+                        return makeStringResponse(resultStr, 200, "application/json");
                     }
                 }
             }
         } else {
-            if (std::string(req.get_arg("names")) == "true") {
+            if (getRequestArg(req, "names") == "true") {
                 Json::Value names;
                 if (allCommands.isMember("commands")) {
                     for (int x = 0; x < allCommands["commands"].size(); x++) {
@@ -337,16 +338,16 @@ std::shared_ptr<httpserver::http_response> CommandManager::render_GET(const http
                     }
                 }
                 std::string resultStr = SaveJsonToString(names, "  ");
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+                return makeStringResponse(resultStr, 200, "application/json");
             }
             std::string resultStr = SaveJsonToString(allCommands, "  ");
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+            return makeStringResponse(resultStr, 200, "application/json");
         }
     } else if (p1 == "command" && plen > 1) {
-        std::string command = req.get_path_pieces()[1];
+        std::string command = parts[1];
         std::vector<std::string> args;
         for (int x = 2; x < plen; x++) {
-            args.push_back(req.get_path_pieces()[x]);
+            args.push_back(parts[x]);
         }
         auto f = commands.find(command);
         if (f != commands.end()) {
@@ -373,24 +374,25 @@ std::shared_ptr<httpserver::http_response> CommandManager::render_GET(const http
             }
             if (r->isDone()) {
                 if (r->isError()) {
-                    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(r->get(), 500, "text/plain"));
+                    return makeStringResponse(r->get(), 500, "text/plain");
                 }
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(r->get(), 200, "text/plain"));
+                return makeStringResponse(r->get(), 200, "text/plain");
             } else {
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Timeout running command", 500, "text/plain"));
+                return makeStringResponse("Timeout running command", 500, "text/plain");
             }
         }
-        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+        return makeStringResponse("Not Found", 404, "text/plain");
     }
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+    return makeStringResponse("Not Found", 404, "text/plain");
 }
 
-std::shared_ptr<httpserver::http_response> CommandManager::render_POST(const httpserver::http_request& req) {
-    std::string p1 = req.get_path_pieces()[0];
+HttpResponsePtr CommandManager::render_POST(const HttpRequestPtr& req) {
+    auto parts = getPathPieces(req->path());
+    std::string p1 = parts[0];
     if (p1 == "command") {
-        if (req.get_path_pieces().size() > 1) {
-            std::string command = req.get_path_pieces()[1];
-            Json::Value val = LoadJsonFromString(std::string(req.get_content()));
+        if (parts.size() > 1) {
+            std::string command = parts[1];
+            Json::Value val = LoadJsonFromString(std::string(getRequestContent(req)));
             std::vector<std::string> args;
             for (int x = 0; x < val.size(); x++) {
                 args.push_back(val[x].asString());
@@ -420,15 +422,15 @@ std::shared_ptr<httpserver::http_response> CommandManager::render_POST(const htt
                 }
                 if (r->isDone()) {
                     if (r->isError()) {
-                        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(r->get(), 500, r->contentType()));
+                        return makeStringResponse(r->get(), 500, r->contentType());
                     }
-                    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(r->get(), 200, r->contentType()));
+                    return makeStringResponse(r->get(), 200, r->contentType());
                 } else {
-                    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Timeout running command", 500, "text/plain"));
+                    return makeStringResponse("Timeout running command", 500, "text/plain");
                 }
             }
         } else {
-            std::string command(req.get_content());
+            std::string command(getRequestContent(req));
             LogDebug(VB_COMMAND, "Received command: \"%s\"\n", command.c_str());
             Json::Value val = LoadJsonFromString(command);
             std::unique_ptr<Command::Result> r = run(val);
@@ -439,16 +441,16 @@ std::shared_ptr<httpserver::http_response> CommandManager::render_POST(const htt
             }
             if (r->isDone()) {
                 if (r->isError()) {
-                    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(r->get(), 500, r->contentType()));
+                    return makeStringResponse(r->get(), 500, r->contentType());
                 }
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(r->get(), 200, r->contentType()));
+                return makeStringResponse(r->get(), 200, r->contentType());
             } else {
-                return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Timeout running command", 500, "text/plain"));
+                return makeStringResponse("Timeout running command", 500, "text/plain");
             }
         }
-        return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+        return makeStringResponse("Not Found", 404, "text/plain");
     }
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
+    return makeStringResponse("Not Found", 404, "text/plain");
 }
 
 Json::Value CommandManager::ReplaceCommandKeywords(Json::Value cmd, std::map<std::string, std::string>& keywords) {

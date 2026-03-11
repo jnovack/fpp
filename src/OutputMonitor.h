@@ -17,13 +17,13 @@
 #include <mutex>
 #include <string>
 
-#include <httpserver.hpp>
+#include "fpphttp.h"
 
 #include "util/GPIOUtils.h"
 
 class PortPinInfo;
 
-class OutputMonitor : public httpserver::http_resource {
+class OutputMonitor {
 public:
     static OutputMonitor INSTANCE;
 
@@ -44,7 +44,7 @@ public:
 
     void GetCurrentPortStatusJson(Json::Value& result);
 
-    virtual std::shared_ptr<httpserver::http_response> render_GET(const httpserver::http_request& req) override;
+    HttpResponsePtr render_GET(const HttpRequestPtr& req);
 
     int getGroupCount() const { return numGroups; }
     void lockToGroup(int i);

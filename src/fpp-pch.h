@@ -10,7 +10,6 @@
 #include <json/json.h>
 #endif
 
-
 #ifndef NOPCH
 #include <algorithm>
 #include <array>
@@ -40,11 +39,6 @@
 #include <strings.h>
 #include <unistd.h>
 
-#include <httpserver.hpp>
-
-// Kept for backward compatibility with external plugins
-#define HTTP_RESPONSE_CONST
-
 #include "Events.h"
 #include "Sequence.h"
 #include "Warnings.h"
@@ -52,7 +46,6 @@
 #include "fppversion.h"
 #include "log.h"
 #include "settings.h"
-#include "commands/Commands.h"
 
 #endif
 

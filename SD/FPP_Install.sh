@@ -507,7 +507,7 @@ case "${OSVER}" in
                       php${PHPVER} php${PHPVER}-cli php${PHPVER}-fpm php${PHPVER}-common php${PHPVER}-curl php-pear \
                       php${PHPVER}-bcmath php${PHPVER}-sqlite3 php${PHPVER}-zip php${PHPVER}-xml ccache \
                       libavcodec-dev libavformat-dev libswresample-dev libswscale-dev libavdevice-dev libavfilter-dev libtag1-dev \
-                      vorbis-tools libgraphicsmagick++1-dev graphicsmagick-libmagick-dev-compat libmicrohttpd-dev \
+                      vorbis-tools libgraphicsmagick++1-dev graphicsmagick-libmagick-dev-compat libdrogon-dev \
                       gettext apt-utils x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain clang-format \
                       libmosquitto-dev mosquitto-clients mosquitto libzstd-dev lzma zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev \
                       fonts-freefont-ttf flex bison pkg-config libasound2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
@@ -554,9 +554,6 @@ case "${OSVER}" in
             echo "--------------------------"
             apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install ${PACKAGE_LIST}
         fi
-        
-        echo "FPP - Installing libhttpserver 0.19.0"
-        (cd /opt/ && git clone https://github.com/etr/libhttpserver && cd libhttpserver && git checkout 0.19.0 && ./bootstrap && autoupdate && ./bootstrap && mkdir build && cd build && ../configure --prefix=/usr --disable-examples && make -j ${CPUS} && make install && cd /opt/ && rm -rf /opt/libhttpserver)
         
         echo "FPP - Installing libkms++"
         (cd /opt/ && git clone https://github.com/tomba/kmsxx && cd kmsxx && git checkout 0f18e6d0616b597fc32bba78b38dfc5c922ec9a4 && apt-get install -y meson cmake libfmt-dev && meson setup build --prefix=/usr -Dpykms=disabled && ninja -j ${CPUS} -C build install && cd /opt/ && rm -rf kmsxx && apt-get remove -y --purge --autoremove meson cmake libfmt-dev && ccache -C)

@@ -20,11 +20,6 @@
 #include "Plugin.h"
 class MediaDetails;
 
-namespace httpserver
-{
-    class webserver;
-}
-
 class PluginManager {
 public:
     PluginManager();
@@ -40,8 +35,8 @@ public:
     void playlistInserted(const std::string& filename, const int position, int endPosition, bool immediate);
     void multiSyncData(const std::string& pn, uint8_t* data, int len);
 
-    void registerApis(httpserver::webserver* m_ws);
-    void unregisterApis(httpserver::webserver* m_ws);
+    void registerApis();
+    void unregisterApis();
 
     void addControlCallbacks(std::map<int, std::function<bool(int)>>& callbacks);
 

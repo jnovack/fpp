@@ -178,9 +178,10 @@ void ChannelTester::RegisterCommands() {
     CommandManager::INSTANCE.addCommand(new StartTestingCommand());
     CommandManager::INSTANCE.addCommand(new StopTestingCommand());
 }
-std::shared_ptr<httpserver::http_response> ChannelTester::render_GET(const httpserver::http_request& req) {
+HttpResponsePtr ChannelTester::render_GET(const HttpRequestPtr& req) {
     Json::Value result;
-    int plen = req.get_path_pieces().size();
+    auto parts = getPathPieces(req->path());
+    int plen = parts.size();
     //  ex:  /fppd/testing/tests/RGB Chase
     if (plen == 2) {
         result["config"] = LoadJsonFromString(GetConfig().c_str());
@@ -197,7 +198,7 @@ std::shared_ptr<httpserver::http_response> ChannelTester::render_GET(const https
         result.append("Single Channel Fill");
         result.append("Output Specific");
     } else if (plen == 4) {
-        std::string effect = req.get_path_pieces()[3];
+        std::string effect = parts[3];
         if (effect != "Output Specific") {
             Json::Value vcr;
             vcr["allowBlanks"] = false;
@@ -310,15 +311,15 @@ std::shared_ptr<httpserver::http_response> ChannelTester::render_GET(const https
             v["max"] = 99;
             result["args"].append(v);
         } else {
-            return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Test Pattern " + effect + " not found", 400, "text/plain"));
+            return makeStringResponse("Test Pattern " + effect + " not found", 400, "text/plain");
         }
     }
     std::string resultStr = SaveJsonToString(result);
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+    return makeStringResponse(resultStr, 200, "application/json");
 }
-std::shared_ptr<httpserver::http_response> ChannelTester::render_POST(const httpserver::http_request& req) {
+HttpResponsePtr ChannelTester::render_POST(const HttpRequestPtr& req) {
     Json::Value result;
-    std::string content = std::string{ req.get_content() };
+    std::string content = std::string{ getRequestContent(req) };
     if (ChannelTester::INSTANCE.SetupTest(content)) {
         result["Status"] = "OK";
         result["respCode"] = 200;
@@ -329,7 +330,7 @@ std::shared_ptr<httpserver::http_response> ChannelTester::render_POST(const http
         result["Message"] = "Test Mode Deactivated";
     }
     std::string resultStr = SaveJsonToString(result);
-    return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
+    return makeStringResponse(resultStr, 200, "application/json");
 }
 /*
  *
