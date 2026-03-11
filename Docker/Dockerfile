@@ -38,7 +38,8 @@ ARG PACKAGE_LIST="alsa-utils arping avahi-daemon avahi-utils locales nano net-to
     fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
     flex bison pkg-config libasound2-dev python3-setuptools libssl-dev libtool bsdextrautils iw rsyslog tzdata ccache libsystemd-dev \
     pipewire pipewire-bin pipewire-alsa pipewire-pulse pipewire-jack pipewire-audio-client-libraries wireplumber \
-    libspa-0.2-bluetooth pulseaudio-utils"
+    libpipewire-0.3-dev libspa-0.2-bluetooth pulseaudio-utils \
+    yt-dlp"
 
 ARG PACKAGE_LIST_DOCKER=ssh
 

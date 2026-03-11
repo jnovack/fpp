@@ -73,6 +73,7 @@ OPTIONAL_PKGS="
     gstreamer1.0-gl
     gstreamer1.0-x
     libgstreamer-plugins-bad1.0-0
+    yt-dlp
 "
 
 PKGS_NEEDED=""

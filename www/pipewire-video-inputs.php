@@ -477,7 +477,7 @@
                     html += '<div class="row align-items-center mt-2">';
                     html += '<div class="col-auto"><label>URL:</label></div>';
                     html += '<div class="col-auto">';
-                    html += '<input type="text" class="form-control form-control-sm" style="width:420px;" value="' + EscapeAttr(source.uri || '') + '" onchange="UpdateSourceField(' + index + ',\'uri\',this.value)" placeholder="https://example.com/stream.m3u8">';
+                    html += '<input type="text" class="form-control form-control-sm" style="width:420px;" value="' + EscapeAttr(source.uri || '') + '" onchange="UpdateSourceField(' + index + ',\'uri\',this.value)" placeholder="https://www.youtube.com/watch?v=... or HLS URL">';
                     html += '</div>';
                     html += '</div>';
                     html += '<div class="row align-items-center mt-1">';
@@ -485,7 +485,7 @@
                     html += '<div class="col-auto">';
                     html += '<input type="number" class="form-control form-control-sm" style="width:80px;" value="' + (source.bufferSec != null ? source.bufferSec : 3) + '" onchange="UpdateSourceField(' + index + ',\'bufferSec\',parseFloat(this.value))" min="0" max="30" step="0.5">';
                     html += '</div>';
-                    html += '<div class="col-auto text-muted" style="font-size:0.85rem;">HTTP, HLS, or any GStreamer-supported URI</div>';
+                    html += '<div class="col-auto text-muted" style="font-size:0.85rem;">YouTube URL, HTTP, HLS, or any GStreamer-supported URI</div>';
                     html += '</div>';
                     break;
 
