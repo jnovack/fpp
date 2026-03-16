@@ -940,7 +940,7 @@ void OutputMonitor::setSmartReceiverInfo(int port, int index, bool enabled, bool
     }
 }
 
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> OutputMonitor::render_GET(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> OutputMonitor::render_GET(const httpserver::http_request& req) {
     int plen = req.get_path_pieces().size();
     if (plen > 1 && req.get_path_pieces()[1] == "ports") {
         if (plen > 2 && req.get_path_pieces()[2] == "list") {

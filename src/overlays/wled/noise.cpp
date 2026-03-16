@@ -13,11 +13,7 @@
 // Compiler throws a warning about stack usage possibly being unbounded even
 // though bounds are checked, silence that so users don't see it
 #pragma GCC diagnostic push
-#if defined(__GNUC__) && (__GNUC__ >= 6)
-  #pragma GCC diagnostic ignored "-Wstack-usage="
-#else
-  #pragma GCC diagnostic ignored "-Wunknown-warning-option"
-#endif
+#pragma GCC diagnostic ignored "-Wstack-usage="
 
 
 

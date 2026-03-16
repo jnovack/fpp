@@ -178,7 +178,7 @@ void ChannelTester::RegisterCommands() {
     CommandManager::INSTANCE.addCommand(new StartTestingCommand());
     CommandManager::INSTANCE.addCommand(new StopTestingCommand());
 }
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> ChannelTester::render_GET(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> ChannelTester::render_GET(const httpserver::http_request& req) {
     Json::Value result;
     int plen = req.get_path_pieces().size();
     //  ex:  /fppd/testing/tests/RGB Chase
@@ -316,7 +316,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> ChannelTester::re
     std::string resultStr = SaveJsonToString(result);
     return std::shared_ptr<httpserver::http_response>(new httpserver::string_response(resultStr, 200, "application/json"));
 }
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> ChannelTester::render_POST(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> ChannelTester::render_POST(const httpserver::http_request& req) {
     Json::Value result;
     std::string content = std::string{ req.get_content() };
     if (ChannelTester::INSTANCE.SetupTest(content)) {

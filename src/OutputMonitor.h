@@ -44,7 +44,7 @@ public:
 
     void GetCurrentPortStatusJson(Json::Value& result);
 
-    virtual HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> render_GET(const httpserver::http_request& req) override;
+    virtual std::shared_ptr<httpserver::http_response> render_GET(const httpserver::http_request& req) override;
 
     int getGroupCount() const { return numGroups; }
     void lockToGroup(int i);

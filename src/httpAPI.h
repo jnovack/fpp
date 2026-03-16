@@ -26,10 +26,10 @@ public:
     PlayerResource();
     ~PlayerResource();
 
-    HTTP_RESPONSE_CONST std::shared_ptr<http_response> render_GET(const http_request& req);
-    HTTP_RESPONSE_CONST std::shared_ptr<http_response> render_DELETE(const http_request& req);
-    HTTP_RESPONSE_CONST std::shared_ptr<http_response> render_POST(const http_request& req);
-    HTTP_RESPONSE_CONST std::shared_ptr<http_response> render_PUT(const http_request& req);
+    std::shared_ptr<http_response> render_GET(const http_request& req);
+    std::shared_ptr<http_response> render_DELETE(const http_request& req);
+    std::shared_ptr<http_response> render_POST(const http_request& req);
+    std::shared_ptr<http_response> render_PUT(const http_request& req);
 
     void periodicWork();
 private:

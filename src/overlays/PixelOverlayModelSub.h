@@ -32,6 +32,4 @@ private:
 
     int xOffset = 0;
     int yOffset = 0;
-
-    volatile bool needRefresh = false;
 };

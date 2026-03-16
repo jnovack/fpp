@@ -164,7 +164,7 @@ void GPIOManager::Cleanup() {
     pollStates.clear();
 }
 
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> GPIOManager::render_GET(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> GPIOManager::render_GET(const httpserver::http_request& req) {
     int plen = req.get_path_pieces().size();
     std::string p1 = req.get_path_pieces()[0];
     if (p1 == "gpio") {
@@ -223,7 +223,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> GPIOManager::rend
     return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
 }
 
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> GPIOManager::render_POST(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> GPIOManager::render_POST(const httpserver::http_request& req) {
     int plen = req.get_path_pieces().size();
     std::string p1 = req.get_path_pieces()[0];
 

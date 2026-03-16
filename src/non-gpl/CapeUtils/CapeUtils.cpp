@@ -45,12 +45,10 @@
 
 #include <filesystem>
 
+#include <openssl/decoder.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-#include <openssl/decoder.h>
-#endif
 
 #if defined(PLATFORM_BBB) || defined(PLATFORM_BB64)
 #define I2C_DEV 2
@@ -1447,14 +1445,6 @@ private:
         const uint8_t* key = KEYS[fKeyId].first;
         size_t keyLen = KEYS[fKeyId].second;
 
-#if OPENSSL_VERSION_NUMBER < 0x30000000L
-        EC_KEY* pubECKey = nullptr;
-        BIO* keybio = BIO_new_mem_buf((void*)key, keyLen);
-        pubECKey = PEM_read_bio_EC_PUBKEY(keybio, &pubECKey, NULL, NULL);
-        BIO_free(keybio);
-        EVP_PKEY* pubKey = EVP_PKEY_new();
-        EVP_PKEY_assign_EC_KEY(pubKey, pubECKey);
-#else
         EVP_PKEY* pubKey = NULL;
         OSSL_DECODER_CTX* ctx = OSSL_DECODER_CTX_new_for_pkey(&pubKey, "PEM", nullptr,
                                                               "EC",
@@ -1467,7 +1457,6 @@ private:
             return;
         }
         OSSL_DECODER_CTX_free(ctx);
-#endif
 
         EVP_MD_CTX* m_VerifyCtx = EVP_MD_CTX_create();
         EVP_DigestVerifyInit(m_VerifyCtx, NULL, EVP_sha256(), NULL, pubKey);

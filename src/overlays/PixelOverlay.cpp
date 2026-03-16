@@ -455,11 +455,11 @@ Json::Value PixelOverlayManager::getModelsAsJson() {
     }
     return ret;
 }
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_HEAD(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_HEAD(const httpserver::http_request& req) {
     return render_GET(req);
 }
 
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_GET(const httpserver::http_request& req) {
     std::string p1 = req.get_path_pieces()[0];
     int plen = req.get_path_pieces().size();
     LogDebug(VB_CHANNELOUT, "PixelOverlayManager::render_GET():   %s\n", p1.c_str());
@@ -594,7 +594,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PixelOverlayManag
     }
     return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not found: " + p1, 404));
 }
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_POST(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_POST(const httpserver::http_request& req) {
     std::string p1 = req.get_path_pieces()[0];
     if (p1 == "models") {
         std::string p2 = req.get_path_pieces().size() > 1 ? req.get_path_pieces()[1] : "";
@@ -631,7 +631,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PixelOverlayManag
     }
     return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("POST Not found " + std::string(req.get_path()), 404));
 }
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_PUT(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> PixelOverlayManager::render_PUT(const httpserver::http_request& req) {
     std::string p1 = req.get_path_pieces()[0];
     std::string p2 = req.get_path_pieces().size() > 1 ? req.get_path_pieces()[1] : "";
     std::string p3 = req.get_path_pieces().size() > 2 ? req.get_path_pieces()[2] : "";

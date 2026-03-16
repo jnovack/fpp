@@ -10,11 +10,6 @@
 #include <json/json.h>
 #endif
 
-#if __has_include(<httpserver/http_arg_value.hpp>)
-#define HTTP_RESPONSE_CONST
-#else
-#define HTTP_RESPONSE_CONST const
-#endif
 
 #ifndef NOPCH
 #include <algorithm>
@@ -46,6 +41,9 @@
 #include <unistd.h>
 
 #include <httpserver.hpp>
+
+// Kept for backward compatibility with external plugins
+#define HTTP_RESPONSE_CONST
 
 #include "Events.h"
 #include "Sequence.h"

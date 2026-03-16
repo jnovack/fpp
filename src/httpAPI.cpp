@@ -343,7 +343,7 @@ PlayerResource::~PlayerResource() {
 /*
  *
  */
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PlayerResource::render_GET(const http_request& req) {
+std::shared_ptr<httpserver::http_response> PlayerResource::render_GET(const http_request& req) {
     LogRequest(req);
 
     Json::Value result;
@@ -457,7 +457,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PlayerResource::r
 /*
  *
  */
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PlayerResource::render_POST(const http_request& req) {
+std::shared_ptr<httpserver::http_response> PlayerResource::render_POST(const http_request& req) {
     LogRequest(req);
 
     Json::Value data;
@@ -588,7 +588,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PlayerResource::r
 /*
  *
  */
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PlayerResource::render_DELETE(const http_request& req) {
+std::shared_ptr<httpserver::http_response> PlayerResource::render_DELETE(const http_request& req) {
     LogRequest(req);
 
     Json::Value result;
@@ -627,7 +627,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PlayerResource::r
 /*
  *
  */
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> PlayerResource::render_PUT(const http_request& req) {
+std::shared_ptr<httpserver::http_response> PlayerResource::render_PUT(const http_request& req) {
     LogRequest(req);
 
     Json::Value result;

@@ -293,7 +293,7 @@ std::unique_ptr<Command::Result> CommandManager::run(const Json::Value& cmd) {
     return run(command, cmd["args"]);
 }
 
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> CommandManager::render_GET(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> CommandManager::render_GET(const httpserver::http_request& req) {
     int plen = req.get_path_pieces().size();
     std::string p1 = req.get_path_pieces()[0];
 
@@ -385,7 +385,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> CommandManager::r
     return std::shared_ptr<httpserver::http_response>(new httpserver::string_response("Not Found", 404, "text/plain"));
 }
 
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> CommandManager::render_POST(const httpserver::http_request& req) {
+std::shared_ptr<httpserver::http_response> CommandManager::render_POST(const httpserver::http_request& req) {
     std::string p1 = req.get_path_pieces()[0];
     if (p1 == "command") {
         if (req.get_path_pieces().size() > 1) {
