@@ -158,7 +158,7 @@ public:
     virtual void releaseGPIOD() const override;
 
     virtual int requestEventFile(bool risingEdge, bool fallingEdge) const override;
-    virtual int readEventFromFile() const;
+    virtual int readEventFromFile() const override;
 
     std::string gpioName;
 #ifdef HASGPIOD
