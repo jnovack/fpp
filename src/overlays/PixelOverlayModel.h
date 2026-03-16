@@ -80,37 +80,45 @@ public:
     void toJson(Json::Value& v);
     void getDataJson(Json::Value& v, bool rle = false);
 
-    // Access to the chanelData.  The channelData is a minimal array of bytes
+    // Access to the channelData.  The channelData is a minimal array of bytes
     // If the model is a "custom" model or using singleChannel nodes or similar,
-    // then the channelData will be significantly smaller than WxHx3
+    // then the channelData will be significantly smaller than WxHxBPP
+    int getBytesPerPixel() const { return bytesPerPixel; }
     void saveOverlayAsImage(std::string filename = "");
-    virtual void setData(const uint8_t* data); // full RGB data, width*height*3
+    virtual void setData(const uint8_t* data); // full pixel data, width*height*bytesPerPixel
     virtual void setData(const uint8_t* data, int xOffset, int yOffset, int w, int h, const PixelOverlayState& st = PixelOverlayState(PixelOverlayState::Enabled));
     void setScaledData(uint8_t* data, int w, int h);
     void setPixelValue(int x, int y, int r, int g, int b);
+    void setPixelValue(int x, int y, int r, int g, int b, int w);
     void getPixelValue(int x, int y, int& r, int& g, int& b);
+    void getPixelValue(int x, int y, int& r, int& g, int& b, int& w);
     void clearData();
     void fillData(int r, int g, int b);
+    void fillData(int r, int g, int b, int w);
     void setBufferIsDirty(bool dirty = true);
     bool needRefresh();
 
-    // The overlay buffer is a full continuous width*height*3 buffer that can be used to
-    // construct the frame as a full RGB image prior to flushing to the channelData.
-    // The overlay buffer is also mmapped so external programs can have easy
-    // access to the continuous width*height*3 buffer
+    // The overlay buffer is a full continuous width*height*bytesPerPixel buffer
+    // that can be used to construct the frame as a full RGB(W) image prior to
+    // flushing to the channelData.  The overlay buffer is also mmapped so
+    // external programs can have easy access to it.
     uint8_t* getOverlayBuffer();
     void setOverlayBufferDirty(bool dirty = true);
     bool overlayBufferIsDirty();
     void clearOverlayBuffer();
     void setOverlayBufferScaledData(uint8_t* data, int w, int h);
     void fillOverlayBuffer(int r, int g, int b);
+    void fillOverlayBuffer(int r, int g, int b, int w);
     void setOverlayPixelValue(int x, int y, int r, int g, int b);
+    void setOverlayPixelValue(int x, int y, int r, int g, int b, int w);
     void getOverlayPixelValue(int x, int y, int& r, int& g, int& b);
+    void getOverlayPixelValue(int x, int y, int& r, int& g, int& b, int& w);
     void flushOverlayBuffer();
 
     // Operate on both the overlay buffer (if mapped) and the channelData
     void clear();
     void fill(int r, int g, int b);
+    void fill(int r, int g, int b, int w);
 
     bool applyEffect(const std::string& autoState, const std::string& effect, const std::vector<std::string>& args);
     void setRunningEffect(RunningEffect* r, int32_t firstUpdateMS);
@@ -134,6 +142,7 @@ protected:
     int startChannel;
     int channelCount;
     int channelsPerNode;
+    int bytesPerPixel; // 3 for RGB, 4 for RGBW (overlay buffer stride)
 
     std::vector<uint32_t> channelMap;
     uint8_t* channelData;
@@ -143,7 +152,7 @@ protected:
     struct OverlayBufferData {
         uint32_t width;
         uint32_t height;
-        uint32_t flags;
+        uint32_t flags; // bit 0: dirty, bits 8-15: bytesPerPixel (0 means 3 for backward compat)
         uint8_t data[4];
     } __attribute__((__packed__));
     OverlayBufferData* overlayBufferData;

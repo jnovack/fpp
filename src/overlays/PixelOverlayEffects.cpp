@@ -406,16 +406,17 @@ public:
             model->clearOverlayBuffer();
             int h, w;
             model->getSize(w, h);
+            int bpp = model->getBytesPerPixel();
             for (int y = 0; y < imageDataRows; ++y) {
                 int ny = yoff + y;
                 if (ny < 0 || ny >= h) {
                     continue;
                 }
 
+                // imageData is always RGB (3 bytes per pixel)
                 uint8_t* src = imageData + (y * imageDataCols * 3);
-                uint8_t* dst = model->getOverlayBuffer() + (ny * w * 3);
+                uint8_t* dst = model->getOverlayBuffer() + (ny * w * bpp);
                 int pixelsToCopy = imageDataCols;
-                int c = w * 3;
 
                 if (xoff < 0) {
                     src -= xoff * 3;
@@ -423,7 +424,7 @@ public:
                     if (pixelsToCopy >= w)
                         pixelsToCopy = w;
                 } else if (xoff > 0) {
-                    dst += xoff * 3;
+                    dst += xoff * bpp;
                     if (pixelsToCopy > (w - xoff))
                         pixelsToCopy = w - xoff;
                 } else {
@@ -431,8 +432,21 @@ public:
                         pixelsToCopy = w;
                 }
 
-                if (pixelsToCopy > 0)
-                    memcpy(dst, src, pixelsToCopy * 3);
+                if (pixelsToCopy > 0) {
+                    if (bpp == 3) {
+                        memcpy(dst, src, pixelsToCopy * 3);
+                    } else {
+                        // Expand RGB source to RGBW destination
+                        for (int p = 0; p < pixelsToCopy; p++) {
+                            dst[p * bpp] = src[p * 3];
+                            dst[p * bpp + 1] = src[p * 3 + 1];
+                            dst[p * bpp + 2] = src[p * 3 + 2];
+                            if (bpp > 3) {
+                                dst[p * bpp + 3] = 0;
+                            }
+                        }
+                    }
+                }
             }
             model->flushOverlayBuffer();
         }
@@ -601,7 +615,21 @@ public:
             Magick::Blob blob;
             image->write(&blob);
 
-            m->setData((uint8_t*)blob.data());
+            if (m->getBytesPerPixel() == 3) {
+                m->setData((uint8_t*)blob.data());
+            } else {
+                // Expand RGB blob to RGBW for setData
+                int pixels = m->getWidth() * m->getHeight();
+                int bpp = m->getBytesPerPixel();
+                std::vector<uint8_t> rgbw(pixels * bpp, 0);
+                const uint8_t* rgb = (const uint8_t*)blob.data();
+                for (int p = 0; p < pixels; p++) {
+                    rgbw[p * bpp] = rgb[p * 3];
+                    rgbw[p * bpp + 1] = rgb[p * 3 + 1];
+                    rgbw[p * bpp + 2] = rgb[p * 3 + 2];
+                }
+                m->setData(rgbw.data());
+            }
 
             if (disableWhenDone) {
                 int nd = 25;

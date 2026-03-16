@@ -50,6 +50,6 @@ void PixelOverlayModelFB::doOverlay(uint8_t* channels) {
 }
 
 void PixelOverlayModelFB::setData(const uint8_t* data) {
-    memcpy(channelData, data, width * height * 3);
+    memcpy(channelData, data, width * height * bytesPerPixel);
     dirtyBuffer = true;
 }

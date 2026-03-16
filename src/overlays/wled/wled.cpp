@@ -423,9 +423,9 @@ uint32_t Bus::getPixelColor(int i) const {
         x = w - x - 1;
     }
 
-    int r, g, b;
-    currentStrip->model->getOverlayPixelValue(x, y, r, g, b);
-    return (r << 16) | (g << 8) | b;
+    int r, g, b, wh;
+    currentStrip->model->getOverlayPixelValue(x, y, r, g, b, wh);
+    return (wh << 24) | (r << 16) | (g << 8) | b;
 }
 void Bus::setPixelColor(int i, uint32_t c) {
     int x, y;
@@ -449,11 +449,13 @@ void Bus::setPixelColor(int i, uint32_t c) {
     int r = R(c);
     int g = G(c);
     int b = B(c);
+    int wh = W(c);
     int brightness = currentStrip->brightness;
     r = r * brightness / 128;
     g = g * brightness / 128;
     b = b * brightness / 128;
-    currentStrip->model->setOverlayPixelValue(x, y, min(r, 255), min(g, 255), min(b, 255));
+    wh = wh * brightness / 128;
+    currentStrip->model->setOverlayPixelValue(x, y, min(r, 255), min(g, 255), min(b, 255), min(wh, 255));
 }
 
 bool UsermodManager::getUMData(um_data_t** um_data, uint8_t mod_id) {

@@ -118,6 +118,7 @@ PixelOverlayModel::PixelOverlayModel(const Json::Value& c) :
             channelsPerNode = 1;
         }
     }
+    bytesPerPixel = (channelsPerNode >= 4) ? 4 : 3;
 
     if (config["Type"].asString() != "Channel") {
         if (config.isMember("PixelSize") && config["PixelSize"].asInt() > 1) {            
@@ -158,7 +159,7 @@ PixelOverlayModel::PixelOverlayModel(const Json::Value& c) :
     channelData = createChannelDataMemory(dataName, channelCount);
 
     if (orientation == "V" || orientation == "vertical") {
-        channelMap.resize(width * height * 3);
+        channelMap.resize(width * height * bytesPerPixel);
 
         std::swap(width, height);
         for (int x = 0; x < width; x++) {
@@ -166,20 +167,19 @@ PixelOverlayModel::PixelOverlayModel(const Json::Value& c) :
             for (int y = 0; y < height; y++) {
                 // pos in the normal overlay buffer
                 int ppos = y * width + x;
-                // Relative Input Pixel 'R' channel
-                int inCh = (ppos * 3);
+                // Relative Input Pixel first channel
+                int inCh = (ppos * bytesPerPixel);
 
                 // X position in output
                 int outX = (LtoR) ? x : width - x - 1;
                 // Y position in output
                 int outY = (TtoB == (segment % 2)) ? height - y - 1 : y;
 
-                // Relative Mapped Output Pixel 'R' channel
+                // Relative Mapped Output Pixel first channel
                 int mpos = outX * height + outY;
                 int outCh = (mpos * channelsPerNode);
 
-                // Map the pixel's triplet
-                for (int cho = 0; cho < 3; cho++) {
+                for (int cho = 0; cho < bytesPerPixel; cho++) {
                     if (cho < channelsPerNode) {
                         channelMap[inCh + cho] = outCh + cho;
                     } else {
@@ -189,81 +189,140 @@ PixelOverlayModel::PixelOverlayModel(const Json::Value& c) :
             }
         }
     } else if (orientation == "C" || orientation == "custom") {
-        std::string customData = ",;,";
-        if (config.isMember("data")) {
-            customData = config["data"].asString();
-        }
-        int endOfFirstLayer = 0;
-        std::vector<std::string> layers = split(customData, '|');
-        std::vector<std::vector<std::string>> allData;
-        width = 1;
-        for (auto& layer : layers) {
-            std::vector<std::string> lines = split(layer, ';');
-            for (auto& l : lines) {
-                allData.push_back(split(l, ','));
-                width = std::max(width, (int)allData.back().size());
-                height++;
-            }
-            if (endOfFirstLayer == 0) {
-                endOfFirstLayer = allData.size();
-            }
-            lines.clear();
-            if ((width * height) > (600 * 600)) {
-                height = endOfFirstLayer;
-                allData.erase(allData.begin() + endOfFirstLayer, allData.end());
-                break;
-            }
-        }
-        channelMap.resize(width * height * 3);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int node = -1;
-                if (y < allData.size() && x < allData[y].size()) {
-                    std::string& s = allData[y][x];
-                    if (s.empty() || s.length() > 10 || s == " ") {
-                        node = -1;
-                    } else {
-                        node = std::atoi(s.c_str());
-                        if (node == 0 && s != "0") {
-                            node = -1;
-                        }
-                        if (node > FPPD_MAX_CHANNEL_NUM) {
-                            node = -1;
-                        }
+        // Two formats supported:
+        //   "data": dense format "n,n,n;n,n,n|n,n,n;n,n,n" (comma=col, semi=row, pipe=layer)
+        //   "compressedData": sparse format "node,row,col[,layer];..." (only non-empty cells)
+        if (config.isMember("compressedData") && !config["compressedData"].asString().empty()) {
+            // Parse compressed format: "node,row,col[,layer];node,row,col[,layer];..."
+            std::string compressed = config["compressedData"].asString();
+            std::vector<std::string> entries = split(compressed, ';');
+
+            struct NodeEntry {
+                int node, row, col, layer;
+            };
+            std::vector<NodeEntry> nodes;
+            nodes.reserve(entries.size());
+
+            int maxRow = 0, maxCol = 0, maxLayer = 0;
+            for (auto& entry : entries) {
+                std::vector<std::string> parts = split(entry, ',');
+                if (parts.size() >= 3) {
+                    NodeEntry ne;
+                    ne.node = std::atoi(parts[0].c_str());
+                    ne.row = std::atoi(parts[1].c_str());
+                    ne.col = std::atoi(parts[2].c_str());
+                    ne.layer = (parts.size() >= 4) ? std::atoi(parts[3].c_str()) : 0;
+                    if (ne.node > 0 && ne.node <= FPPD_MAX_CHANNEL_NUM) {
+                        nodes.push_back(ne);
+                        maxRow = std::max(maxRow, ne.row);
+                        maxCol = std::max(maxCol, ne.col);
+                        maxLayer = std::max(maxLayer, ne.layer);
                     }
                 }
-                int inChan = node * channelsPerNode;
+            }
 
-                for (int cho = 0; cho < 3; cho++) {
-                    if (node != -1 && cho < channelsPerNode) {
-                        channelMap[(y * width * 3) + (x * 3) + cho] = (node - 1) * channelsPerNode + cho;
-                    } else {
-                        channelMap[(y * width * 3) + (x * 3) + cho] = FPPD_OFF_CHANNEL;
+            width = maxCol + 1;
+            height = (maxRow + 1) * (maxLayer + 1);
+            if (width < 1) width = 1;
+            if (height < 1) height = 1;
+            if ((width * height) > (600 * 600)) {
+                // Limit to first layer only
+                height = maxRow + 1;
+                if (height < 1) height = 1;
+            }
+
+            channelMap.resize(width * height * bytesPerPixel);
+            // Initialize all to FPPD_OFF_CHANNEL
+            std::fill(channelMap.begin(), channelMap.end(), FPPD_OFF_CHANNEL);
+
+            int layerHeight = maxRow + 1;
+            for (auto& ne : nodes) {
+                int y = ne.row + ne.layer * layerHeight;
+                if (y >= height || ne.col >= width) {
+                    continue;
+                }
+                for (int cho = 0; cho < bytesPerPixel; cho++) {
+                    if (cho < channelsPerNode) {
+                        channelMap[(y * width * bytesPerPixel) + (ne.col * bytesPerPixel) + cho] = (ne.node - 1) * channelsPerNode + cho;
+                    }
+                }
+            }
+        } else {
+            // Parse dense format: "n,n,n;n,n,n|n,n,n;n,n,n"
+            std::string customData = ",;,";
+            if (config.isMember("data")) {
+                customData = config["data"].asString();
+            }
+            int endOfFirstLayer = 0;
+            std::vector<std::string> layers = split(customData, '|');
+            std::vector<std::vector<std::string>> allData;
+            width = 1;
+            for (auto& layer : layers) {
+                std::vector<std::string> lines = split(layer, ';');
+                for (auto& l : lines) {
+                    allData.push_back(split(l, ','));
+                    width = std::max(width, (int)allData.back().size());
+                    height++;
+                }
+                if (endOfFirstLayer == 0) {
+                    endOfFirstLayer = allData.size();
+                }
+                lines.clear();
+                if ((width * height) > (600 * 600)) {
+                    height = endOfFirstLayer;
+                    allData.erase(allData.begin() + endOfFirstLayer, allData.end());
+                    break;
+                }
+            }
+            channelMap.resize(width * height * bytesPerPixel);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int node = -1;
+                    if (y < allData.size() && x < allData[y].size()) {
+                        std::string& s = allData[y][x];
+                        if (s.empty() || s.length() > 10 || s == " ") {
+                            node = -1;
+                        } else {
+                            node = std::atoi(s.c_str());
+                            if (node == 0 && s != "0") {
+                                node = -1;
+                            }
+                            if (node > FPPD_MAX_CHANNEL_NUM) {
+                                node = -1;
+                            }
+                        }
+                    }
+
+                    for (int cho = 0; cho < bytesPerPixel; cho++) {
+                        if (node != -1 && cho < channelsPerNode) {
+                            channelMap[(y * width * bytesPerPixel) + (x * bytesPerPixel) + cho] = (node - 1) * channelsPerNode + cho;
+                        } else {
+                            channelMap[(y * width * bytesPerPixel) + (x * bytesPerPixel) + cho] = FPPD_OFF_CHANNEL;
+                        }
                     }
                 }
             }
         }
     } else {
-        channelMap.resize(width * height * 3);
+        channelMap.resize(width * height * bytesPerPixel);
         for (int y = 0; y < height; y++) {
             int segment = y % sps;
             for (int x = 0; x < width; x++) {
                 // pos in the normal overlay buffer
                 int ppos = y * width + x;
-                // Input Pixel 'R' channel
-                int inCh = (ppos * 3);
+                // Input Pixel first channel
+                int inCh = (ppos * bytesPerPixel);
 
                 // X position in output
                 int outX = (LtoR == (segment % 2)) ? width - x - 1 : x;
                 // Y position in output
                 int outY = (TtoB) ? y : height - y - 1;
 
-                // Relative Mapped Output Pixel 'R' channel
+                // Relative Mapped Output Pixel first channel
                 int mpos = outY * width + outX;
                 int outCh = (mpos * channelsPerNode);
 
-                // Map the pixel's triplet
-                for (int cho = 0; cho < 3; cho++) {
+                for (int cho = 0; cho < bytesPerPixel; cho++) {
                     if (cho < channelsPerNode) {
                         channelMap[inCh + cho] = outCh + cho;
                     } else {
@@ -288,7 +347,7 @@ PixelOverlayModel::~PixelOverlayModel() {
         shm_unlink(dataName.c_str());
     }
     if (overlayBufferData) {
-        munmap(overlayBufferData, width * height * 3 + sizeof(OverlayBufferData));
+        munmap(overlayBufferData, width * height * bytesPerPixel + sizeof(OverlayBufferData));
         std::string overlayBufferName = "/FPP-Model-Overlay-Buffer-" + name;
         if (PSHMNAMLEN <= 48) {
             // system doesn't allow very long shared memory names, we'll use a shortened form
@@ -376,51 +435,39 @@ bool PixelOverlayModel::flushChildren(uint8_t* dst) {
     for (auto& c : children) {
         int cst = c.state.getState();
         for (int y = 0; y < c.height; y++) {
-            int yoff = (y + c.yoffset) * width * 3;
+            int yoff = (y + c.yoffset) * width * bytesPerPixel;
             for (int x = 0; x < c.width; x++) {
-                int offr = (x + c.xoffset) * 3 + yoff;
-                int offg = offr + 1;
-                int offb = offr + 2;
+                int off0 = (x + c.xoffset) * bytesPerPixel + yoff;
 
                 switch (cst) {
-                case 1:
-                    if (channelMap[offr] != FPPD_OFF_CHANNEL) {
-                        dst[channelMap[offr]] = channelData[channelMap[offr]];
-                    }
-                    if (channelMap[offg] != FPPD_OFF_CHANNEL) {
-                        dst[channelMap[offg]] = channelData[channelMap[offg]];
-                    }
-                    if (channelMap[offb] != FPPD_OFF_CHANNEL) {
-                        dst[channelMap[offb]] = channelData[channelMap[offb]];
+                case 1: // Opaque
+                    for (int ch = 0; ch < bytesPerPixel; ch++) {
+                        if (channelMap[off0 + ch] != FPPD_OFF_CHANNEL) {
+                            dst[channelMap[off0 + ch]] = channelData[channelMap[off0 + ch]];
+                        }
                     }
                     break;
-                case 2:
-                    if (channelMap[offr] != FPPD_OFF_CHANNEL && channelData[channelMap[offr]]) {
-                        dst[channelMap[offr]] = channelData[channelMap[offr]];
-                    }
-                    if (channelMap[offg] != FPPD_OFF_CHANNEL && channelData[channelMap[offg]]) {
-                        dst[channelMap[offg]] = channelData[channelMap[offg]];
-                    }
-                    if (channelMap[offb] != FPPD_OFF_CHANNEL && channelData[channelMap[offb]]) {
-                        dst[channelMap[offb]] = channelData[channelMap[offb]];
+                case 2: // Transparent
+                    for (int ch = 0; ch < bytesPerPixel; ch++) {
+                        if (channelMap[off0 + ch] != FPPD_OFF_CHANNEL && channelData[channelMap[off0 + ch]]) {
+                            dst[channelMap[off0 + ch]] = channelData[channelMap[off0 + ch]];
+                        }
                     }
                     break;
-                case 3:
-                    bool cp = channelMap[offr] != FPPD_OFF_CHANNEL && channelData[channelMap[offr]];
-                    cp |= channelMap[offg] != FPPD_OFF_CHANNEL && channelData[channelMap[offg]];
-                    cp |= channelMap[offb] != FPPD_OFF_CHANNEL && channelData[channelMap[offb]];
+                case 3: { // TransparentRGB
+                    bool cp = false;
+                    for (int ch = 0; ch < bytesPerPixel; ch++) {
+                        cp |= (channelMap[off0 + ch] != FPPD_OFF_CHANNEL && channelData[channelMap[off0 + ch]]);
+                    }
                     if (cp) {
-                        if (channelMap[offr] != FPPD_OFF_CHANNEL && channelData[channelMap[offr]]) {
-                            dst[channelMap[offr]] = channelData[offr];
-                        }
-                        if (channelMap[offg] != FPPD_OFF_CHANNEL && channelData[offg]) {
-                            dst[channelMap[offg]] = channelData[offg];
-                        }
-                        if (channelMap[offb] != FPPD_OFF_CHANNEL && channelData[offb]) {
-                            dst[channelMap[offb]] = channelData[offb];
+                        for (int ch = 0; ch < bytesPerPixel; ch++) {
+                            if (channelMap[off0 + ch] != FPPD_OFF_CHANNEL && channelData[channelMap[off0 + ch]]) {
+                                dst[channelMap[off0 + ch]] = channelData[channelMap[off0 + ch]];
+                            }
                         }
                     }
                     break;
+                }
                 }
             }
         }
@@ -459,12 +506,16 @@ void PixelOverlayModel::doOverlay(uint8_t* channels) {
             }
         }
         break;
-    case 3: // Active Transparent RGB {
-        for (int j = 0; j < channelCount; j += 3, src += 3, dst += 3) {
-            if (src[0] || src[1] || src[2]) {
-                dst[0] = src[0];
-                dst[1] = src[1];
-                dst[2] = src[2];
+    case 3: // Active Transparent RGB(W)
+        for (int j = 0; j < channelCount; j += channelsPerNode, src += channelsPerNode, dst += channelsPerNode) {
+            bool any = false;
+            for (int k = 0; k < channelsPerNode; k++) {
+                any |= src[k];
+            }
+            if (any) {
+                for (int k = 0; k < channelsPerNode; k++) {
+                    dst[k] = src[k];
+                }
             }
         }
         break;
@@ -474,7 +525,7 @@ void PixelOverlayModel::doOverlay(uint8_t* channels) {
 }
 
 void PixelOverlayModel::setData(const uint8_t* data) {
-    for (int c = 0; c < (width * height * 3); c++) {
+    for (int c = 0; c < (width * height * bytesPerPixel); c++) {
         if (channelMap[c] != FPPD_OFF_CHANNEL) {
             channelData[channelMap[c]] = data[c];
         }
@@ -502,34 +553,37 @@ void PixelOverlayModel::setData(const uint8_t* data, int xOffset, int yOffset, i
     }
 
     int cst = st.getState();
-    int rowWrap = (width - w) * 3;
+    int rowWrap = (width - w) * bytesPerPixel;
     int s = 0;
-    int c = (yOffset * width * 3) + (xOffset * 3);
+    int c = (yOffset * width * bytesPerPixel) + (xOffset * bytesPerPixel);
     for (int yPos = 0; yPos < h; yPos++) {
         for (int xPos = 0; xPos < w; xPos++) {
             if (cst == 1 || cst == 0) {
-                for (int i = 0; i < 3; i++, c++, s++) {
+                for (int i = 0; i < bytesPerPixel; i++, c++, s++) {
                     if (channelMap[c] != FPPD_OFF_CHANNEL) {
                         channelData[channelMap[c]] = data[s];
                     }
                 }
             } else if (cst == 2) {
-                for (int i = 0; i < 3; i++, c++, s++) {
+                for (int i = 0; i < bytesPerPixel; i++, c++, s++) {
                     if (data[s] && channelMap[c] != FPPD_OFF_CHANNEL) {
                         channelData[channelMap[c]] = data[s];
                     }
                 }
             } else if (cst == 3) {
-                bool b = data[s] | data[s + 1] | data[s + 2];
+                bool b = false;
+                for (int i = 0; i < bytesPerPixel; i++) {
+                    b |= data[s + i];
+                }
                 if (b) {
-                    for (int i = 0; i < 3; i++, c++, s++) {
+                    for (int i = 0; i < bytesPerPixel; i++, c++, s++) {
                         if (channelMap[c] != FPPD_OFF_CHANNEL) {
                             channelData[channelMap[c]] = data[s];
                         }
                     }
                 } else {
-                    s += 3;
-                    c += 3;
+                    s += bytesPerPixel;
+                    c += bytesPerPixel;
                 }
             }
         }
@@ -562,40 +616,66 @@ void PixelOverlayModel::setValue(uint8_t value, int startChannel, int endChannel
     dirtyBuffer = true;
 }
 void PixelOverlayModel::setPixelValue(int x, int y, int r, int g, int b) {
+    setPixelValue(x, y, r, g, b, 0);
+}
+void PixelOverlayModel::setPixelValue(int x, int y, int r, int g, int b, int w) {
     if (y >= height || x >= width || x < 0 || y < 0) {
         return;
     }
-    int c = (y * width * 3) + x * 3;
-    if (c >= channelCount || c < 0) {
+    int c = (y * width * bytesPerPixel) + x * bytesPerPixel;
+    int mapSize = width * height * bytesPerPixel;
+    if (c >= mapSize || c < 0) {
         return;
     }
     if (channelMap[c] != FPPD_OFF_CHANNEL) {
-        channelData[channelMap[c++]] = r;
+        channelData[channelMap[c]] = r;
     }
-    if (channelsPerNode > 1 && channelMap[c] != FPPD_OFF_CHANNEL) {
-        channelData[channelMap[c++]] = g;
+    c++;
+    if (channelsPerNode > 1 && c < mapSize && channelMap[c] != FPPD_OFF_CHANNEL) {
+        channelData[channelMap[c]] = g;
     }
-    if (channelsPerNode > 2 && channelMap[c] != FPPD_OFF_CHANNEL) {
-        channelData[channelMap[c++]] = b;
+    c++;
+    if (channelsPerNode > 2 && c < mapSize && channelMap[c] != FPPD_OFF_CHANNEL) {
+        channelData[channelMap[c]] = b;
+    }
+    c++;
+    if (channelsPerNode > 3 && c < mapSize && channelMap[c] != FPPD_OFF_CHANNEL) {
+        channelData[channelMap[c]] = w;
     }
     dirtyBuffer = true;
 }
 void PixelOverlayModel::getPixelValue(int x, int y, int& r, int& g, int& b) {
+    int w = 0;
+    getPixelValue(x, y, r, g, b, w);
+    if (w) {
+        r = std::min(r + w, 255);
+        g = std::min(g + w, 255);
+        b = std::min(b + w, 255);
+    }
+}
+void PixelOverlayModel::getPixelValue(int x, int y, int& r, int& g, int& b, int& w) {
     if (y >= height || x >= width || x < 0 || y < 0) {
         return;
     }
-    int c = (y * width * 3) + x * 3;
-    if (c >= channelCount || c < 0) {
+    int c = (y * width * bytesPerPixel) + x * bytesPerPixel;
+    int mapSize = width * height * bytesPerPixel;
+    if (c >= mapSize || c < 0) {
         return;
     }
     if (channelMap[c] != FPPD_OFF_CHANNEL) {
-        r = channelData[channelMap[c++]];
+        r = channelData[channelMap[c]];
     }
-    if (channelsPerNode > 1 && channelMap[c] != FPPD_OFF_CHANNEL) {
-        g = channelData[channelMap[c++]];
+    c++;
+    if (channelsPerNode > 1 && c < mapSize && channelMap[c] != FPPD_OFF_CHANNEL) {
+        g = channelData[channelMap[c]];
     }
-    if (channelsPerNode > 2 && channelMap[c] != FPPD_OFF_CHANNEL) {
-        b = channelData[channelMap[c++]];
+    c++;
+    if (channelsPerNode > 2 && c < mapSize && channelMap[c] != FPPD_OFF_CHANNEL) {
+        b = channelData[channelMap[c]];
+    }
+    c++;
+    if (channelsPerNode > 3 && c < mapSize && channelMap[c] != FPPD_OFF_CHANNEL) {
+        w = channelData[channelMap[c]];
     }
 }
 
@@ -612,17 +692,15 @@ void PixelOverlayModel::setScaledData(uint8_t* data, int w, int h) {
         for (x = 0, newx = 0.0f; x < width; x++, newx += xdiff) {
             int srcX = newx;
 
-            int idx = y * width * 3 + x * 3;
-            int srcidx = srcY * w * 3 + srcX * 3;
+            int idx = y * width * bytesPerPixel + x * bytesPerPixel;
+            int srcidx = srcY * w * bytesPerPixel + srcX * bytesPerPixel;
 
-            if (channelMap[idx] != FPPD_OFF_CHANNEL) {
-                channelData[channelMap[idx++]] = data[srcidx++];
-            }
-            if (channelsPerNode > 1 && channelMap[idx] != FPPD_OFF_CHANNEL) {
-                channelData[channelMap[idx++]] = data[srcidx++];
-            }
-            if (channelsPerNode > 2 && channelMap[idx] != FPPD_OFF_CHANNEL) {
-                channelData[channelMap[idx++]] = data[srcidx++];
+            for (int ch = 0; ch < bytesPerPixel; ch++) {
+                if (ch < channelsPerNode && channelMap[idx] != FPPD_OFF_CHANNEL) {
+                    channelData[channelMap[idx]] = data[srcidx];
+                }
+                idx++;
+                srcidx++;
             }
         }
     }
@@ -633,58 +711,49 @@ void PixelOverlayModel::clearData() {
     dirtyBuffer = true;
 }
 void PixelOverlayModel::fillData(int r, int g, int b) {
+    fillData(r, g, b, 0);
+}
+void PixelOverlayModel::fillData(int r, int g, int b, int w) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            setPixelValue(x, y, r, g, b);
+            setPixelValue(x, y, r, g, b, w);
         }
     }
 }
 
 void PixelOverlayModel::getDataJson(Json::Value& v, bool rle) {
+    int bpp = bytesPerPixel;
     if (rle) {
-        unsigned char r = 0;
-        unsigned char g = 0;
-        unsigned char b = 0;
-        unsigned char lr = 0;
-        unsigned char lg = 0;
-        unsigned char lb = 0;
+        std::vector<unsigned char> cur(bpp, 0);
+        std::vector<unsigned char> last(bpp, 0);
         int count = 0;
-        for (int c = 0; c < height * width * 3; c += 3) {
-            if (channelMap[c] != FPPD_OFF_CHANNEL) {
-                r = channelData[channelMap[c]];
-            }
-            if (channelMap[c + 1] != FPPD_OFF_CHANNEL) {
-                g = channelData[channelMap[c + 1]];
-            }
-            if (channelMap[c + 2] != FPPD_OFF_CHANNEL) {
-                b = channelData[channelMap[c + 2]];
+        for (int c = 0; c < height * width * bpp; c += bpp) {
+            for (int ch = 0; ch < bpp; ch++) {
+                cur[ch] = (channelMap[c + ch] != FPPD_OFF_CHANNEL) ? channelData[channelMap[c + ch]] : 0;
             }
 
-            if ((r == lr) && (g == lg) && (b == lb)) {
+            if (cur == last) {
                 count++;
             } else {
                 if (count) {
                     v.append(count);
-                    v.append(lr);
-                    v.append(lg);
-                    v.append(lb);
+                    for (int ch = 0; ch < bpp; ch++) {
+                        v.append(last[ch]);
+                    }
                 }
-
                 count = 1;
-                lr = r;
-                lg = g;
-                lb = b;
+                last = cur;
             }
         }
 
         if (count) {
             v.append(count);
-            v.append(r);
-            v.append(g);
-            v.append(b);
+            for (int ch = 0; ch < bpp; ch++) {
+                v.append(cur[ch]);
+            }
         }
     } else {
-        for (int c = 0; c < height * width * 3; c++) {
+        for (int c = 0; c < height * width * bpp; c++) {
             unsigned char i = 0;
             if (channelMap[c] != FPPD_OFF_CHANNEL) {
                 i = channelData[channelMap[c]];
@@ -715,7 +784,7 @@ uint8_t* PixelOverlayModel::getOverlayBuffer() {
 
         mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
         int f = shm_open(overlayBufferName.c_str(), O_RDWR | O_CREAT, mode);
-        int size = width * height * 3 + sizeof(OverlayBufferData);
+        int size = width * height * bytesPerPixel + sizeof(OverlayBufferData);
         int flags = MAP_SHARED;
         if (f == -1) {
             LogWarn(VB_CHANNELOUT, "Could not create shared memory for overlay buffer %s: %s\n", name.c_str(), strerror(errno));
@@ -731,6 +800,7 @@ uint8_t* PixelOverlayModel::getOverlayBuffer() {
         memset(overlayBufferData, 0, size);
         overlayBufferData->width = width;
         overlayBufferData->height = height;
+        overlayBufferData->flags = (bytesPerPixel << 8); // store bytesPerPixel in bits 8-15
         if (f != -1) {
             close(f);
         }
@@ -739,38 +809,60 @@ uint8_t* PixelOverlayModel::getOverlayBuffer() {
 }
 
 void PixelOverlayModel::clearOverlayBuffer() {
-    memset(getOverlayBuffer(), 0, width * height * 3);
+    memset(getOverlayBuffer(), 0, width * height * bytesPerPixel);
 }
 void PixelOverlayModel::fillOverlayBuffer(int r, int g, int b) {
+    fillOverlayBuffer(r, g, b, 0);
+}
+void PixelOverlayModel::fillOverlayBuffer(int r, int g, int b, int w) {
     uint8_t* data = getOverlayBuffer();
-    for (int w = 0; w < (width * height); w++) {
+    for (int p = 0; p < (width * height); p++) {
         data[0] = r;
         data[1] = g;
         data[2] = b;
-        data += 3;
+        if (bytesPerPixel > 3) {
+            data[3] = w;
+        }
+        data += bytesPerPixel;
     }
 }
 
 void PixelOverlayModel::setOverlayPixelValue(int x, int y, int r, int g, int b) {
+    setOverlayPixelValue(x, y, r, g, b, 0);
+}
+void PixelOverlayModel::setOverlayPixelValue(int x, int y, int r, int g, int b, int w) {
     if (y >= height || x >= width || x < 0 || y < 0) {
         return;
     }
-    int idx = y * width * 3 + x * 3;
+    int idx = y * width * bytesPerPixel + x * bytesPerPixel;
     uint8_t* buf = getOverlayBuffer();
     buf[idx++] = r;
     buf[idx++] = g;
-    buf[idx] = b;
+    buf[idx++] = b;
+    if (bytesPerPixel > 3) {
+        buf[idx] = w;
+    }
 }
 void PixelOverlayModel::getOverlayPixelValue(int x, int y, int& r, int& g, int& b) {
+    int w = 0;
+    getOverlayPixelValue(x, y, r, g, b, w);
+    if (w) {
+        r = std::min(r + w, 255);
+        g = std::min(g + w, 255);
+        b = std::min(b + w, 255);
+    }
+}
+void PixelOverlayModel::getOverlayPixelValue(int x, int y, int& r, int& g, int& b, int& w) {
     if (y >= height || x >= width || x < 0 || y < 0) {
-        r = g = b = 0;
+        r = g = b = w = 0;
         return;
     }
-    int idx = y * width * 3 + x * 3;
+    int idx = y * width * bytesPerPixel + x * bytesPerPixel;
     uint8_t* buf = getOverlayBuffer();
     r = buf[idx++];
     g = buf[idx++];
-    b = buf[idx];
+    b = buf[idx++];
+    w = (bytesPerPixel > 3) ? buf[idx] : 0;
 }
 
 void PixelOverlayModel::flushOverlayBuffer() {
@@ -805,12 +897,12 @@ void PixelOverlayModel::setOverlayBufferScaledData(uint8_t* data, int w, int h) 
         for (x = 0, newx = 0.0f; x < width; x++, newx += xdiff) {
             int srcX = newx;
 
-            int idx = y * width * 3 + x * 3;
-            int srcidx = srcY * w * 3 + srcX * 3;
+            int idx = y * width * bytesPerPixel + x * bytesPerPixel;
+            int srcidx = srcY * w * bytesPerPixel + srcX * bytesPerPixel;
 
-            buf[idx++] = data[srcidx++];
-            buf[idx++] = data[srcidx++];
-            buf[idx] = data[srcidx];
+            for (int ch = 0; ch < bytesPerPixel; ch++) {
+                buf[idx + ch] = data[srcidx + ch];
+            }
         }
     }
 }
@@ -841,12 +933,28 @@ void PixelOverlayModel::saveOverlayAsImage(std::string filename) {
     LogDebug(VB_CHANNELOUT, "Saving %dx%d PixelOverlayModel image to: %s\n",
              width, height, filename.c_str());
 
-    std::vector<uint8_t> data(width * height * 3);
-    memset(&data[0], 0, width * height * 3);
+    // Always save as RGB (3 bytes per pixel) for image compatibility
+    // For RGBW models, blend the W channel into RGB so white pixels render correctly
+    std::vector<uint8_t> data(width * height * 3, 0);
 
-    for (int c = 0; c < height * width * 3; c++) {
-        if (channelMap[c] != FPPD_OFF_CHANNEL) {
-            data[c] = channelData[channelMap[c]];
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int mapIdx = (y * width + x) * bytesPerPixel;
+            int imgIdx = (y * width + x) * 3;
+            for (int ch = 0; ch < 3; ch++) {
+                if (ch < bytesPerPixel && channelMap[mapIdx + ch] != FPPD_OFF_CHANNEL) {
+                    data[imgIdx + ch] = channelData[channelMap[mapIdx + ch]];
+                }
+            }
+            if (bytesPerPixel > 3 && channelMap[mapIdx + 3] != FPPD_OFF_CHANNEL) {
+                uint8_t w = channelData[channelMap[mapIdx + 3]];
+                if (w) {
+                    for (int ch = 0; ch < 3; ch++) {
+                        int v = data[imgIdx + ch] + w;
+                        data[imgIdx + ch] = (v > 255) ? 255 : v;
+                    }
+                }
+            }
         }
     }
     blob.update(&data[0], width * height * 3);
@@ -870,11 +978,14 @@ void PixelOverlayModel::clear() {
     }
 }
 void PixelOverlayModel::fill(int r, int g, int b) {
+    fill(r, g, b, 0);
+}
+void PixelOverlayModel::fill(int r, int g, int b, int w) {
     if (overlayBufferData) {
-        fillOverlayBuffer(r, g, b);
+        fillOverlayBuffer(r, g, b, w);
         flushOverlayBuffer();
     } else {
-        fillData(r, g, b);
+        fillData(r, g, b, w);
     }
 }
 
