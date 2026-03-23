@@ -13,6 +13,7 @@
 #include "fpp-pch.h"
 
 #include "VideoInputManager.h"
+#include "VideoOutputManager.h"
 #include "common.h"
 #include "settings.h"
 #include "log.h"
@@ -281,10 +282,12 @@ bool VideoInputManager::StartSource(SourceInfo& source) {
              resolvedUri.find("youtu.be/") != std::string::npos)) {
             LogInfo(VB_MEDIAOUT, "VideoInputManager: Resolving YouTube URL for '%s' via yt-dlp\n",
                     source.name.c_str());
-            // Pick a low-bitrate video-only format suitable for Pi software decode.
-            //   229 = 240p H.264 video-only (~546kbps)
-            //   133 = 240p H.264 video-only (non-live fallback)
-            std::string ytFmt = "229/133/worst[vcodec^=avc1]";
+            // Select the best H.264 video-only stream that fits the
+            // configured output height.  This avoids fetching 240p when
+            // the user wants 720p/1080p, while still capping bandwidth
+            // to what the Pi can actually decode and display.
+            std::string ytFmt = "bestvideo[height<=" + std::to_string(source.height)
+                + "][vcodec^=avc1]/worst[vcodec^=avc1]";
             // Resolve URL and detect native framerate in one call.
             std::string ytdlpCmd = "yt-dlp -f '" + ytFmt + "' --print url --print fps";
             // Sanitise URI — only allow URL-safe characters to prevent injection
@@ -323,13 +326,19 @@ bool VideoInputManager::StartSource(SourceInfo& source) {
                     LogInfo(VB_MEDIAOUT, "VideoInputManager: yt-dlp resolved '%s' → %zu-char HLS URL\n",
                             source.name.c_str(), urlLine.size());
                     resolvedUri = urlLine;
-                    // Auto-detect framerate from yt-dlp
+                    // Auto-detect framerate from yt-dlp, but cap to the
+                    // user-configured value — don't override 30fps with 60fps
+                    // just because the stream is 60fps natively.  The videorate
+                    // element handles downsampling.
+                    int configFps = source.framerate;
                     try {
                         double detectedFps = std::stod(fpsLine);
                         if (detectedFps >= 1.0 && detectedFps <= 120.0) {
-                            source.framerate = (int)std::lround(detectedFps);
-                            LogInfo(VB_MEDIAOUT, "VideoInputManager: yt-dlp detected %.1ffps for '%s', using %dfps\n",
-                                    detectedFps, source.name.c_str(), source.framerate);
+                            int detected = (int)std::lround(detectedFps);
+                            source.framerate = std::min(detected, configFps);
+                            LogInfo(VB_MEDIAOUT, "VideoInputManager: yt-dlp detected %dfps for '%s', "
+                                    "capped to configured %dfps → using %dfps\n",
+                                    detected, source.name.c_str(), configFps, source.framerate);
                         }
                     } catch (...) {
                         LogInfo(VB_MEDIAOUT, "VideoInputManager: yt-dlp fps not available for '%s', using config %dfps\n",
@@ -501,6 +510,11 @@ bool VideoInputManager::StartSource(SourceInfo& source) {
                 ret == GST_STATE_CHANGE_SUCCESS ? "PLAYING" :
                 ret == GST_STATE_CHANGE_ASYNC   ? "ASYNC"   : "OTHER");
 
+        // If pipeline went straight to PLAYING (no async), notify consumers now.
+        if (ret == GST_STATE_CHANGE_SUCCESS) {
+            VideoOutputManager::Instance().NotifyProducerReady(nodeNameCopy);
+        }
+
         // Monitor the pipeline bus for errors / EOS
         GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
         while (!shutdownFlag->load()) {
@@ -547,6 +561,9 @@ bool VideoInputManager::StartSource(SourceInfo& source) {
                                 gst_element_state_get_name(oldState),
                                 gst_element_state_get_name(newState),
                                 gst_element_state_get_name(pending));
+                        if (newState == GST_STATE_PLAYING && pending == GST_STATE_VOID_PENDING) {
+                            VideoOutputManager::Instance().NotifyProducerReady(nodeNameCopy);
+                        }
                     }
                     break;
                 }
@@ -607,7 +624,9 @@ bool VideoInputManager::StartSourceWithAudio(SourceInfo& source) {
     // Resolve video-only URL and detect native framerate
     std::string videoUrl;
     {
-        std::string ytFmt = "229/133/worst[vcodec^=avc1]";
+        // Select best H.264 stream fitting the configured height
+        std::string ytFmt = "bestvideo[height<=" + std::to_string(source.height)
+            + "][vcodec^=avc1]/worst[vcodec^=avc1]";
         std::string cmd = "yt-dlp -f '" + ytFmt + "' --print url --print fps '" + safeUri + "' 2>/dev/null";
         LogInfo(VB_MEDIAOUT, "VideoInputManager: Resolving YouTube video URL for '%s'\n",
                 source.name.c_str());
@@ -630,13 +649,17 @@ bool VideoInputManager::StartSourceWithAudio(SourceInfo& source) {
             if (!urlLine.empty() && urlLine.find("http") == 0) {
                 videoUrl = urlLine;
                 LogInfo(VB_MEDIAOUT, "VideoInputManager: Video URL resolved (%zu chars)\n", videoUrl.size());
-                // Auto-detect framerate from yt-dlp
+                // Auto-detect framerate from yt-dlp, but cap to the
+                // user-configured value (same rationale as combined path).
+                int configFps = source.framerate;
                 try {
                     double detectedFps = std::stod(fpsLine);
                     if (detectedFps >= 1.0 && detectedFps <= 120.0) {
-                        source.framerate = (int)std::lround(detectedFps);
-                        LogInfo(VB_MEDIAOUT, "VideoInputManager: yt-dlp detected %.1ffps for '%s', using %dfps\n",
-                                detectedFps, source.name.c_str(), source.framerate);
+                        int detected = (int)std::lround(detectedFps);
+                        source.framerate = std::min(detected, configFps);
+                        LogInfo(VB_MEDIAOUT, "VideoInputManager: yt-dlp detected %dfps for '%s', "
+                                "capped to configured %dfps → using %dfps\n",
+                                detected, source.name.c_str(), configFps, source.framerate);
                     }
                 } catch (...) {
                     LogInfo(VB_MEDIAOUT, "VideoInputManager: yt-dlp fps not available, using config %dfps\n",
@@ -875,6 +898,10 @@ bool VideoInputManager::StartSourceWithAudio(SourceInfo& source) {
                 ret == GST_STATE_CHANGE_SUCCESS ? "PLAYING" :
                 ret == GST_STATE_CHANGE_ASYNC   ? "ASYNC"   : "OTHER");
 
+        if (ret == GST_STATE_CHANGE_SUCCESS) {
+            VideoOutputManager::Instance().NotifyProducerReady(nodeNameCopy);
+        }
+
         GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(combinedPipeline));
         while (!shutdownFlag->load()) {
             GstMessage* msg = gst_bus_timed_pop(bus, 500 * GST_MSECOND);
@@ -919,6 +946,9 @@ bool VideoInputManager::StartSourceWithAudio(SourceInfo& source) {
                                 gst_element_state_get_name(oldState),
                                 gst_element_state_get_name(newState),
                                 gst_element_state_get_name(pending));
+                        if (newState == GST_STATE_PLAYING && pending == GST_STATE_VOID_PENDING) {
+                            VideoOutputManager::Instance().NotifyProducerReady(nodeNameCopy);
+                        }
                     }
                     break;
                 }

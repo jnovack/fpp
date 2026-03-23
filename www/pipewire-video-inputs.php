@@ -405,8 +405,36 @@
             html += '<div class="row align-items-center mt-2">';
             html += '<div class="col-auto"><label>Resolution:</label></div>';
             html += '<div class="col-auto">';
-            html += '<input type="number" class="form-control form-control-sm" style="width:80px;display:inline-block;" value="' + (source.width || 320) + '" onchange="UpdateSourceField(' + index + ',\'width\',parseInt(this.value))" min="16" max="3840"> x ';
-            html += '<input type="number" class="form-control form-control-sm" style="width:80px;display:inline-block;" value="' + (source.height || 240) + '" onchange="UpdateSourceField(' + index + ',\'height\',parseInt(this.value))" min="16" max="2160">';
+            var presetVal = (source.width || 320) + 'x' + (source.height || 240);
+            html += '<select class="form-select form-select-sm" style="width:auto;display:inline-block;" onchange="ApplyResolutionPreset(' + index + ',this.value)">';
+            var presets = [
+                {label:'Custom',w:0,h:0},
+                {label:'240p',w:426,h:240},
+                {label:'360p',w:640,h:360},
+                {label:'480p SD',w:854,h:480},
+                {label:'720p HD',w:1280,h:720},
+                {label:'1080p Full HD',w:1920,h:1080},
+                {label:'1440p 2K',w:2560,h:1440},
+                {label:'2160p 4K',w:3840,h:2160},
+                {label:'4320p 8K',w:7680,h:4320}
+            ];
+            var matched = false;
+            for (var p = 0; p < presets.length; p++) {
+                var sel = '';
+                if (presets[p].w > 0 && presets[p].w == (source.width||0) && presets[p].h == (source.height||0)) {
+                    sel = ' selected'; matched = true;
+                }
+                html += '<option value="' + presets[p].w + 'x' + presets[p].h + '"' + sel + '>' + presets[p].label + (presets[p].w > 0 ? ' (' + presets[p].w + 'x' + presets[p].h + ')' : '') + '</option>';
+            }
+            if (!matched) {
+                // Current values don't match any preset — select Custom
+                html = html.replace('value="0x0"', 'value="0x0" selected');
+            }
+            html += '</select>';
+            html += '</div>';
+            html += '<div class="col-auto">';
+            html += '<input type="number" class="form-control form-control-sm" id="resW_' + index + '" style="width:80px;display:inline-block;" value="' + (source.width || 320) + '" onchange="UpdateResolution(' + index + ')" min="16" max="7680"> x ';
+            html += '<input type="number" class="form-control form-control-sm" id="resH_' + index + '" style="width:80px;display:inline-block;" value="' + (source.height || 240) + '" onchange="UpdateResolution(' + index + ')" min="16" max="4320">';
             html += '</div>';
             html += '<div class="col-auto"><label>FPS:</label></div>';
             html += '<div class="col-auto">';
@@ -609,6 +637,27 @@
 
         function UpdateSourceField(index, field, value) {
             videoInputSources.videoInputSources[index][field] = value;
+        }
+
+        function ApplyResolutionPreset(index, val) {
+            var parts = val.split('x');
+            var w = parseInt(parts[0]);
+            var h = parseInt(parts[1]);
+            if (w > 0 && h > 0) {
+                videoInputSources.videoInputSources[index].width = w;
+                videoInputSources.videoInputSources[index].height = h;
+                $('#resW_' + index).val(w);
+                $('#resH_' + index).val(h);
+            }
+        }
+
+        function UpdateResolution(index) {
+            var w = parseInt($('#resW_' + index).val()) || 320;
+            var h = parseInt($('#resH_' + index).val()) || 240;
+            videoInputSources.videoInputSources[index].width = w;
+            videoInputSources.videoInputSources[index].height = h;
+            // Reset preset dropdown to Custom if values don't match
+            RenderSources();
         }
 
         function SaveSources() {

@@ -87,6 +87,11 @@ public:
     /// Called by GStreamerOut when video playback ends.
     void StopConsumers();
 
+    /// Called by VideoInputManager when a producer source pipeline reaches
+    /// PLAYING and is about to deliver its first video frames.  Starts any
+    /// persistent consumers that target the given intervideo channel.
+    void NotifyProducerReady(const std::string& channelName);
+
     /// Suspend persistent HDMI consumers so GStreamerOut's pipeline can
     /// become DRM master.  Only one pipeline at a time can hold DRM master
     /// on a given DRM device (card1), so persistent consumers must yield.

@@ -83,38 +83,21 @@ void VideoOutputManager::Init() {
     // However, consumers with a sourceNode (targeting a persistent video
     // input source) can start immediately.
     if (LoadConfig()) {
-        // Group persistent HDMI consumers by sourceNode.
-        // PipeWire mode=provide doesn't fan-out buffers to multiple
-        // consumer streams, so we must use a single pipeline with tee
-        // for HDMI consumers sharing the same source.
-        std::map<std::string, std::vector<size_t>> hdmiSourceGroups;
-        for (size_t i = 0; i < m_consumers.size(); i++) {
-            auto& c = m_consumers[i];
-            if (!c.sourceNode.empty() && c.type == "hdmi") {
-                hdmiSourceGroups[c.sourceNode].push_back(i);
-            }
-        }
-
+        // Persistent consumers (those with a sourceNode) are NOT started
+        // here — they are deferred until NotifyProducerReady() is called
+        // by VideoInputManager once the source pipeline has its first
+        // video frame.  This avoids the consumer spinning on expensive
+        // videoconvert+videoscale of black frames during the HLS buffering
+        // window (which can burn a full CPU core at 30fps 1080p).
         int persistentCount = 0;
-        std::set<size_t> startedAsGroup;
-        for (auto& [sourceNode, indices] : hdmiSourceGroups) {
-            if (indices.size() > 1) {
-                if (StartHdmiConsumerGroup(indices)) {
-                    persistentCount += indices.size();
-                    for (auto idx : indices) startedAsGroup.insert(idx);
-                }
-            }
-        }
-
-        // Start remaining persistent consumers individually
-        for (size_t i = 0; i < m_consumers.size(); i++) {
-            if (!m_consumers[i].sourceNode.empty() && startedAsGroup.find(i) == startedAsGroup.end()) {
-                StartConsumer(m_consumers[i]);
+        for (auto& c : m_consumers) {
+            if (!c.sourceNode.empty())
                 persistentCount++;
-            }
         }
-        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Initialized with %d consumer(s) (%d persistent, %d on-demand)\n",
-                (int)m_consumers.size(), persistentCount, (int)m_consumers.size() - persistentCount);
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Initialized with %d consumer(s) "
+                "(%d persistent deferred, %d on-demand)\n",
+                (int)m_consumers.size(), persistentCount,
+                (int)m_consumers.size() - persistentCount);
         // Start SAP multicast announcer for any persistent RTP consumers
         StartSAPAnnouncer();
     }
@@ -288,6 +271,43 @@ void VideoOutputManager::ResumePersistentHdmiConsumers() {
     }
     if (started > 0)
         LogInfo(VB_MEDIAOUT, "VideoOutputManager: Resumed %d persistent HDMI consumer(s)\n", started);
+}
+
+void VideoOutputManager::NotifyProducerReady(const std::string& channelName) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    // Group persistent HDMI consumers by sourceNode for grouped start.
+    std::map<std::string, std::vector<size_t>> hdmiSourceGroups;
+    for (size_t i = 0; i < m_consumers.size(); i++) {
+        auto& c = m_consumers[i];
+        if (c.sourceNode == channelName && !c.running && c.type == "hdmi") {
+            hdmiSourceGroups[c.sourceNode].push_back(i);
+        }
+    }
+
+    int started = 0;
+    std::set<size_t> startedAsGroup;
+    for (auto& [sourceNode, indices] : hdmiSourceGroups) {
+        if (indices.size() > 1) {
+            if (StartHdmiConsumerGroup(indices)) {
+                started += indices.size();
+                for (auto idx : indices) startedAsGroup.insert(idx);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < m_consumers.size(); i++) {
+        auto& c = m_consumers[i];
+        if (c.sourceNode == channelName && !c.running
+            && startedAsGroup.find(i) == startedAsGroup.end()) {
+            StartConsumer(c);
+            started++;
+        }
+    }
+
+    if (started > 0)
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Producer '%s' ready — started %d consumer(s)\n",
+                channelName.c_str(), started);
 }
 
 std::vector<VideoOutputManager::HdmiConsumerInfo> VideoOutputManager::GetHdmiConsumers(
@@ -498,7 +518,7 @@ bool VideoOutputManager::StartHdmiConsumerGroup(const std::vector<size_t>& indic
 
 #if 0 // Combined pipeline disabled — see comment above
     std::string sourceNodeName = m_consumers[validIndices[0]].sourceNode;
-    std::string pipelineDesc = "intervideosrc timeout=18446744073709551615 channel=" + sourceNodeName
+    std::string pipelineDesc = "intervideosrc timeout=5000000000 channel=" + sourceNodeName
         + " ! videoconvert ! tee name=t";
     std::string names; // for logging
     for (size_t i = 0; i < validIndices.size(); i++) {
@@ -676,7 +696,9 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
     // This uses GStreamer's in-process inter-pipeline communication,
     // bypassing PipeWire for video (PipeWire's video driver scheduling
     // cannot drive video graph cycles at rate=0).
-    pipelineDesc = "intervideosrc timeout=18446744073709551615 channel=" + consumer.sourceNode
+    // timeout=5s — must not overflow gint64 when converted to microseconds
+    // and added to g_get_monotonic_time(); UINT64_MAX caused spin-loop.
+    pipelineDesc = "intervideosrc timeout=5000000000 channel=" + consumer.sourceNode
                  + " ! videoconvert ! videoscale ! ";
 
     if (consumer.type == "hdmi") {
@@ -754,19 +776,21 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
             }
         }
 
-        // Add scaling caps with format suitable for kmssink (vc4 DRM).
-        // Use the source's actual framerate (auto-detected from yt-dlp or
-        // user-configured).  This avoids mismatches that cause intervideosrc
-        // to duplicate or drop frames at the wrong cadence.
+        // Add scaling caps for kmssink (vc4 DRM).  Do NOT force BGRx —
+        // vc4 display hardware on all Pi models (3/4/5) natively accepts
+        // YUV formats (I420, NV12) and performs YUV→RGB conversion in the
+        // HVS scanout pipeline for free.  Letting GStreamer auto-negotiate
+        // the format keeps the data in YUV end-to-end so videoscale
+        // processes 1.5 bytes/pixel instead of 4 (BGRx), cutting CPU by ~60%.
         int fps = VideoInputManager::Instance().GetSourceFramerate(consumer.sourceNode);
         if (fps <= 0) fps = 30;  // fallback for on-demand consumers
 
         if (consumer.width > 0 && consumer.height > 0) {
-            pipelineDesc += "video/x-raw,format=BGRx,width=" + std::to_string(consumer.width)
+            pipelineDesc += "video/x-raw,width=" + std::to_string(consumer.width)
                          + ",height=" + std::to_string(consumer.height)
                          + ",framerate=" + std::to_string(fps) + "/1 ! ";
         } else {
-            pipelineDesc += "video/x-raw,format=BGRx,framerate=" + std::to_string(fps) + "/1 ! ";
+            pipelineDesc += "video/x-raw,framerate=" + std::to_string(fps) + "/1 ! ";
         }
 
         // Queue absorbs timing jitter between intervideosrc and kmssink;
