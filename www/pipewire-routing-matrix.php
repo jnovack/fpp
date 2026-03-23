@@ -100,6 +100,18 @@
             height: 6px;
         }
 
+        .routing-cell .volume-slider::-webkit-slider-thumb {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .routing-cell .volume-slider::-moz-range-thumb {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
         .routing-cell .volume-value {
             font-size: 0.75rem;
             color: var(--bs-secondary-color, #6c757d);
@@ -250,7 +262,8 @@
                             </div>
                         </div>
 
-                        <!-- Routing Matrix Grid -->
+                        <!-- Audio Routing Matrix Grid -->
+                        <h5 class="section-title"><i class="fas fa-music"></i> Audio Routing</h5>
                         <div class="routing-matrix-container" id="matrixContainer">
                             <p class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</p>
                         </div>

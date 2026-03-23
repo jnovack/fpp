@@ -268,7 +268,7 @@ static const char* safe(const char* in) {
     return in ? in : "<NULL>";
 }
 
-static void handleCrash(int s) {
+static void handleCrash(int s, siginfo_t* si, void* ctx) {
     static volatile bool inCrashHandler = false;
     if (inCrashHandler) {
         // need to ignore any crashes in the crash handler
@@ -277,11 +277,13 @@ static void handleCrash(int s) {
     inCrashHandler = true;
     int crashLog = getSettingInt("ShareCrashData", 3);
 #ifndef PLATFORM_OSX
-    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d (SIG%s: %s)\n", gettid(), s, safe(sigabbrev_np(s)), safe(sigdescr_np(s)));
+    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d (SIG%s: %s) addr=%p si_code=%d\n",
+           gettid(), s, safe(sigabbrev_np(s)), safe(sigdescr_np(s)),
+           si ? si->si_addr : nullptr, si ? si->si_code : -1);
 #else
     uint64_t tid;
     pthread_threadid_np(NULL, &tid);
-    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d\n", tid, s);
+    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d addr=%p\n", tid, s, si ? si->si_addr : nullptr);
 #endif
 
     if (!sequence->m_seqFilename.empty()) {
@@ -383,8 +385,27 @@ static void handleCrash(int s) {
         }
     }
     inCrashHandler = false;
-    runMainFPPDLoop = 0;
     if (s != SIGQUIT && s != SIGUSR1) {
+        // For SIGBUS in non-main threads, terminate only the faulting thread
+        // instead of the entire process.  This allows fppd to survive
+        // DRM/KMS buffer crashes in video consumer threads while keeping
+        // audio and other functionality running.
+        if (s == SIGBUS && gettid() != getpid()) {
+            LogErr(VB_ALL, "SIGBUS in non-main thread %u — terminating thread only\n", gettid());
+            WarningHolder::AddWarning(1, "Video thread crashed (SIGBUS). Video output may be unavailable.");
+            WarningHolder::WriteWarningsFile();
+            // Restore default SIGBUS handler for this thread so the
+            // pthread_exit cleanup doesn't loop back here if it touches
+            // the same bad mapping.
+            struct sigaction sa;
+            sa.sa_handler = SIG_DFL;
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = 0;
+            sigaction(SIGBUS, &sa, NULL);
+            pthread_exit(NULL);
+            return; // unreachable, but satisfies compiler
+        }
+        runMainFPPDLoop = 0;
         WarningHolder::StopNotifyThread();
         WarningHolder::RemoveAllWarnings();
         WarningHolder::AddWarning(1, "FPPD has crashed.  Check crash reports.");
@@ -410,9 +431,9 @@ bool setupExceptionHandlers() {
         // some systems extend it with non std fields, so zero everything
         memset(&act, 0, sizeof(act));
 
-        act.sa_handler = handleCrash;
+        act.sa_sigaction = handleCrash;
         sigemptyset(&act.sa_mask);
-        act.sa_flags = 0;
+        act.sa_flags = SA_SIGINFO;
 
         ok &= sigaction(SIGFPE, &act, &s_handlerFPE) == 0;
         ok &= sigaction(SIGILL, &act, &s_handlerILL) == 0;
@@ -639,6 +660,9 @@ bool checkASan(int argc, char** argv) {
 }
 
 int main(int argc, char* argv[]) {
+    // Force line-buffered stdout so logs via systemd/journald appear promptly
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     setupExceptionHandlers();
     FPPLogger::INSTANCE.Init();
 

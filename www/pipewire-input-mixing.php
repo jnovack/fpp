@@ -372,6 +372,7 @@
         var availableOutputGroups = [];
         var availableCards = [];
         var availableAES67Instances = [];
+        var availablePWSources = [];  // Audio-enabled video input sources
 
         // ─── Init ──────────────────────────────────────────────────────
         $(document).ready(function () {
@@ -404,8 +405,9 @@
             var p2 = $.get('/api/pipewire/audio/sources');
             var p3 = $.get('/api/pipewire/audio/groups');
             var p4 = $.get('/api/pipewire/aes67/instances');
+            var p5 = $.get('/api/pipewire/video/input-sources');
 
-            $.when(p1, p2, p3, p4).done(function (r1, r2, r3, r4) {
+            $.when(p1, p2, p3, p4, p5).done(function (r1, r2, r3, r4, r5) {
                 inputGroups = r1[0];
                 if (!inputGroups || !inputGroups.inputGroups) {
                     inputGroups = { inputGroups: [] };
@@ -415,6 +417,19 @@
                 availableOutputGroups = (ogData && ogData.groups) ? ogData.groups : [];
                 var aesData = r4[0];
                 availableAES67Instances = (aesData && aesData.instances) ? aesData.instances : [];
+                // Extract audio-enabled video input sources
+                var viData = r5[0];
+                availablePWSources = [];
+                if (viData && viData.videoInputSources) {
+                    viData.videoInputSources.forEach(function (src) {
+                        if (src.audioEnabled && src.audioPipeWireNodeName) {
+                            availablePWSources.push({
+                                nodeName: src.audioPipeWireNodeName,
+                                name: src.name || 'Source ' + src.id,
+                            });
+                        }
+                    });
+                }
 
                 RenderAll();
             }).fail(function () {
@@ -570,6 +585,7 @@
                 'onchange="UpdateMemberField(' + groupIdx + ',' + memberIdx + ',\'type\',this.value); RenderAll();">';
             html += '<option value="fppd_stream"' + (type === 'fppd_stream' ? ' selected' : '') + '>fppd Stream</option>';
             html += '<option value="capture"' + (type === 'capture' ? ' selected' : '') + '>ALSA Capture</option>';
+            html += '<option value="pw_source"' + (type === 'pw_source' ? ' selected' : '') + '>PipeWire Source</option>';
             html += '<option value="aes67_receive"' + (type === 'aes67_receive' ? ' selected' : '') + '>AES67 Receive</option>';
             html += '</select></td>';
 
@@ -618,6 +634,22 @@
                     if (srcChannels > 0 && srcChannels !== groupChannels) {
                         html += RenderChannelMapping(groupIdx, memberIdx, mbr, srcChannels, groupChannels);
                     }
+                }
+            } else if (type === 'pw_source') {
+                // PipeWire Audio/Source nodes from video input streams
+                if (availablePWSources.length > 0) {
+                    html += '<select class="form-select form-select-sm" style="width:auto;" ' +
+                        'onchange="SelectPWSource(' + groupIdx + ',' + memberIdx + ',this.value); RenderAll();">';
+                    html += '<option value="">-- Select PipeWire source --</option>';
+                    availablePWSources.forEach(function (src) {
+                        var sel = (mbr.nodeName === src.nodeName) ? ' selected' : '';
+                        html += '<option value="' + EscapeAttr(src.nodeName) + '"' + sel + '>' +
+                            EscapeHtml(src.name) + ' (' + EscapeHtml(src.nodeName) + ')</option>';
+                    });
+                    html += '</select>';
+                } else {
+                    html += '<span style="color:#6c757d;font-size:0.85rem;">' +
+                        'No audio-enabled video sources. <a href="pipewire-video-inputs.php">Configure Video Inputs</a></span>';
                 }
             } else if (type === 'aes67_receive') {
                 // Dropdown populated from AES67 receive instances
@@ -832,6 +864,17 @@
 
             // Clear stale channel mapping when device changes
             delete mbr.channelMapping;
+        }
+
+        function SelectPWSource(groupIdx, memberIdx, nodeName) {
+            var mbr = inputGroups.inputGroups[groupIdx].members[memberIdx];
+            mbr.nodeName = nodeName;
+
+            // Auto-populate name from source
+            var src = availablePWSources.find(function (s) { return s.nodeName === nodeName; });
+            if (src && !mbr.name) {
+                mbr.name = src.name.substring(0, 30);
+            }
         }
 
         // ─── Channel Mapping ───────────────────────────────────────────

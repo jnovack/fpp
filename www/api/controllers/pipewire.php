@@ -3332,6 +3332,11 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
                     if (empty($sourceTarget))
                         continue;
                 }
+            } elseif ($mbrType === 'pw_source') {
+                // PipeWire Audio/Source node (e.g. from video input audio extraction)
+                $sourceTarget = isset($mbr['nodeName']) ? $mbr['nodeName'] : '';
+                if (empty($sourceTarget))
+                    continue;
             } elseif ($mbrType === 'aes67_receive') {
                 $instanceId = isset($mbr['instanceId']) ? $mbr['instanceId'] : '';
                 if (empty($instanceId))
@@ -3354,6 +3359,7 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
             $conf .= "        node.target = \"$sourceTarget\"\n";
             $conf .= "        media.class = Stream/Input/Audio\n";
             $conf .= "        stream.dont-remix = true\n";
+            $conf .= "        resample.disable = false\n";
 
             // Channel mapping if specified
             if (isset($mbr['channelMapping']) && !empty($mbr['channelMapping'])) {
@@ -3365,6 +3371,7 @@ function GeneratePipeWireInputGroupsConfig($inputGroups, $outputGroups)
             $conf .= "      playback.props = {\n";
             $conf .= "        node.target = \"$nodeName\"\n";
             $conf .= "        media.class = Stream/Output/Audio\n";
+            $conf .= "        resample.disable = false\n";
 
             // Per-member volume via channelmix
             if ($volume < 0.999) {
@@ -4795,91 +4802,244 @@ function GetPipeWireGraph()
         }
     }
 
-    // ── Inject synthetic HDMI direct-output node ──────────────────────
-    // When video PipeWire routing is active, the primary HDMI output is
-    // driven by kmssink inside the GStreamer pipeline (tee → kmssink)
-    // rather than through a PipeWire consumer.  Inject a virtual node so
-    // the graph visualizer shows HDMI alongside the PipeWire consumers.
-    $videoOutput = ReadSettingFromFile('VideoOutput');
-    if (!empty($videoOutput)) {
-        // Normalise legacy values
-        if ($videoOutput === '--HDMI--' || $videoOutput === '--hdmi--' || $videoOutput === 'HDMI') {
-            $videoOutput = 'HDMI-A-1';
+    // ── Inject synthetic video source and consumer nodes ──────────────
+    // Video streams use GStreamer's intervideosink/intervideosrc internally
+    // rather than PipeWire, so no video nodes appear in the PipeWire graph.
+    // Inject virtual source and consumer nodes from the video config files
+    // so the graph visualizer shows the complete video routing path.
+    $videoSourcesFile = $settings['mediaDirectory'] . "/config/pipewire-video-input-sources.json";
+    $videoConsumersFile = $settings['mediaDirectory'] . "/config/pipewire-video-consumers.json";
+    if (file_exists($videoSourcesFile)) {
+        $vsCfg = json_decode(file_get_contents($videoSourcesFile), true);
+        $vcCfg = array();
+        if (file_exists($videoConsumersFile)) {
+            $vcCfg = json_decode(file_get_contents($videoConsumersFile), true);
+            if (!is_array($vcCfg)) $vcCfg = array();
         }
-        // Only inject when there's an active or virtual video stream node
-        $videoStreamNodes = array();
+
+        // Build lookup of existing PipeWire node names → state for activity detection
+        $liveNodeStates = array();
         foreach ($nodes as $n) {
-            if (preg_match('/^fppd_video_stream_(\d+)$/', $n['name'])) {
-                $videoStreamNodes[] = $n;
-            }
+            $liveNodeStates[$n['name']] = $n['state'];
         }
-        if (!empty($videoStreamNodes) && stripos($videoOutput, 'HDMI') !== false) {
-            // Use actual connector from video stream (may differ from setting after auto-fallback)
-            $actualConnector = $videoOutput;
-            foreach ($videoStreamNodes as $vsn) {
-                $vc = isset($vsn['properties']['fpp.video.connector']) ? $vsn['properties']['fpp.video.connector'] : '';
-                if (!empty($vc)) {
-                    $actualConnector = $vc;
-                    break;
-                }
-            }
-            $hdmiNodeName = 'fpp_hdmi_direct_' . $actualConnector;
-            // Only inject if not already present (shouldn't be, but guard)
-            $alreadyPresent = false;
-            foreach ($nodes as $n) {
-                if ($n['name'] === $hdmiNodeName) {
-                    $alreadyPresent = true;
-                    break;
-                }
-            }
-            if (!$alreadyPresent) {
-                $hdmiNodeId = $virtualId++;
-                $hdmiPortId = $virtualId++;
-                // The video pipewiresink may be 'suspended' in PipeWire when no PipeWire
-                // consumers are attached — the direct kmssink output still works.
-                $vsState = $videoStreamNodes[0]['state'];
-                $hdmiActive = in_array($vsState, array('running', 'suspended'));
+
+        if (is_array($vsCfg) && isset($vsCfg['videoInputSources'])) {
+            foreach ($vsCfg['videoInputSources'] as $vs) {
+                if (!isset($vs['enabled']) || !$vs['enabled']) continue;
+
+                $srcNodeName = isset($vs['pipeWireNodeName']) ? $vs['pipeWireNodeName'] : '';
+                if (empty($srcNodeName)) continue;
+
+                // Skip if this video source already exists as a PipeWire node
+                if (isset($liveNodeStates[$srcNodeName])) continue;
+
+                // Detect running state from the paired audio PipeWire node
+                $audioNodeName = isset($vs['audioPipeWireNodeName']) ? $vs['audioPipeWireNodeName'] : '';
+                $isRunning = !empty($audioNodeName) && isset($liveNodeStates[$audioNodeName])
+                    && in_array($liveNodeStates[$audioNodeName], array('running', 'idle'));
+
+                // Build description
+                $srcName = isset($vs['name']) ? $vs['name'] : 'Video Source';
+                $srcType = isset($vs['type']) ? $vs['type'] : '';
+                $w = isset($vs['width']) ? intval($vs['width']) : 0;
+                $h = isset($vs['height']) ? intval($vs['height']) : 0;
+                $fps = isset($vs['framerate']) ? intval($vs['framerate']) : 0;
+                $typeLabel = '';
+                if ($srcType === 'urisrc') $typeLabel = 'YouTube';
+                elseif ($srcType === 'videotestsrc') $typeLabel = 'Test Pattern';
+                elseif ($srcType === 'v4l2src') $typeLabel = 'USB Camera';
+                $desc = $srcName;
+                if (!empty($typeLabel)) $desc .= ' (' . $typeLabel . ')';
+
+                // Create synthetic video source node
+                $srcNodeId = $virtualId++;
+                $srcPortId = $virtualId++;
                 $nodes[] = array(
-                    'id' => $hdmiNodeId,
-                    'name' => $hdmiNodeName,
-                    'description' => $actualConnector . ' (Direct)',
+                    'id' => $srcNodeId,
+                    'name' => $srcNodeName,
+                    'description' => $desc,
                     'nick' => '',
-                    'mediaClass' => 'Video/Sink',
-                    'state' => $hdmiActive ? 'running' : 'not-running',
+                    'mediaClass' => 'Video/Source',
+                    'state' => $isRunning ? 'running' : 'not-running',
                     'factory' => 'virtual',
                     'properties' => array(
-                        'fpp.hdmi.direct' => true,
-                        'fpp.hdmi.connector' => $videoOutput,
+                        'fpp.video.stream' => true,
+                        'fpp.video.slot' => isset($vs['id']) ? intval($vs['id']) : 0,
+                        'fpp.video.virtual' => true,
+                        'video.format' => ($w > 0 ? $w . 'x' . $h . '@' . $fps . 'fps' : ''),
                     ),
                 );
                 $ports[] = array(
-                    'id' => $hdmiPortId,
-                    'nodeId' => $hdmiNodeId,
-                    'name' => 'input_1',
-                    'direction' => 'input',
+                    'id' => $srcPortId,
+                    'nodeId' => $srcNodeId,
+                    'name' => 'output_video',
+                    'direction' => 'output',
                     'channel' => 'video',
                 );
-                // Link each video stream's output port to this HDMI node
-                foreach ($videoStreamNodes as $vsn) {
-                    $vsPortId = null;
-                    foreach ($ports as $p) {
-                        if ($p['nodeId'] === $vsn['id'] && $p['direction'] === 'output') {
-                            $vsPortId = $p['id'];
-                            break;
-                        }
+                $audioNodeIds[$srcNodeId] = true;
+
+                // Find consumers that target this source and inject HDMI sink nodes
+                foreach ($vcCfg as $vc) {
+                    $consumerSrc = isset($vc['sourceNode']) ? $vc['sourceNode'] : '';
+                    if ($consumerSrc !== $srcNodeName) continue;
+
+                    $consumerNodeName = isset($vc['pipeWireNodeName']) ? $vc['pipeWireNodeName'] : '';
+                    if (empty($consumerNodeName)) continue;
+                    if (isset($liveNodeStates[$consumerNodeName])) continue;
+
+                    $connector = isset($vc['connector']) ? $vc['connector'] : '';
+                    $cw = isset($vc['width']) ? intval($vc['width']) : 0;
+                    $ch2 = isset($vc['height']) ? intval($vc['height']) : 0;
+                    $consumerDesc = !empty($connector) ? $connector : 'Video Output';
+                    if ($cw > 0 && $ch2 > 0) {
+                        $consumerDesc .= ' (' . $cw . 'x' . $ch2 . ')';
                     }
-                    if ($vsPortId !== null) {
-                        $vsnActive = in_array($vsn['state'], array('running', 'suspended'));
-                        $links[] = array(
-                            'id' => $virtualId++,
-                            'outputNodeId' => $vsn['id'],
-                            'outputPortId' => $vsPortId,
-                            'inputNodeId' => $hdmiNodeId,
-                            'inputPortId' => $hdmiPortId,
-                            'state' => $vsnActive ? 'active' : 'not-running',
-                        );
+
+                    $consumerNodeId = $virtualId++;
+                    $consumerPortId = $virtualId++;
+                    $nodes[] = array(
+                        'id' => $consumerNodeId,
+                        'name' => $consumerNodeName,
+                        'description' => $consumerDesc,
+                        'nick' => '',
+                        'mediaClass' => 'Video/Sink',
+                        'state' => $isRunning ? 'running' : 'not-running',
+                        'factory' => 'virtual',
+                        'properties' => array(
+                            'fpp.video.consumer' => true,
+                            'fpp.hdmi.direct' => (isset($vc['type']) && $vc['type'] === 'hdmi'),
+                            'fpp.hdmi.connector' => $connector,
+                            'fpp.video.groupId' => isset($vc['groupId']) ? intval($vc['groupId']) : 0,
+                            'fpp.video.groupName' => isset($vc['groupName']) ? $vc['groupName'] : '',
+                        ),
+                    );
+                    $ports[] = array(
+                        'id' => $consumerPortId,
+                        'nodeId' => $consumerNodeId,
+                        'name' => 'input_video',
+                        'direction' => 'input',
+                        'channel' => 'video',
+                    );
+                    $audioNodeIds[$consumerNodeId] = true;
+
+                    // Link source → consumer
+                    $links[] = array(
+                        'id' => $virtualId++,
+                        'outputNodeId' => $srcNodeId,
+                        'outputPortId' => $srcPortId,
+                        'inputNodeId' => $consumerNodeId,
+                        'inputPortId' => $consumerPortId,
+                        'state' => $isRunning ? 'active' : 'not-running',
+                    );
+                }
+            }
+        }
+
+        // Also inject consumers without a sourceNode (on-demand / stream-slot based)
+        // so they appear in the graph even when idle.
+        // Build lookup: fppd_video_stream_N node/port IDs for linking
+        $videoStreamNodes = array();  // slot => array('nodeId'=>..., 'portId'=>..., 'state'=>...)
+        foreach ($nodes as $n) {
+            if (preg_match('/^fppd_video_stream_(\d+)$/', $n['name'], $m)) {
+                $slot = intval($m[1]);
+                // Find output port for this node
+                $outPort = null;
+                foreach ($ports as $p) {
+                    if ($p['nodeId'] === $n['id'] && $p['direction'] === 'output') {
+                        $outPort = $p['id'];
+                        break;
                     }
                 }
+                // Video streams use GStreamer intervideo (not PipeWire links) so the
+                // PipeWire node may stay "suspended" even while video is playing.
+                // Check the paired audio node fppd_stream_N for a reliable running state.
+                $audioState = isset($liveNodeStates['fppd_stream_' . $slot])
+                    ? $liveNodeStates['fppd_stream_' . $slot] : '';
+                $effectiveState = $n['state'];
+                if (in_array($audioState, array('running', 'idle')) && !in_array($effectiveState, array('running', 'idle'))) {
+                    $effectiveState = $audioState;
+                }
+                $videoStreamNodes[$slot] = array(
+                    'nodeId' => $n['id'],
+                    'portId' => $outPort,
+                    'state' => $effectiveState,
+                );
+            }
+        }
+
+        foreach ($vcCfg as $vc) {
+            $consumerSrc = isset($vc['sourceNode']) ? $vc['sourceNode'] : '';
+            if (!empty($consumerSrc)) continue; // already handled above
+
+            $consumerNodeName = isset($vc['pipeWireNodeName']) ? $vc['pipeWireNodeName'] : '';
+            if (empty($consumerNodeName)) continue;
+            if (isset($liveNodeStates[$consumerNodeName])) continue;
+
+            $connector = isset($vc['connector']) ? $vc['connector'] : '';
+            $cw = isset($vc['width']) ? intval($vc['width']) : 0;
+            $ch2 = isset($vc['height']) ? intval($vc['height']) : 0;
+            $consumerDesc = !empty($connector) ? $connector : 'Video Output';
+            if ($cw > 0 && $ch2 > 0) {
+                $consumerDesc .= ' (' . $cw . 'x' . $ch2 . ')';
+            }
+
+            // Determine if any linked stream slot is active
+            $slots = isset($vc['streamSlots']) ? $vc['streamSlots'] : array();
+            $anySlotActive = false;
+            foreach ($slots as $s) {
+                if (isset($videoStreamNodes[$s]) &&
+                    in_array($videoStreamNodes[$s]['state'], array('running', 'idle'))) {
+                    $anySlotActive = true;
+                    break;
+                }
+            }
+
+            $consumerNodeId = $virtualId++;
+            $consumerPortId = $virtualId++;
+            $nodes[] = array(
+                'id' => $consumerNodeId,
+                'name' => $consumerNodeName,
+                'description' => $consumerDesc,
+                'nick' => '',
+                'mediaClass' => 'Video/Sink',
+                'state' => $anySlotActive ? 'running' : 'not-running',
+                'factory' => 'virtual',
+                'properties' => array(
+                    'fpp.video.consumer' => true,
+                    'fpp.hdmi.direct' => (isset($vc['type']) && $vc['type'] === 'hdmi'),
+                    'fpp.hdmi.connector' => $connector,
+                    'fpp.video.groupId' => isset($vc['groupId']) ? intval($vc['groupId']) : 0,
+                    'fpp.video.groupName' => isset($vc['groupName']) ? $vc['groupName'] : '',
+                ),
+            );
+            $ports[] = array(
+                'id' => $consumerPortId,
+                'nodeId' => $consumerNodeId,
+                'name' => 'input_video',
+                'direction' => 'input',
+                'channel' => 'video',
+            );
+            $audioNodeIds[$consumerNodeId] = true;
+
+            // Link fppd_video_stream_N → consumer for each stream slot
+            // If no streamSlots specified, link all active video streams
+            $linkSlots = $slots;
+            if (empty($linkSlots)) {
+                $linkSlots = array_keys($videoStreamNodes);
+            }
+            foreach ($linkSlots as $s) {
+                if (!isset($videoStreamNodes[$s])) continue;
+                $vsn = $videoStreamNodes[$s];
+                if ($vsn['portId'] === null) continue;
+                $isActive = in_array($vsn['state'], array('running', 'idle'));
+                $links[] = array(
+                    'id' => $virtualId++,
+                    'outputNodeId' => $vsn['nodeId'],
+                    'outputPortId' => $vsn['portId'],
+                    'inputNodeId' => $consumerNodeId,
+                    'inputPortId' => $consumerPortId,
+                    'state' => $isActive ? 'active' : 'not-running',
+                );
             }
         }
     }
@@ -5295,12 +5455,13 @@ function GetPipeWireVideoInputSources()
         $data = array("videoInputSources" => array());
     }
 
-    // Compute pipeWireNodeName for each source so the UI can reference them
+    // Compute pipeWireNodeName and audioPipeWireNodeName for each source
     if (isset($data['videoInputSources'])) {
         foreach ($data['videoInputSources'] as &$src) {
             if (isset($src['id'])) {
                 $nameSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower(isset($src['name']) ? $src['name'] : 'source'));
                 $src['pipeWireNodeName'] = "fpp_video_src_" . $src['id'] . "_" . $nameSlug;
+                $src['audioPipeWireNodeName'] = "fpp_audio_src_" . $src['id'] . "_" . $nameSlug;
             }
         }
         unset($src);
@@ -5392,8 +5553,10 @@ function ApplyPipeWireVideoInputSources()
         // Generate stable PipeWire node name
         $nameSlug = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower(isset($src['name']) ? $src['name'] : 'source'));
         $src['pipeWireNodeName'] = "fpp_video_src_" . $src['id'] . "_" . $nameSlug;
+        $src['audioPipeWireNodeName'] = "fpp_audio_src_" . $src['id'] . "_" . $nameSlug;
 
         $enabled = isset($src['enabled']) ? (bool) $src['enabled'] : true;
+        $audioEnabled = isset($src['audioEnabled']) ? (bool) $src['audioEnabled'] : false;
 
         $entry = array(
             'id' => $src['id'],
@@ -5404,6 +5567,8 @@ function ApplyPipeWireVideoInputSources()
             'width' => isset($src['width']) ? intval($src['width']) : 320,
             'height' => isset($src['height']) ? intval($src['height']) : 240,
             'framerate' => isset($src['framerate']) ? intval($src['framerate']) : 10,
+            'audioEnabled' => $audioEnabled,
+            'audioPipeWireNodeName' => $src['audioPipeWireNodeName'],
         );
 
         switch ($type) {

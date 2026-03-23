@@ -65,7 +65,9 @@ public:
     // All kmssink elements should use this fd to avoid DRM master contention.
     static int GetSharedDrmFd(const std::string& cardPath);
 
-    // Find the DRM PRIMARY plane for the CRTC currently bound to a connector.
+    // Find a DRM OVERLAY plane for the CRTC currently bound to a connector.
+    // Uses overlay planes (not primary) because fbcon holds the primary planes.
+    // Tracks allocated planes to avoid collisions between consumers.
     // Returns -1 if not found.  Requires the shared DRM fd.
     static int FindPrimaryPlaneForConnector(int drmFd, int connectorId);
 

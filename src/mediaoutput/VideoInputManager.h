@@ -67,6 +67,10 @@ public:
     /// Get list of all configured source node names (for UI/API).
     std::vector<std::pair<int, std::string>> GetSourceList() const;
 
+    /// Get the framerate of a source by its intervideo channel name.
+    /// Returns the detected (or configured) fps, or 0 if not found.
+    int GetSourceFramerate(const std::string& channelName) const;
+
 private:
     VideoInputManager() = default;
     ~VideoInputManager();
@@ -104,11 +108,18 @@ private:
         int height = 240;
         int framerate = 10;
 
+        // Audio extraction settings
+        bool audioEnabled = false;           // Extract and publish audio from this source
+        std::string audioPipeWireNodeName;   // Generated: PipeWire audio source node name
+
 #ifdef HAS_GSTREAMER_VIDEO_INPUT
         GstElement* pipeline = nullptr;
+        GstElement* audioPipeline = nullptr;
 #endif
         std::thread runThread;
+        std::thread audioRunThread;
         std::atomic<bool> shutdownRequested{false};
+        std::atomic<bool> audioShutdownRequested{false};
         bool running = false;
         int restartCount = 0;
 
@@ -123,14 +134,20 @@ private:
               port(o.port), encoding(std::move(o.encoding)),
               multicastGroup(std::move(o.multicastGroup)),
               width(o.width), height(o.height), framerate(o.framerate),
+              audioEnabled(o.audioEnabled),
+              audioPipeWireNodeName(std::move(o.audioPipeWireNodeName)),
 #ifdef HAS_GSTREAMER_VIDEO_INPUT
               pipeline(o.pipeline),
+              audioPipeline(o.audioPipeline),
 #endif
               runThread(std::move(o.runThread)),
+              audioRunThread(std::move(o.audioRunThread)),
               shutdownRequested(o.shutdownRequested.load()),
+              audioShutdownRequested(o.audioShutdownRequested.load()),
               running(o.running), restartCount(o.restartCount) {
 #ifdef HAS_GSTREAMER_VIDEO_INPUT
             o.pipeline = nullptr;
+            o.audioPipeline = nullptr;
 #endif
         }
         SourceInfo(const SourceInfo&) = delete;
@@ -142,6 +159,9 @@ private:
 
     /// Start a single source pipeline.
     bool StartSource(SourceInfo& source);
+
+    /// Build and start pipeline with separate video + audio streams.
+    bool StartSourceWithAudio(SourceInfo& source);
 
     /// Stop a single source pipeline.
     void StopSource(SourceInfo& source);

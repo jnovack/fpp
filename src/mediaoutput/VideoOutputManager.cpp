@@ -13,6 +13,7 @@
 #include "fpp-pch.h"
 
 #include "VideoOutputManager.h"
+#include "VideoInputManager.h"
 #include "GStreamerOut.h"
 #include "common.h"
 #include "settings.h"
@@ -26,6 +27,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <ifaddrs.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 
 #if __has_include(<gst/app/gstappsink.h>)
 #include <gst/app/gstappsink.h>
@@ -79,10 +83,33 @@ void VideoOutputManager::Init() {
     // However, consumers with a sourceNode (targeting a persistent video
     // input source) can start immediately.
     if (LoadConfig()) {
+        // Group persistent HDMI consumers by sourceNode.
+        // PipeWire mode=provide doesn't fan-out buffers to multiple
+        // consumer streams, so we must use a single pipeline with tee
+        // for HDMI consumers sharing the same source.
+        std::map<std::string, std::vector<size_t>> hdmiSourceGroups;
+        for (size_t i = 0; i < m_consumers.size(); i++) {
+            auto& c = m_consumers[i];
+            if (!c.sourceNode.empty() && c.type == "hdmi") {
+                hdmiSourceGroups[c.sourceNode].push_back(i);
+            }
+        }
+
         int persistentCount = 0;
-        for (auto& consumer : m_consumers) {
-            if (!consumer.sourceNode.empty()) {
-                StartConsumer(consumer);
+        std::set<size_t> startedAsGroup;
+        for (auto& [sourceNode, indices] : hdmiSourceGroups) {
+            if (indices.size() > 1) {
+                if (StartHdmiConsumerGroup(indices)) {
+                    persistentCount += indices.size();
+                    for (auto idx : indices) startedAsGroup.insert(idx);
+                }
+            }
+        }
+
+        // Start remaining persistent consumers individually
+        for (size_t i = 0; i < m_consumers.size(); i++) {
+            if (!m_consumers[i].sourceNode.empty() && startedAsGroup.find(i) == startedAsGroup.end()) {
+                StartConsumer(m_consumers[i]);
                 persistentCount++;
             }
         }
@@ -106,6 +133,10 @@ void VideoOutputManager::Reload() {
         m_consumers.clear();
         savedProducer = m_activeProducer;
     }
+
+    // Wait for detached teardown threads to finish releasing DRM/CMA
+    // before starting new consumer pipelines.
+    WaitForPendingTeardowns(5000);
 
     // Re-check if video routing is configured
     std::string videoSink = getSetting("PipeWireVideoSinkName");
@@ -203,28 +234,55 @@ void VideoOutputManager::StartConsumers(const std::string& producerNodeName,
 }
 
 void VideoOutputManager::SuspendPersistentHdmiConsumers() {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    int stopped = 0;
-    for (auto& consumer : m_consumers) {
-        if (!consumer.sourceNode.empty() && consumer.type == "hdmi" && consumer.running) {
-            LogInfo(VB_MEDIAOUT, "VideoOutputManager: Suspending persistent HDMI consumer '%s' (connector %s) for DRM master handoff\n",
-                    consumer.name.c_str(), consumer.connector.c_str());
-            StopConsumer(consumer);
-            stopped++;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        int stopped = 0;
+        for (auto& consumer : m_consumers) {
+            if (!consumer.sourceNode.empty() && consumer.type == "hdmi" && consumer.running) {
+                LogInfo(VB_MEDIAOUT, "VideoOutputManager: Suspending persistent HDMI consumer '%s' (connector %s) for DRM master handoff\n",
+                        consumer.name.c_str(), consumer.connector.c_str());
+                StopConsumer(consumer);
+                stopped++;
+            }
         }
+        if (stopped > 0)
+            LogInfo(VB_MEDIAOUT, "VideoOutputManager: Suspended %d persistent HDMI consumer(s)\n", stopped);
     }
-    if (stopped > 0)
-        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Suspended %d persistent HDMI consumer(s)\n", stopped);
+    // Wait for DRM/CMA resources to be freed before the main pipeline
+    // claims DRM master on the same device.
+    WaitForPendingTeardowns(5000);
 }
 
 void VideoOutputManager::ResumePersistentHdmiConsumers() {
     std::lock_guard<std::mutex> lock(m_mutex);
+
+    // Group persistent HDMI consumers by sourceNode (same logic as Init)
+    std::map<std::string, std::vector<size_t>> hdmiSourceGroups;
+    for (size_t i = 0; i < m_consumers.size(); i++) {
+        auto& c = m_consumers[i];
+        if (!c.sourceNode.empty() && c.type == "hdmi" && !c.running) {
+            hdmiSourceGroups[c.sourceNode].push_back(i);
+        }
+    }
+
     int started = 0;
-    for (auto& consumer : m_consumers) {
-        if (!consumer.sourceNode.empty() && consumer.type == "hdmi" && !consumer.running) {
+    std::set<size_t> startedAsGroup;
+    for (auto& [sourceNode, indices] : hdmiSourceGroups) {
+        if (indices.size() > 1) {
+            if (StartHdmiConsumerGroup(indices)) {
+                started += indices.size();
+                for (auto idx : indices) startedAsGroup.insert(idx);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < m_consumers.size(); i++) {
+        auto& c = m_consumers[i];
+        if (!c.sourceNode.empty() && c.type == "hdmi" && !c.running
+            && startedAsGroup.find(i) == startedAsGroup.end()) {
             LogInfo(VB_MEDIAOUT, "VideoOutputManager: Resuming persistent HDMI consumer '%s' (connector %s)\n",
-                    consumer.name.c_str(), consumer.connector.c_str());
-            StartConsumer(consumer);
+                    c.name.c_str(), c.connector.c_str());
+            StartConsumer(c);
             started++;
         }
     }
@@ -386,6 +444,221 @@ bool VideoOutputManager::LoadConfig() {
     return !m_consumers.empty();
 }
 
+bool VideoOutputManager::StartHdmiConsumerGroup(const std::vector<size_t>& indices) {
+#ifdef HAS_GSTREAMER_VIDEO_OUTPUT
+    if (indices.size() < 2) return false;
+
+    // The first consumer in the group owns the pipeline
+    size_t ownerIdx = indices[0];
+    ConsumerInfo& owner = m_consumers[ownerIdx];
+
+    if (owner.running) {
+        LogWarn(VB_MEDIAOUT, "VideoOutputManager: Group owner '%s' already running\n", owner.name.c_str());
+        return true;
+    }
+
+    setenv("PIPEWIRE_RUNTIME_DIR", "/run/pipewire-fpp", 0);
+
+    // Validate all consumers and check connector connectivity
+    std::vector<size_t> validIndices;
+    for (size_t idx : indices) {
+        auto& c = m_consumers[idx];
+        if (c.connectorId <= 0 || c.cardPath.empty()) {
+            LogWarn(VB_MEDIAOUT, "VideoOutputManager: Skipping group member '%s' — no valid connector\n", c.name.c_str());
+            continue;
+        }
+        if (!c.connector.empty()) {
+            auto drmCheck = GStreamerOutput::ResolveDrmConnector(c.connector);
+            if (!drmCheck.connected) {
+                LogInfo(VB_MEDIAOUT, "VideoOutputManager: Skipping group member '%s' — connector %s not connected\n",
+                        c.name.c_str(), c.connector.c_str());
+                continue;
+            }
+        }
+        if (m_primaryConnectorId >= 0 && c.connectorId == m_primaryConnectorId) continue;
+        if (m_directConnectorIds.count(c.connectorId)) continue;
+        validIndices.push_back(idx);
+    }
+    if (validIndices.empty()) return false;
+    if (validIndices.size() == 1) {
+        // Only one valid — fall back to single consumer
+        return StartConsumer(m_consumers[validIndices[0]]);
+    }
+
+    // Start each consumer as an independent pipeline with its own intervideosrc.
+    // This avoids CMA/DRM buffer exhaustion issues when both kmssink elements
+    // in a combined pipeline allocate dumb buffers simultaneously on a shared fd.
+    bool allOk = true;
+    for (size_t i = 0; i < validIndices.size(); i++) {
+        if (!StartConsumer(m_consumers[validIndices[i]])) {
+            allOk = false;
+        }
+    }
+    return allOk;
+
+#if 0 // Combined pipeline disabled — see comment above
+    std::string sourceNodeName = m_consumers[validIndices[0]].sourceNode;
+    std::string pipelineDesc = "intervideosrc timeout=18446744073709551615 channel=" + sourceNodeName
+        + " ! videoconvert ! tee name=t";
+    std::string names; // for logging
+    for (size_t i = 0; i < validIndices.size(); i++) {
+        auto& c = m_consumers[validIndices[i]];
+        std::string sinkName = "sink" + std::to_string(i);
+        pipelineDesc += " t. ! queue max-size-buffers=2 leaky=downstream ! videoscale ! ";
+        if (c.width > 0 && c.height > 0) {
+            pipelineDesc += "video/x-raw,format=BGRx,width=" + std::to_string(c.width)
+                         + ",height=" + std::to_string(c.height) + " ! ";
+        } else {
+            pipelineDesc += "video/x-raw,format=BGRx ! ";
+        }
+        pipelineDesc += "kmssink name=" + sinkName + " sync=false"
+                     " connector-id=" + std::to_string(c.connectorId)
+                     + " restore-crtc=true skip-vsync=true";
+        if (!names.empty()) names += ", ";
+        names += c.name;
+    }
+
+    LogInfo(VB_MEDIAOUT, "VideoOutputManager: Starting HDMI group [%s] with combined pipeline: %s\n",
+            names.c_str(), pipelineDesc.c_str());
+
+    GError* error = nullptr;
+    GstElement* pipeline = gst_parse_launch(pipelineDesc.c_str(), &error);
+    if (!pipeline) {
+        LogErr(VB_MEDIAOUT, "VideoOutputManager: Group pipeline creation failed: %s\n",
+               error ? error->message : "unknown");
+        if (error) g_error_free(error);
+        return false;
+    }
+    if (error) {
+        LogWarn(VB_MEDIAOUT, "VideoOutputManager: Group pipeline warning: %s\n", error->message);
+        g_error_free(error);
+    }
+
+    // intervideosrc is configured inline (channel name in pipeline desc).\n    // No PipeWire node configuration or manual pw-link needed.
+
+    // Configure each kmssink with shared DRM fd and plane
+    for (size_t i = 0; i < validIndices.size(); i++) {
+        auto& c = m_consumers[validIndices[i]];
+        std::string sinkName = "sink" + std::to_string(i);
+        GstElement* sink = gst_bin_get_by_name(GST_BIN(pipeline), sinkName.c_str());
+        if (sink) {
+            int drmFd = c.cardPath.empty() ? -1 : GStreamerOutput::GetSharedDrmFd(c.cardPath);
+            if (drmFd >= 0) {
+                g_object_set(sink, "fd", drmFd, NULL);
+                int planeId = GStreamerOutput::FindPrimaryPlaneForConnector(drmFd, c.connectorId);
+                if (planeId >= 0) {
+                    g_object_set(sink, "plane-id", planeId, NULL);
+                }
+                LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group sink '%s' fd=%d plane=%d connector=%d\n",
+                        c.name.c_str(), drmFd, planeId, c.connectorId);
+            } else {
+                g_object_set(sink, "driver-name", "vc4", NULL);
+            }
+            gst_object_unref(sink);
+        }
+    }
+
+    // Store pipeline in the first valid consumer (the "owner")
+    size_t pipelineOwnerIdx = validIndices[0];
+    m_consumers[pipelineOwnerIdx].pipeline = pipeline;
+    m_consumers[pipelineOwnerIdx].shutdownRequested = false;
+    m_consumers[pipelineOwnerIdx].running = true;
+    m_consumers[pipelineOwnerIdx].groupPipelineOwnerIdx = -1; // owner
+
+    // Mark other group members as running, pointing to the owner
+    for (size_t i = 1; i < validIndices.size(); i++) {
+        auto& c = m_consumers[validIndices[i]];
+        c.running = true;
+        c.shutdownRequested = false;
+        c.pipeline = nullptr;
+        c.groupPipelineOwnerIdx = (int)pipelineOwnerIdx;
+    }
+
+    // Start background thread for pipeline lifecycle
+    std::string groupNames = names;
+    std::atomic<bool>* shutdownFlag = &m_consumers[pipelineOwnerIdx].shutdownRequested;
+
+    m_consumers[pipelineOwnerIdx].startThread = std::thread(
+        [pipeline, groupNames, shutdownFlag]() {
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] background thread starting\n", groupNames.c_str());
+
+        GstStateChangeReturn ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] set_state(PLAYING) returned %d\n",
+                groupNames.c_str(), (int)ret);
+
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            if (!shutdownFlag->load())
+                LogWarn(VB_MEDIAOUT, "VideoOutputManager: Group [%s] pipeline failed to start\n", groupNames.c_str());
+            return;
+        }
+
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] pipeline reached PLAYING\n", groupNames.c_str());
+
+        // Bus monitor loop
+        GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
+        int busLoopIter = 0;
+        while (!shutdownFlag->load()) {
+            GstMessage* msg = gst_bus_timed_pop(bus, 500 * GST_MSECOND);
+            busLoopIter++;
+            if (busLoopIter % 10 == 1) {
+                GstState cur = GST_STATE_VOID_PENDING, pend = GST_STATE_VOID_PENDING;
+                gst_element_get_state(pipeline, &cur, &pend, 0);
+                if (cur != GST_STATE_PLAYING || pend != GST_STATE_VOID_PENDING) {
+                    LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] state check: current=%d pending=%d\n",
+                            groupNames.c_str(), (int)cur, (int)pend);
+                }
+            }
+            if (!msg) continue;
+            switch (GST_MESSAGE_TYPE(msg)) {
+                case GST_MESSAGE_ERROR: {
+                    GError* err = nullptr; gchar* debug = nullptr;
+                    gst_message_parse_error(msg, &err, &debug);
+                    if (!shutdownFlag->load())
+                        LogWarn(VB_MEDIAOUT, "VideoOutputManager: Group [%s] error: %s (%s)\n",
+                                groupNames.c_str(), err ? err->message : "?", debug ? debug : "");
+                    if (err) g_error_free(err); g_free(debug);
+                    gst_message_unref(msg); gst_object_unref(bus);
+                    return;
+                }
+                case GST_MESSAGE_EOS:
+                    LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] EOS\n", groupNames.c_str());
+                    gst_message_unref(msg); gst_object_unref(bus);
+                    return;
+                case GST_MESSAGE_ASYNC_DONE:
+                    LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] ASYNC_DONE (preroll complete)\n",
+                            groupNames.c_str());
+                    break;
+                case GST_MESSAGE_STATE_CHANGED:
+                    if (GST_MESSAGE_SRC(msg) == GST_OBJECT(pipeline)) {
+                        GstState oldSt, newSt, pendSt;
+                        gst_message_parse_state_changed(msg, &oldSt, &newSt, &pendSt);
+                        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] state %d -> %d (pending %d)\n",
+                                groupNames.c_str(), (int)oldSt, (int)newSt, (int)pendSt);
+                    }
+                    break;
+                case GST_MESSAGE_WARNING: {
+                    GError* err = nullptr; gchar* debug = nullptr;
+                    gst_message_parse_warning(msg, &err, &debug);
+                    LogWarn(VB_MEDIAOUT, "VideoOutputManager: Group [%s] warning: %s (%s)\n",
+                            groupNames.c_str(), err ? err->message : "?", debug ? debug : "");
+                    if (err) g_error_free(err); g_free(debug);
+                    break;
+                }
+                default: break;
+            }
+            gst_message_unref(msg);
+        }
+        gst_object_unref(bus);
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group [%s] background thread exiting\n", groupNames.c_str());
+    });
+
+    return true;
+#endif // #if 0 -- combined pipeline disabled
+#else
+    return false;
+#endif
+}
+
 bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
 #ifdef HAS_GSTREAMER_VIDEO_OUTPUT
     if (consumer.running) {
@@ -398,15 +671,13 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
 
     // Build GStreamer consumer pipeline description
     std::string pipelineDesc;
-    std::string nodeDesc = "FPP Video: " + consumer.name;
 
-    // Common source: pipewiresrc with Stream/Input/Video media class.
-    // do-timestamp=false preserves the producer's original presentation
-    // timestamps through PipeWire, so the consumer's sink can pace
-    // rendering against the content clock rather than PipeWire's
-    // Dummy-Driver schedule (which runs at a default 25fps that rarely
-    // matches the actual content framerate).
-    pipelineDesc = "pipewiresrc name=src do-timestamp=false ! videoconvert ! videoscale ! ";
+    // Common source: intervideosrc reads from source's intervideosink channel.
+    // This uses GStreamer's in-process inter-pipeline communication,
+    // bypassing PipeWire for video (PipeWire's video driver scheduling
+    // cannot drive video graph cycles at rate=0).
+    pipelineDesc = "intervideosrc timeout=18446744073709551615 channel=" + consumer.sourceNode
+                 + " ! videoconvert ! videoscale ! ";
 
     if (consumer.type == "hdmi") {
         if (consumer.connectorId <= 0 || consumer.cardPath.empty()) {
@@ -446,27 +717,67 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
             return false;
         }
 
-        // Add scaling caps with format suitable for kmssink (vc4 DRM).
-        // kmssink needs an explicit format — without it, pipewiresrc may
-        // negotiate a format kmssink can't render, causing "Error calculating
-        // the output display ratio" failures.
-        if (consumer.width > 0 && consumer.height > 0) {
-            pipelineDesc += "video/x-raw,format=BGRx,width=" + std::to_string(consumer.width)
-                         + ",height=" + std::to_string(consumer.height) + " ! ";
-        } else {
-            pipelineDesc += "video/x-raw,format=BGRx ! ";
+        // Check CMA memory before starting HDMI consumer — kmssink needs
+        // ~16-24 MB of CMA for dumb buffers.  If CMA is too low, wait
+        // for any pending pipeline teardowns to release DRM buffers,
+        // then re-check.  Skip this consumer if CMA is still too low.
+        {
+            static constexpr long CMA_MIN_KB = 20480;
+            auto readCmaFree = []() -> long {
+                FILE* f = fopen("/proc/meminfo", "r");
+                if (!f) return -1;
+                char line[256];
+                long kb = -1;
+                while (fgets(line, sizeof(line), f)) {
+                    if (sscanf(line, "CmaFree: %ld kB", &kb) == 1) break;
+                }
+                fclose(f);
+                return kb;
+            };
+
+            long cmaFreeKB = readCmaFree();
+            if (cmaFreeKB >= 0 && cmaFreeKB < CMA_MIN_KB) {
+                // A previous pipeline teardown may still be releasing
+                // DRM dumb buffers — wait for it before giving up.
+                LogInfo(VB_MEDIAOUT, "VideoOutputManager: CMA low (%ld kB) for consumer '%s', "
+                        "waiting for pending teardowns...\n",
+                        cmaFreeKB, consumer.name.c_str());
+                WaitForPendingTeardowns(5000);
+                cmaFreeKB = readCmaFree();
+            }
+            if (cmaFreeKB >= 0 && cmaFreeKB < CMA_MIN_KB) {
+                LogWarn(VB_MEDIAOUT, "VideoOutputManager: Skipping HDMI consumer '%s' — "
+                        "CMA memory too low (%ld kB free, need %ld+ kB). "
+                        "Restart FPPD to recover CMA.\n",
+                        consumer.name.c_str(), cmaFreeKB, CMA_MIN_KB);
+                return false;
+            }
         }
 
-        // kmssink sync=true paces frames against the original presentation
-        // timestamps from the producer (preserved by do-timestamp=false).
-        // NOTE: Do NOT set driver-name here — when we pass a shared DRM fd
-        // post-creation, kmssink's _validate_and_set_external_fd() rejects
-        // the fd if devname (driver-name) is already set.  The fd property
-        // derives devname from the fd itself via drmGetDeviceNameFromFd().
-        // driver-name=vc4 is only used as fallback when no shared fd is available.
+        // Add scaling caps with format suitable for kmssink (vc4 DRM).
+        // Use the source's actual framerate (auto-detected from yt-dlp or
+        // user-configured).  This avoids mismatches that cause intervideosrc
+        // to duplicate or drop frames at the wrong cadence.
+        int fps = VideoInputManager::Instance().GetSourceFramerate(consumer.sourceNode);
+        if (fps <= 0) fps = 30;  // fallback for on-demand consumers
+
+        if (consumer.width > 0 && consumer.height > 0) {
+            pipelineDesc += "video/x-raw,format=BGRx,width=" + std::to_string(consumer.width)
+                         + ",height=" + std::to_string(consumer.height)
+                         + ",framerate=" + std::to_string(fps) + "/1 ! ";
+        } else {
+            pipelineDesc += "video/x-raw,format=BGRx,framerate=" + std::to_string(fps) + "/1 ! ";
+        }
+
+        // Queue absorbs timing jitter between intervideosrc and kmssink;
+        // without it GStreamer warns about missing latency compensation.
+        pipelineDesc += "queue max-size-buffers=2 ! ";
+
+        // kmssink sync=true paces frame rendering by intervideosrc timestamps
+        // (fresh monotonic timestamps, independent of HLS timing).
         pipelineDesc += "kmssink name=sink sync=true"
                      " connector-id=" + std::to_string(consumer.connectorId)
-                     + " restore-crtc=true skip-vsync=true";
+                     + " restore-crtc=true";
 
     } else if (consumer.type == "overlay") {
         // Resolve the pixel overlay model to get its dimensions
@@ -564,25 +875,7 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
         g_error_free(error);
     }
 
-    // Set pipewiresrc stream properties for PipeWire identification
-    GstElement* src = gst_bin_get_by_name(GST_BIN(consumer.pipeline), "src");
-    if (src) {
-        GstStructure* props = gst_structure_new("props",
-            "media.class", G_TYPE_STRING, "Stream/Input/Video",
-            "node.name", G_TYPE_STRING, consumer.pipeWireNodeName.c_str(),
-            "node.description", G_TYPE_STRING, nodeDesc.c_str(),
-            NULL);
-        g_object_set(src, "stream-properties", props, NULL);
-        gst_structure_free(props);
-
-        // Set the target-object so PipeWire links this consumer to the
-        // video producer node that's currently active.
-        std::string targetNode = consumer.sourceNode.empty()
-            ? m_activeProducer : consumer.sourceNode;
-        g_object_set(src, "target-object", targetNode.c_str(), NULL);
-
-        gst_object_unref(src);
-    }
+    // intervideosrc is configured inline — no PipeWire node setup needed.
 
     // For HDMI consumers, pass the shared DRM fd to kmssink so all
     // pipelines share a single DRM master — avoids contention on card1.
@@ -625,46 +918,24 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
         }
     }
 
-    // Start the pipeline in a background thread because set_state(PLAYING)
-    // blocks until pipewiresrc prerolls (i.e. a PipeWire producer links).
-    // Without a background thread this would block the command handler thread.
+    // Start the pipeline in a background thread.
+    // With intervideosrc, set_state(PLAYING) should complete quickly
+    // (no PipeWire negotiation needed).
     consumer.shutdownRequested = false;
     consumer.running = true;
 
     std::string consumerName = consumer.name;
-    std::string sourceNodeName = consumer.sourceNode;
     GstElement* pipeline = consumer.pipeline;
     std::atomic<bool>* shutdownFlag = &consumer.shutdownRequested;
 
-    consumer.startThread = std::thread([pipeline, consumerName, sourceNodeName, shutdownFlag]() {
+    consumer.startThread = std::thread([pipeline, consumerName, shutdownFlag]() {
         LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' background thread starting pipeline\n",
                 consumerName.c_str());
 
-        // Persistent-source consumers may need to retry if the producer
-        // node hasn't registered yet (e.g. during startup race).
-        // On-demand consumers don't retry — the PipeWire producer node
-        // is already in the pipeline when StartConsumers() is called.
-        int maxRetries = sourceNodeName.empty() ? 0 : 5;
-        int retryDelay = 1; // seconds
-        GstStateChangeReturn ret = GST_STATE_CHANGE_FAILURE;
-
-        for (int attempt = 0; attempt <= maxRetries; attempt++) {
-            if (shutdownFlag->load()) return;
-
-            if (attempt > 0) {
-                LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' retry %d/%d "
-                        "(waiting for source '%s')\n",
-                        consumerName.c_str(), attempt, maxRetries, sourceNodeName.c_str());
-                gst_element_set_state(pipeline, GST_STATE_NULL);
-                for (int w = 0; w < retryDelay * 10 && !shutdownFlag->load(); w++)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                if (shutdownFlag->load()) return;
-                retryDelay = std::min(retryDelay * 2, 8);
-            }
-
-            ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
-            if (ret != GST_STATE_CHANGE_FAILURE) break;
-        }
+        // intervideosrc doesn't need PipeWire links — go straight to PLAYING.
+        GstStateChangeReturn ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' set_state(PLAYING) returned %d\n",
+                consumerName.c_str(), (int)ret);
 
         if (ret == GST_STATE_CHANGE_FAILURE) {
             // Check if we were asked to shut down — don't log as error if so
@@ -680,8 +951,21 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
 
         // Monitor the pipeline bus for errors / EOS while running
         GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
+        int busLoopIter = 0;
         while (!shutdownFlag->load()) {
             GstMessage* msg = gst_bus_timed_pop(bus, 500 * GST_MSECOND);
+            busLoopIter++;
+
+            // Periodic state check every ~5s (10 iterations * 500ms)
+            if (busLoopIter % 10 == 1) {
+                GstState cur = GST_STATE_VOID_PENDING, pend = GST_STATE_VOID_PENDING;
+                gst_element_get_state(pipeline, &cur, &pend, 0);
+                if (cur != GST_STATE_PLAYING || pend != GST_STATE_VOID_PENDING) {
+                    LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' state check: current=%d pending=%d\n",
+                            consumerName.c_str(), (int)cur, (int)pend);
+                }
+            }
+
             if (!msg) continue;
 
             switch (GST_MESSAGE_TYPE(msg)) {
@@ -705,6 +989,28 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
                     gst_message_unref(msg);
                     gst_object_unref(bus);
                     return;
+                case GST_MESSAGE_ASYNC_DONE:
+                    LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' ASYNC_DONE (preroll complete)\n",
+                            consumerName.c_str());
+                    break;
+                case GST_MESSAGE_STATE_CHANGED:
+                    if (GST_MESSAGE_SRC(msg) == GST_OBJECT(pipeline)) {
+                        GstState oldSt, newSt, pendSt;
+                        gst_message_parse_state_changed(msg, &oldSt, &newSt, &pendSt);
+                        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' state %d -> %d (pending %d)\n",
+                                consumerName.c_str(), (int)oldSt, (int)newSt, (int)pendSt);
+                    }
+                    break;
+                case GST_MESSAGE_WARNING: {
+                    GError* err = nullptr;
+                    gchar* debug = nullptr;
+                    gst_message_parse_warning(msg, &err, &debug);
+                    LogWarn(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' warning: %s (%s)\n",
+                            consumerName.c_str(), err ? err->message : "?", debug ? debug : "");
+                    if (err) g_error_free(err);
+                    g_free(debug);
+                    break;
+                }
                 default:
                     break;
             }
@@ -772,8 +1078,42 @@ GstFlowReturn VideoOutputManager::OnOverlaySample(GstAppSink* appsink, gpointer 
 }
 #endif
 
+bool VideoOutputManager::WaitForPendingTeardowns(int timeoutMs) {
+    std::unique_lock<std::mutex> tl(m_teardownMutex);
+    if (m_pendingTeardowns <= 0)
+        return true;
+    LogInfo(VB_MEDIAOUT, "VideoOutputManager: Waiting for %d pending pipeline teardown(s) to release DRM/CMA...\n",
+            m_pendingTeardowns);
+    bool ok = m_teardownCV.wait_for(tl, std::chrono::milliseconds(timeoutMs),
+        [this] { return m_pendingTeardowns <= 0; });
+    if (!ok) {
+        LogWarn(VB_MEDIAOUT, "VideoOutputManager: Timed out waiting for pipeline teardowns "
+                "(%d still pending after %d ms)\n", m_pendingTeardowns, timeoutMs);
+    } else {
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: All pipeline teardowns completed\n");
+    }
+    return ok;
+}
+
 void VideoOutputManager::StopConsumer(ConsumerInfo& consumer) {
 #ifdef HAS_GSTREAMER_VIDEO_OUTPUT
+    if (!consumer.running)
+        return;
+
+    // If this consumer is part of a grouped pipeline (not the owner),
+    // stop the pipeline owner instead — that tears down the whole group.
+    if (consumer.groupPipelineOwnerIdx >= 0) {
+        int ownerIdx = consumer.groupPipelineOwnerIdx;
+        consumer.groupPipelineOwnerIdx = -1;
+        consumer.running = false;
+        LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' is grouped — stopping group owner\n",
+                consumer.name.c_str());
+        if (ownerIdx < (int)m_consumers.size() && m_consumers[ownerIdx].running) {
+            StopConsumer(m_consumers[ownerIdx]);
+        }
+        return;
+    }
+
     // Signal the background thread to exit first
     consumer.shutdownRequested = true;
 
@@ -783,20 +1123,36 @@ void VideoOutputManager::StopConsumer(ConsumerInfo& consumer) {
         consumer.overlayState->active = false;
     }
 
-    // Set pipeline to NULL — this unblocks pipewiresrc and any pending operations
-    if (consumer.pipeline) {
-        gst_element_set_state(consumer.pipeline, GST_STATE_NULL);
-    }
+    // Detach the background thread — it may be blocked in a GStreamer
+    // state change with PipeWire locks held, so joining could hang.
+    // The thread checks shutdownRequested and will exit eventually.
+    try {
+        if (consumer.startThread.joinable())
+            consumer.startThread.detach();
+    } catch (...) {}
 
-    // Wait for the background thread to finish before releasing resources
-    if (consumer.startThread.joinable()) {
-        consumer.startThread.join();
-    }
-
-    // Now safe to unref the pipeline (no other thread uses it)
+    // Move pipeline NULL transition to a detached background thread.
+    // gst_element_set_state(NULL) can block on PipeWire locks held by
+    // the pipewiresrc element's internal thread during negotiation.
+    // Never call it on the main thread or any critical path.
+    // The thread decrements m_pendingTeardowns and notifies m_teardownCV
+    // when done so callers (Reload, Resume) can wait for CMA to be freed.
     if (consumer.pipeline) {
-        gst_object_unref(consumer.pipeline);
+        GstElement* p = consumer.pipeline;
         consumer.pipeline = nullptr;
+        {
+            std::lock_guard<std::mutex> tl(m_teardownMutex);
+            m_pendingTeardowns++;
+        }
+        std::thread([this, p]() {
+            gst_element_set_state(p, GST_STATE_NULL);
+            gst_object_unref(p);
+            {
+                std::lock_guard<std::mutex> tl(m_teardownMutex);
+                m_pendingTeardowns--;
+            }
+            m_teardownCV.notify_all();
+        }).detach();
     }
 
     // Restore overlay model state and remove listener
@@ -813,6 +1169,18 @@ void VideoOutputManager::StopConsumer(ConsumerInfo& consumer) {
     }
 
     consumer.running = false;
+
+    // Also mark any grouped members as stopped
+    int myIdx = (int)(&consumer - &m_consumers[0]);
+    for (auto& c : m_consumers) {
+        if (c.groupPipelineOwnerIdx == myIdx) {
+            c.groupPipelineOwnerIdx = -1;
+            c.running = false;
+            LogInfo(VB_MEDIAOUT, "VideoOutputManager: Grouped consumer '%s' stopped (group owner stopped)\n",
+                    c.name.c_str());
+        }
+    }
+
     LogInfo(VB_MEDIAOUT, "VideoOutputManager: Consumer '%s' stopped\n", consumer.name.c_str());
 #endif
 }

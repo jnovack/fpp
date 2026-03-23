@@ -285,6 +285,8 @@
                             AES67 / App</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#0dcaf0"></span>
                             Video Stream</span>
+                        <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#e8651a"></span>
+                            A+V Source</span>
                         <span class="pw-legend-item"><span class="pw-legend-swatch" style="background:#20b2aa"></span>
                             Video Output</span>
                     </div>
@@ -325,6 +327,9 @@
             function nodeColor(n) {
                 const nm = n.name || '';
                 const mc = n.mediaClass || '';
+                const p = n.properties || {};
+                // Combined A+V video input sources (merged audio+video node)
+                if (p['fpp.combined.av'] && nm.startsWith('fpp_audio_src_')) return '#e8651a'; // combined A+V source
                 // Video nodes
                 if (nm.startsWith('fppd_video_stream_')) return '#0dcaf0'; // video producer
                 if (nm.startsWith('fpp_hdmi_direct_')) return '#198754';   // HDMI direct output
@@ -414,11 +419,21 @@
                     return parts.join(' · ') || '';
                 }
 
-                // Video producer streams
+                // Video producer streams (legacy PipeWire-based)
                 if (nm.startsWith('fppd_video_stream_')) {
                     const parts = [];
                     if (p['fpp.video.slot']) parts.push('slot ' + p['fpp.video.slot']);
                     parts.push('video producer');
+                    return parts.join(' · ');
+                }
+
+                // Video input sources (GStreamer intervideo-based)
+                if (nm.startsWith('fpp_video_src_') || nm.startsWith('fpp_audio_src_')) {
+                    const parts = [];
+                    if (p['fpp.combined.av']) parts.push('audio + video');
+                    if (p['video.format']) parts.push(p['video.format']);
+                    if (p['fpp.video.slot']) parts.push('slot ' + p['fpp.video.slot']);
+                    if (!p['fpp.combined.av']) parts.push('video source');
                     return parts.join(' · ');
                 }
 
@@ -706,6 +721,44 @@
                     }
                 });
 
+                // 8) Video input source + audio source pairs:
+                //    fpp_video_src_N_<slug> → fpp_audio_src_N_<slug>
+                //    Video uses GStreamer intervideo (not PipeWire) so the video
+                //    node is synthetic.  Merge it into the real PipeWire audio node
+                //    so they appear as a single combined A+V source node.
+                graphData.nodes.forEach(n => {
+                    const m = n.name.match(/^fpp_video_src_(\d+_.*$)/);
+                    if (!m || absorbed.has(n.id)) return;
+                    const audioName = 'fpp_audio_src_' + m[1];
+                    const audioNode = nodesByName[audioName];
+                    if (audioNode && !absorbed.has(audioNode.id)) {
+                        absorbed.add(n.id);
+                        nodeIdRemap[n.id] = audioNode.id;
+                        // Move video output ports to the audio node
+                        graphData.ports.forEach(p => {
+                            if (p.nodeId === n.id) {
+                                p.nodeId = audioNode.id;
+                                p.channel = 'Video';
+                                p.name = 'output_Video';
+                            }
+                        });
+                        // Copy video properties and mark as combined
+                        audioNode.properties = audioNode.properties || {};
+                        audioNode.properties['fpp.combined.av'] = true;
+                        const vp = n.properties || {};
+                        if (vp['fpp.video.stream']) audioNode.properties['fpp.video.stream'] = true;
+                        if (vp['fpp.video.slot']) audioNode.properties['fpp.video.slot'] = vp['fpp.video.slot'];
+                        if (vp['video.format']) audioNode.properties['video.format'] = vp['video.format'];
+                        // Use the video source's better description
+                        audioNode.description = (n.description || audioNode.description) + ' (A+V)';
+                        // Promote mediaClass to show it's a combined source
+                        audioNode.mediaClass = 'Video/Source';
+                        if (n.state === 'running' && audioNode.state !== 'running') {
+                            audioNode.state = n.state;
+                        }
+                    }
+                });
+
                 // Remove absorbed nodes
                 graphData.nodes = graphData.nodes.filter(n => !absorbed.has(n.id));
 
@@ -841,9 +894,16 @@
             // Video ports are placed on the OPPOSITE side of the node from
             // audio ports so that video wires flow right-to-left.
             function isVideoPort(port, node) {
+                // Explicitly labelled video port (from merge)
+                if (port.channel === 'Video' || port.name === 'output_Video') return true;
+                if (port.channel === 'video' || port.name === 'input_video') return true;
+                // Combined A+V nodes have both audio and video ports — only
+                // ports explicitly labelled as video should be flipped.
+                const props = (node && node.properties) || {};
+                if (props['fpp.combined.av']) return false;
+                // Pure video nodes: all ports are video
                 const mc = (node && node.mediaClass) || '';
                 if (mc.includes('Video')) return true;
-                if (port.channel === 'Video' || port.name === 'output_Video') return true;
                 return false;
             }
 

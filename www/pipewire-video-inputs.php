@@ -253,6 +253,7 @@
     <script>
         // Available V4L2 devices
         var availableV4l2Devices = [];
+
         // Current config
         var videoInputSources = { videoInputSources: [] };
         var nextSourceId = 1;
@@ -487,6 +488,21 @@
                     html += '</div>';
                     html += '<div class="col-auto text-muted" style="font-size:0.85rem;">YouTube URL, HTTP, HLS, or any GStreamer-supported URI</div>';
                     html += '</div>';
+                    // Audio extraction (YouTube only)
+                    html += '<div class="row align-items-center mt-2">';
+                    html += '<div class="col-auto"><label>Audio:</label></div>';
+                    html += '<div class="col-auto">';
+                    html += '<input type="checkbox" class="form-check-input" id="audioEn_' + index + '"' + (source.audioEnabled ? ' checked' : '') + ' onchange="ToggleAudioEnabled(' + index + ', this.checked)"> ';
+                    html += '<label class="form-check-label" for="audioEn_' + index + '" style="font-weight:normal;">Extract audio from stream</label>';
+                    html += '</div>';
+                    if (source.audioEnabled) {
+                        var audioNode = source.audioPipeWireNodeName || ('fpp_audio_src_' + source.id + '_' + EscapeNodeName(source.name || 'source'));
+                        html += '<span class="badge bg-info pipewire-badge" title="PipeWire audio source node" style="margin-left:0.5rem;">' + EscapeAttr(audioNode) + '</span>';
+                    }
+                    html += '</div>';
+                    if (source.audioEnabled) {
+                        html += '<div class="row mt-1"><div class="col text-muted" style="font-size:0.8rem; padding-left:5.5rem;">Audio is extracted as a separate PipeWire source node. Add it to an Audio Input Group to route it to an Output Group.</div></div>';
+                    }
                     break;
 
                 case 'rtpsrc':
@@ -555,6 +571,11 @@
             RenderSources();
         }
 
+        function ToggleAudioEnabled(index, enabled) {
+            videoInputSources.videoInputSources[index].audioEnabled = enabled;
+            RenderSources();
+        }
+
         function UpdateSourceType(index, type) {
             var src = videoInputSources.videoInputSources[index];
             src.type = type;
@@ -567,6 +588,7 @@
             delete src.port;
             delete src.encoding;
             delete src.multicastGroup;
+            delete src.audioEnabled;
             if (type === 'videotestsrc') {
                 src.pattern = 'smpte';
             } else if (type === 'v4l2src') {

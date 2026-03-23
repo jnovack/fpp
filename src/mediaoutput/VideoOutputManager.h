@@ -12,6 +12,8 @@
  */
 
 #include <atomic>
+#include <condition_variable>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -148,6 +150,11 @@ private:
         // Stream slots this consumer should receive (empty = all slots)
         std::vector<int> streamSlots;
 
+        // When >= 0, this consumer is part of a grouped pipeline and
+        // the GstElement* pipeline is owned by m_consumers[groupPipelineOwnerIdx].
+        // -1 means standalone (owns its own pipeline or not grouped).
+        int groupPipelineOwnerIdx = -1;
+
 #ifdef HAS_GSTREAMER_VIDEO_OUTPUT
         GstElement* pipeline = nullptr;
 #endif
@@ -167,6 +174,7 @@ private:
               rtpEncoding(std::move(o.rtpEncoding)),
               sourceNode(std::move(o.sourceNode)),
               streamSlots(std::move(o.streamSlots)),
+              groupPipelineOwnerIdx(o.groupPipelineOwnerIdx),
 #ifdef HAS_GSTREAMER_VIDEO_OUTPUT
               pipeline(o.pipeline),
 #endif
@@ -186,6 +194,12 @@ private:
 
     /// Start a single consumer pipeline.
     bool StartConsumer(ConsumerInfo& consumer);
+
+    /// Start a group of HDMI consumers sharing the same PipeWire source
+    /// as a single combined pipeline with tee.  PipeWire mode=provide
+    /// doesn't fan-out buffers to multiple consumers; this works around
+    /// that by using one pipewiresrc with a GStreamer tee.
+    bool StartHdmiConsumerGroup(const std::vector<size_t>& indices);
 
     /// Stop a single consumer pipeline.
     void StopConsumer(ConsumerInfo& consumer);
@@ -220,10 +234,20 @@ private:
     static GstFlowReturn OnOverlaySample(GstAppSink* appsink, gpointer userData);
 #endif
 
+    /// Wait for pending pipeline teardown threads to finish (releases DRM/CMA).
+    /// Returns true if all teardowns completed, false on timeout.
+    bool WaitForPendingTeardowns(int timeoutMs);
+
     mutable std::mutex m_mutex;
     std::vector<ConsumerInfo> m_consumers;
     std::set<int> m_directConnectorIds;   // HDMI connectors handled by direct kmssink
     std::string m_activeProducer;  // node name of the current producer, empty if none
     int m_primaryConnectorId = -1; // DRM connector ID used by primary pipeline's kmssink
     bool m_initialized = false;
+
+    // Pipeline teardown tracking — detached threads decrement the counter
+    // and notify the CV when done, so callers can wait for CMA to be freed.
+    std::mutex m_teardownMutex;
+    std::condition_variable m_teardownCV;
+    int m_pendingTeardowns = 0;
 };

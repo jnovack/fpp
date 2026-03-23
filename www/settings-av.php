@@ -46,11 +46,17 @@ PrintSettingGroup('generalAudio');
     $isPipeWire = (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire');
     ?>
     <div id="pipeWireSection" <?= $isPipeWire ? '' : ' style="display:none;"' ?>>
+        <h2>General PipeWire</h2>
+        <?
+        PrintSettingGroup('pipeWireGeneral', '', '', 1, '', '', false);
+        ?>
+
         <h2>PipeWire Audio</h2>
 
         <?
         PrintSettingGroup('pipeWireAudio', '', '', 1, '', '', false);
         ?>
+
 
     </div>
 

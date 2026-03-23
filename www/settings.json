@@ -150,16 +150,20 @@
 			"settings": [
 				"PipeWireAudioGroups",
 				"PipeWireInputMixing",
-				"PipeWireRoutingMatrix",
-				"PipeWireAES67Config",
-				"PipeWireGraph"
+				"PipeWireAES67Config"
 			]
 		},
 		"pipeWireVideo": {
-			"description": "PipeWire Video Routing",
+			"description": "PipeWire Video",
 			"settings": [
 				"PipeWireVideoOutputs",
-				"PipeWireVideoInputSources",
+				"PipeWireVideoInputSources"
+			]
+		},
+		"pipeWireGeneral": {
+			"description": "General PipeWire",
+			"settings": [
+				"PipeWireRoutingMatrix",
 				"PipeWireGraph"
 			]
 		},
@@ -813,13 +817,13 @@
 		},
 		"PipeWireRoutingMatrix": {
 			"name": "PipeWireRoutingMatrix",
-			"description": "Audio Routing Matrix",
+			"description": "PipeWire Routing Matrix",
 			"tip": "Visual routing matrix showing all input group to output group connections with per-path volume, mute, effects, and presets.",
 			"type": "modal",
 			"modalUrl": "pipewire-routing-matrix.php?modal=1",
 			"icon": "fas fa-th",
 			"buttonText": "Open Routing Matrix",
-			"modalTitle": "Audio Routing Matrix",
+			"modalTitle": "PipeWire Routing Matrix",
 			"platforms": [
 				"!MacOS"
 			]

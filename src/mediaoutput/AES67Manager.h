@@ -246,7 +246,8 @@ private:
 
     // Pipeline watchdog — called from SAP thread to poll bus messages
     // and restart any pipeline that isn't in PLAYING state.
-    void PollPipelinesWatchdog();
+    // Returns true if a full pipeline rebuild is needed.
+    bool PollPipelinesWatchdog();
 
     // Pipeline management
     std::map<int, AES67Pipeline> m_sendPipelines;    // keyed by instance ID

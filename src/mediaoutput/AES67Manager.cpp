@@ -539,8 +539,6 @@ std::string AES67Manager::GetPTPClockId() {
 // Pipeline creation — Send
 // ──────────────────────────────────────────────────────────────────────────────
 bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
-    std::lock_guard<std::mutex> lock(m_pipelineMutex);
-
     std::string nodeName = SafeNodeName(inst.name) + "_send";
     std::string sourceIP = GetInterfaceIP(inst.interface);
 
@@ -601,11 +599,8 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
     // not have — use gst_bus_pop() polling instead.
     GstBus* bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
 
-    // Start pipeline in PLAYING state.  With node.autoconnect=false on
-    // pipewiresrc, only the PipeWire filter-chain (which has an explicit
-    // node.target) connects.  When no media is playing the filter-chain
-    // outputs clean silence, so there is no need to mute/unmute — the
-    // pipeline always sends to the real multicast address.
+    // Start pipeline in PLAYING state OUTSIDE the mutex — this can block
+    // waiting for PipeWire and must not hold m_pipelineMutex.
     GstStateChangeReturn ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         LogErr(VB_MEDIAOUT, "AES67 send pipeline [%d] failed to start\n", inst.id);
@@ -614,13 +609,16 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
         return false;
     }
 
-    m_sendPipelines.erase(inst.id);
-    auto [it, ok] = m_sendPipelines.try_emplace(inst.id);
-    it->second.instanceId = inst.id;
-    it->second.isSend = true;
-    it->second.pipeline = pipeline;
-    it->second.bus = bus;  // watchdog takes ownership — released in TeardownPipeline
-    it->second.running = true;
+    {
+        std::lock_guard<std::mutex> lock(m_pipelineMutex);
+        m_sendPipelines.erase(inst.id);
+        auto [it, ok] = m_sendPipelines.try_emplace(inst.id);
+        it->second.instanceId = inst.id;
+        it->second.isSend = true;
+        it->second.pipeline = pipeline;
+        it->second.bus = bus;
+        it->second.running = true;
+    }
 
     LogInfo(VB_MEDIAOUT, "AES67 send pipeline [%d] %s started → %s:%d (%dch, %dms ptime)\n",
             inst.id, inst.name.c_str(), inst.multicastIP.c_str(), inst.port,
@@ -632,8 +630,6 @@ bool AES67Manager::CreateSendPipeline(const AES67Instance& inst) {
 // Pipeline creation — Receive
 // ──────────────────────────────────────────────────────────────────────────────
 bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
-    std::lock_guard<std::mutex> lock(m_pipelineMutex);
-
     std::string nodeName = SafeNodeName(inst.name) + "_recv";
 
     // Build pipeline:
@@ -685,7 +681,8 @@ bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
     // The system clock is kept in sync with PTP, so the default pipeline
     // clock (system clock) inherits PTP accuracy.
 
-    // Start pipeline
+    // Start pipeline OUTSIDE the mutex — GStreamer state changes can block
+    // waiting for PipeWire.
     GstStateChangeReturn ret = gst_element_set_state(pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         LogErr(VB_MEDIAOUT, "AES67 recv pipeline [%d] failed to start\n", inst.id);
@@ -694,13 +691,16 @@ bool AES67Manager::CreateRecvPipeline(const AES67Instance& inst) {
         return false;
     }
 
-    m_recvPipelines.erase(inst.id);
-    auto [it, ok] = m_recvPipelines.try_emplace(inst.id);
-    it->second.instanceId = inst.id;
-    it->second.isSend = false;
-    it->second.pipeline = pipeline;
-    it->second.bus = bus;  // watchdog takes ownership
-    it->second.running = true;
+    {
+        std::lock_guard<std::mutex> lock(m_pipelineMutex);
+        m_recvPipelines.erase(inst.id);
+        auto [it, ok] = m_recvPipelines.try_emplace(inst.id);
+        it->second.instanceId = inst.id;
+        it->second.isSend = false;
+        it->second.pipeline = pipeline;
+        it->second.bus = bus;
+        it->second.running = true;
+    }
 
     LogInfo(VB_MEDIAOUT, "AES67 recv pipeline [%d] %s started ← %s:%d (%dch, %dms latency)\n",
             inst.id, inst.name.c_str(), inst.multicastIP.c_str(), inst.port,
@@ -727,19 +727,25 @@ void AES67Manager::StopPipeline(AES67Pipeline& p) {
 }
 
 void AES67Manager::StopAllPipelines() {
-    std::lock_guard<std::mutex> lock(m_pipelineMutex);
+    // Extract pipelines from the maps under the lock, then release the lock
+    // before calling gst_element_set_state(NULL) — state changes can block
+    // on PipeWire and must not hold m_pipelineMutex.
+    std::map<int, AES67Pipeline> sendCopy, recvCopy;
+    {
+        std::lock_guard<std::mutex> lock(m_pipelineMutex);
+        sendCopy.swap(m_sendPipelines);
+        recvCopy.swap(m_recvPipelines);
+    }
 
-    for (auto& [id, p] : m_sendPipelines) {
+    for (auto& [id, p] : sendCopy) {
         LogDebug(VB_MEDIAOUT, "AES67Manager: Stopping send pipeline [%d]\n", id);
         StopPipeline(p);
     }
-    m_sendPipelines.clear();
 
-    for (auto& [id, p] : m_recvPipelines) {
+    for (auto& [id, p] : recvCopy) {
         LogDebug(VB_MEDIAOUT, "AES67Manager: Stopping recv pipeline [%d]\n", id);
         StopPipeline(p);
     }
-    m_recvPipelines.clear();
 }
 
 void AES67Manager::PauseSendPipelines() {
@@ -822,7 +828,7 @@ void AES67Manager::FlushSendPipelines() {
 // fppd does not run a GLib main loop, so gst_bus_add_watch() callbacks would
 // never fire.  We poll the bus manually and promote any ERROR/WARNING messages.
 // ──────────────────────────────────────────────────────────────────────────────
-void AES67Manager::PollPipelinesWatchdog() {
+bool AES67Manager::PollPipelinesWatchdog() {
     bool needsRebuild = false;
 
     {  // scope for pipeline mutex
@@ -868,24 +874,16 @@ void AES67Manager::PollPipelinesWatchdog() {
             gst_element_get_state(p.pipeline, &curState, &pendingState, 0 /* no blocking */);
 
             if (curState != GST_STATE_PLAYING && pendingState != GST_STATE_PLAYING) {
+                // Don't attempt recovery while holding m_pipelineMutex —
+                // gst_element_set_state can block on PipeWire indefinitely.
+                // Just flag for a full rebuild instead.
                 LogWarn(VB_MEDIAOUT,
-                        "AES67 %s pipeline [%d] is in %s state — recovering to PLAYING\n",
+                        "AES67 %s pipeline [%d] is in %s state — flagging for rebuild\n",
                         direction, p.instanceId,
                         gst_element_state_get_name(curState));
-                GstStateChangeReturn ret =
-                    gst_element_set_state(p.pipeline, GST_STATE_PLAYING);
-                if (ret == GST_STATE_CHANGE_FAILURE) {
-                    LogErr(VB_MEDIAOUT,
-                           "AES67 %s pipeline [%d] recovery failed — flagging for rebuild\n",
-                           direction, p.instanceId);
-                    p.running = false;
-                    p.errorMessage = "Watchdog recovery failed";
-                    needsRebuild = true;
-                } else {
-                    LogInfo(VB_MEDIAOUT,
-                            "AES67 %s pipeline [%d] watchdog recovery: set_state returned %d\n",
-                            direction, p.instanceId, ret);
-                }
+                p.running = false;
+                p.errorMessage = "Watchdog: not in PLAYING state";
+                needsRebuild = true;
             } else if (p.isSend) {
                 // Zombie detection for send pipelines: check if udpsink
                 // is actually pushing bytes.  pipewiresrc can lose its
@@ -927,9 +925,7 @@ void AES67Manager::PollPipelinesWatchdog() {
     }
     }  // end pipeline mutex scope
 
-    if (needsRebuild) {
-        ApplyConfig();
-    }
+    return needsRebuild;
 }
 
 gboolean AES67Manager::OnBusMessage(GstBus* bus, GstMessage* msg, gpointer userData) {
@@ -1192,7 +1188,23 @@ void AES67Manager::SAPAnnounceLoop() {
         // Runs every SAP_ANNOUNCE_INTERVAL_S (30s) — fast enough to detect
         // silent failures without adding significant overhead.
         if (m_sapAnnounceRunning.load()) {
-            PollPipelinesWatchdog();
+            if (PollPipelinesWatchdog()) {
+                // A full pipeline rebuild is needed.  We cannot call
+                // ApplyConfig() from this thread because ApplyConfig()
+                // joins m_sapAnnounceThread — which IS this thread — causing
+                // a deadlock ("Resource deadlock avoided" / SIGABRT).
+                // Instead, stop this loop and spawn a short-lived thread
+                // that calls ApplyConfig() after we exit.
+                LogWarn(VB_MEDIAOUT, "AES67 watchdog: rebuild needed, stopping SAP loop and scheduling ApplyConfig\n");
+                m_sapAnnounceRunning.store(false);
+                std::thread([this]() {
+                    // Brief delay to let the SAP announce thread finish
+                    // exiting and become joinable.
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    ApplyConfig();
+                }).detach();
+                break;
+            }
         }
     }
 
@@ -1558,44 +1570,53 @@ void AES67Manager::DetachInlineRTPBranches(GstElement* pipeline,
 AES67Manager::Status AES67Manager::GetStatus() {
     Status status;
 
-    // Pipeline status
+    // Pipeline status — use try_lock to avoid blocking HTTP handlers
+    // indefinitely if another thread holds m_pipelineMutex during a
+    // long GStreamer state change.
     {
-        std::lock_guard<std::mutex> lock(m_pipelineMutex);
+        std::unique_lock<std::mutex> lock(m_pipelineMutex, std::try_to_lock);
+        if (lock.owns_lock()) {
+            for (const auto& [id, p] : m_sendPipelines) {
+                Status::PipelineStatus ps;
+                ps.instanceId = id;
+                ps.mode = "send";
+                ps.running = p.running;
+                ps.error = p.errorMessage;
 
-        for (const auto& [id, p] : m_sendPipelines) {
-            Status::PipelineStatus ps;
-            ps.instanceId = id;
-            ps.mode = "send";
-            ps.running = p.running;
-            ps.error = p.errorMessage;
-
-            // Find name from config
-            for (const auto& inst : m_config.instances) {
-                if (inst.id == id) {
-                    ps.name = inst.name;
-                    break;
+                for (const auto& inst : m_config.instances) {
+                    if (inst.id == id) {
+                        ps.name = inst.name;
+                        break;
+                    }
                 }
+                status.pipelines.push_back(ps);
             }
-            status.pipelines.push_back(ps);
-        }
 
-        for (const auto& [id, p] : m_recvPipelines) {
-            Status::PipelineStatus ps;
-            ps.instanceId = id;
-            ps.mode = "receive";
-            ps.running = p.running;
-            ps.error = p.errorMessage;
+            for (const auto& [id, p] : m_recvPipelines) {
+                Status::PipelineStatus ps;
+                ps.instanceId = id;
+                ps.mode = "receive";
+                ps.running = p.running;
+                ps.error = p.errorMessage;
 
-            for (const auto& inst : m_config.instances) {
-                if (inst.id == id) {
-                    ps.name = inst.name;
-                    break;
+                for (const auto& inst : m_config.instances) {
+                    if (inst.id == id) {
+                        ps.name = inst.name;
+                        break;
+                    }
                 }
+                status.pipelines.push_back(ps);
             }
+        } else {
+            // Could not acquire lock — return partial status
+            Status::PipelineStatus ps;
+            ps.instanceId = -1;
+            ps.name = "(status unavailable — pipeline operation in progress)";
+            ps.mode = "unknown";
+            ps.running = false;
             status.pipelines.push_back(ps);
         }
     }
-
     // PTP status — check if ptp4l is running
     status.ptpSynced = IsPtp4lRunning();
     status.ptpGrandmasterId = GetPTPClockId();
