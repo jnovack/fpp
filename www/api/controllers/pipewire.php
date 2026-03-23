@@ -4814,7 +4814,8 @@ function GetPipeWireGraph()
         $vcCfg = array();
         if (file_exists($videoConsumersFile)) {
             $vcCfg = json_decode(file_get_contents($videoConsumersFile), true);
-            if (!is_array($vcCfg)) $vcCfg = array();
+            if (!is_array($vcCfg))
+                $vcCfg = array();
         }
 
         // Build lookup of existing PipeWire node names → state for activity detection
@@ -4825,13 +4826,16 @@ function GetPipeWireGraph()
 
         if (is_array($vsCfg) && isset($vsCfg['videoInputSources'])) {
             foreach ($vsCfg['videoInputSources'] as $vs) {
-                if (!isset($vs['enabled']) || !$vs['enabled']) continue;
+                if (!isset($vs['enabled']) || !$vs['enabled'])
+                    continue;
 
                 $srcNodeName = isset($vs['pipeWireNodeName']) ? $vs['pipeWireNodeName'] : '';
-                if (empty($srcNodeName)) continue;
+                if (empty($srcNodeName))
+                    continue;
 
                 // Skip if this video source already exists as a PipeWire node
-                if (isset($liveNodeStates[$srcNodeName])) continue;
+                if (isset($liveNodeStates[$srcNodeName]))
+                    continue;
 
                 // Detect running state from the paired audio PipeWire node
                 $audioNodeName = isset($vs['audioPipeWireNodeName']) ? $vs['audioPipeWireNodeName'] : '';
@@ -4845,11 +4849,15 @@ function GetPipeWireGraph()
                 $h = isset($vs['height']) ? intval($vs['height']) : 0;
                 $fps = isset($vs['framerate']) ? intval($vs['framerate']) : 0;
                 $typeLabel = '';
-                if ($srcType === 'urisrc') $typeLabel = 'YouTube';
-                elseif ($srcType === 'videotestsrc') $typeLabel = 'Test Pattern';
-                elseif ($srcType === 'v4l2src') $typeLabel = 'USB Camera';
+                if ($srcType === 'urisrc')
+                    $typeLabel = 'YouTube';
+                elseif ($srcType === 'videotestsrc')
+                    $typeLabel = 'Test Pattern';
+                elseif ($srcType === 'v4l2src')
+                    $typeLabel = 'USB Camera';
                 $desc = $srcName;
-                if (!empty($typeLabel)) $desc .= ' (' . $typeLabel . ')';
+                if (!empty($typeLabel))
+                    $desc .= ' (' . $typeLabel . ')';
 
                 // Create synthetic video source node
                 $srcNodeId = $virtualId++;
@@ -4881,11 +4889,14 @@ function GetPipeWireGraph()
                 // Find consumers that target this source and inject HDMI sink nodes
                 foreach ($vcCfg as $vc) {
                     $consumerSrc = isset($vc['sourceNode']) ? $vc['sourceNode'] : '';
-                    if ($consumerSrc !== $srcNodeName) continue;
+                    if ($consumerSrc !== $srcNodeName)
+                        continue;
 
                     $consumerNodeName = isset($vc['pipeWireNodeName']) ? $vc['pipeWireNodeName'] : '';
-                    if (empty($consumerNodeName)) continue;
-                    if (isset($liveNodeStates[$consumerNodeName])) continue;
+                    if (empty($consumerNodeName))
+                        continue;
+                    if (isset($liveNodeStates[$consumerNodeName]))
+                        continue;
 
                     $connector = isset($vc['connector']) ? $vc['connector'] : '';
                     $cw = isset($vc['width']) ? intval($vc['width']) : 0;
@@ -4969,11 +4980,14 @@ function GetPipeWireGraph()
 
         foreach ($vcCfg as $vc) {
             $consumerSrc = isset($vc['sourceNode']) ? $vc['sourceNode'] : '';
-            if (!empty($consumerSrc)) continue; // already handled above
+            if (!empty($consumerSrc))
+                continue; // already handled above
 
             $consumerNodeName = isset($vc['pipeWireNodeName']) ? $vc['pipeWireNodeName'] : '';
-            if (empty($consumerNodeName)) continue;
-            if (isset($liveNodeStates[$consumerNodeName])) continue;
+            if (empty($consumerNodeName))
+                continue;
+            if (isset($liveNodeStates[$consumerNodeName]))
+                continue;
 
             $connector = isset($vc['connector']) ? $vc['connector'] : '';
             $cw = isset($vc['width']) ? intval($vc['width']) : 0;
@@ -4987,8 +5001,10 @@ function GetPipeWireGraph()
             $slots = isset($vc['streamSlots']) ? $vc['streamSlots'] : array();
             $anySlotActive = false;
             foreach ($slots as $s) {
-                if (isset($videoStreamNodes[$s]) &&
-                    in_array($videoStreamNodes[$s]['state'], array('running', 'idle'))) {
+                if (
+                    isset($videoStreamNodes[$s]) &&
+                    in_array($videoStreamNodes[$s]['state'], array('running', 'idle'))
+                ) {
                     $anySlotActive = true;
                     break;
                 }
@@ -5028,9 +5044,11 @@ function GetPipeWireGraph()
                 $linkSlots = array_keys($videoStreamNodes);
             }
             foreach ($linkSlots as $s) {
-                if (!isset($videoStreamNodes[$s])) continue;
+                if (!isset($videoStreamNodes[$s]))
+                    continue;
                 $vsn = $videoStreamNodes[$s];
-                if ($vsn['portId'] === null) continue;
+                if ($vsn['portId'] === null)
+                    continue;
                 $isActive = in_array($vsn['state'], array('running', 'idle'));
                 $links[] = array(
                     'id' => $virtualId++,
