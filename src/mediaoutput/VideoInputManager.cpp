@@ -677,9 +677,9 @@ bool VideoInputManager::StartSourceWithAudio(SourceInfo& source) {
     // Resolve audio-only URL
     std::string audioUrl;
     {
-        // 233 = low quality HLS audio, 234 = high quality HLS audio
-        // 139/140 = AAC from DASH (non-live fallback)
-        std::string ytFmt = "233/234/139/140/bestaudio";
+        // 234 = high quality HLS audio, 233 = low quality HLS audio
+        // 140 = AAC 128k from DASH (non-live fallback), 139 = HE-AAC 48k
+        std::string ytFmt = "234/233/140/139/bestaudio";
         std::string cmd = "yt-dlp -f '" + ytFmt + "' -g '" + safeUri + "' 2>/dev/null";
         LogInfo(VB_MEDIAOUT, "VideoInputManager: Resolving YouTube audio URL for '%s'\n",
                 source.name.c_str());
