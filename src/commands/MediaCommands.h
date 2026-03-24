@@ -12,7 +12,6 @@
  */
 
 #include "Commands.h"
-#include "mediaoutput/VLCOut.h"
 #include "mediaoutput/GStreamerOut.h"
 #include "mediaoutput/mediaoutput.h"
 
@@ -46,7 +45,7 @@ public:
     virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
 };
 
-#if defined(HAS_VLC) || defined(HAS_GSTREAMER)
+#ifdef HAS_GSTREAMER
 class PlayMediaCommand : public Command {
 public:
     PlayMediaCommand();

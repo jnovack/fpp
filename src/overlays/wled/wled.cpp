@@ -22,9 +22,6 @@
 #include <math.h>
 #include <time.h>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_audio.h>
-
 #ifdef HAS_GSTREAMER
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
@@ -34,7 +31,6 @@
 
 #include "kiss_fftr.h"
 #include "../../Warnings.h"
-#include "../../mediaoutput/SDLOut.h"
 #include "../../mediaoutput/GStreamerOut.h"
 #include "../../WLEDAudioSync.h"
 
@@ -163,10 +159,6 @@ public:
     WLEDAudioReactiveSoundSource() {
     }
     ~WLEDAudioReactiveSoundSource() {
-        if (audioDev > 1) {
-            SDL_PauseAudioDevice(audioDev, 1);
-            SDL_CloseAudioDevice(audioDev);
-        }
 #ifdef HAS_GSTREAMER
         if (gstPipeline) {
             gst_element_set_state(gstPipeline, GST_STATE_NULL);
@@ -265,6 +257,51 @@ public:
         gst_sample_unref(sample);
         return true;
     }
+
+    void openGStreamerAlsaCapture(const std::string& dev) {
+        GStreamerOutput::EnsureGStreamerInit();
+
+        // Build pipeline: alsasrc device=<dev> ! audioconvert ! audioresample !
+        //   audio/x-raw,format=S16LE,channels=1,rate=44100 ! appsink
+        std::string pipelineStr =
+            "alsasrc device=" + dev + " ! audioconvert ! audioresample ! "
+            "audio/x-raw,format=S16LE,channels=1,rate=44100 ! "
+            "appsink name=wledsink max-buffers=2 drop=true";
+
+        GError* error = nullptr;
+        gstPipeline = gst_parse_launch(pipelineStr.c_str(), &error);
+        if (error) {
+            WarningHolder::AddWarning("WLED Sound Reactive - Could not open Audio Input Device: " + dev + "  Error: " + std::string(error->message));
+            LogErr(VB_MEDIAOUT, "WLED GStreamer ALSA capture pipeline error: %s\n", error->message);
+            g_error_free(error);
+            return;
+        }
+
+        GstElement* appsink = gst_bin_get_by_name(GST_BIN(gstPipeline), "wledsink");
+        if (!appsink) {
+            WarningHolder::AddWarning("WLED Sound Reactive - Could not find appsink in pipeline");
+            gst_object_unref(gstPipeline);
+            gstPipeline = nullptr;
+            return;
+        }
+        gst_app_sink_set_emit_signals(GST_APP_SINK(appsink), FALSE);
+        gstAppsink = appsink;
+
+        GstStateChangeReturn ret = gst_element_set_state(gstPipeline, GST_STATE_PLAYING);
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            WarningHolder::AddWarning("WLED Sound Reactive - Could not start ALSA capture for: " + dev);
+            LogErr(VB_MEDIAOUT, "WLED GStreamer ALSA capture: failed to start pipeline for %s\n", dev.c_str());
+            gst_object_unref(appsink);
+            gstAppsink = nullptr;
+            gst_object_unref(gstPipeline);
+            gstPipeline = nullptr;
+            return;
+        }
+
+        inputSampleRate = 44100;
+        gstCaptureActive = true;
+        LogInfo(VB_MEDIAOUT, "WLED GStreamer ALSA capture: opened device '%s'\n", dev.c_str());
+    }
 #endif
 
     void openAudioDevice(const std::string& dev) {
@@ -275,34 +312,11 @@ public:
             openGStreamerCapture(dev);
             return;
         }
+        // ALSA mode — use GStreamer alsasrc
+        openGStreamerAlsaCapture(dev);
+#else
+        WarningHolder::AddWarning("WLED Sound Reactive - Audio capture requires GStreamer");
 #endif
-        // ALSA mode — use SDL capture
-        SDL_AudioSpec want;
-        SDL_AudioSpec obtained;
-
-        SDL_memset(&want, 0, sizeof(want));
-        SDL_memset(&obtained, 0, sizeof(obtained));
-        want.freq = 44100;
-        want.format = AUDIO_S16SYS;
-        want.channels = 1;
-        want.samples = NUM_SAMPLES;
-        want.callback = (SDL_AudioCallback)InputAudioCallback;
-        want.userdata = this;
-        SDL_Init(SDL_INIT_AUDIO);
-        SDL_ClearError();
-
-        audioDev = SDL_OpenAudioDevice(dev.c_str(), 1, &want, &obtained, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
-        if (audioDev < 2) {
-            std::string err = SDL_GetError();
-            WarningHolder::AddWarning("WLED Sound Reactive - Could not open Audio Input Device: " + dev + "   Error: " + err);
-            return;
-        }
-        SDL_ClearError();
-        SDL_AudioStatus as = SDL_GetAudioDeviceStatus(audioDev);
-        if (as == SDL_AUDIO_PAUSED) {
-            SDL_PauseAudioDevice(audioDev, 0);
-        }
-        inputSampleRate = obtained.freq;
     }
 
     bool getAudioSamples(std::array<float, NUM_SAMPLES>& samples, int& sampleRate) {
@@ -317,15 +331,12 @@ public:
         }
         bool retValue = false;
         if (sourceType == 0) {
-            // Playing Media — try GStreamer first, then fall back to SDL
+            // Playing Media — use GStreamer
 #ifdef HAS_GSTREAMER
             retValue = GStreamerOutput::GetAudioSamples(&samples[0], NUM_SAMPLES, sampleRate);
 #endif
-            if (!retValue) {
-                retValue = SDLOutput::GetAudioSamples(&samples[0], NUM_SAMPLES, sampleRate);
-            }
         } else if (sourceType == 1) {
-            // Audio Input — GStreamer pipewiresrc or SDL capture
+            // Audio Input — GStreamer capture (PipeWire or ALSA)
 #ifdef HAS_GSTREAMER
             if (gstCaptureActive) {
                 retValue = pullGStreamerSamples();
@@ -336,17 +347,11 @@ public:
                 return retValue;
             }
 #endif
-            if (audioDev > 0) {
-                samples = inputSamples;
-                sampleRate = inputSampleRate;
-                retValue = true;
-            }
         }
         return retValue;
     }
 
     int sourceType = -1;
-    int audioDev = 0;
     std::array<float, NUM_SAMPLES> inputSamples;
     int inputSampleRate = 44100;
 #ifdef HAS_GSTREAMER

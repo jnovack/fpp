@@ -26,9 +26,7 @@
 #include "commands/Commands.h"
 
 #include "Plugins.h"
-#include "SDLOut.h"
 #include "Sequence.h"
-#include "VLCOut.h"
 #include "GStreamerOut.h"
 #include "StreamSlotManager.h"
 #include "mediadetails.h"
@@ -367,21 +365,6 @@ MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::
     }
 #endif
 
-#ifdef HAS_VLC
-    if (IsExtensionAudio(ext)) {
-        if (getFPPmode() == REMOTE_MODE) {
-            return new VLCOutput(mediaFilename, &mediaOutputStatus, "--Disabled--");
-        } else {
-            return new SDLOutput(mediaFilename, &mediaOutputStatus, "--Disabled--");
-        }
-    } else if (IsExtensionVideo(ext) && IsHDMIOut(vo)) {
-        mediaOutputStatus.output = vo;
-        return new VLCOutput(mediaFilename, &mediaOutputStatus, vo);
-    } else if (IsExtensionVideo(ext))
-#endif
-    {
-        return new SDLOutput(mediaFilename, &mediaOutputStatus, vo);
-    }
     return nullptr;
 }
 
@@ -583,7 +566,6 @@ void UpdateMasterMediaPosition(const std::string& filename, float seconds) {
         mediaOutput->AdjustSpeed(seconds);
         return;
     } else {
-        // with VLC, we can jump forward a bit and get close
         OpenMediaOutput(filename);
         StartMediaOutput(filename);
         masterMediaPosition = seconds;

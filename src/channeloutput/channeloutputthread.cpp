@@ -30,7 +30,6 @@
 #include "../effects.h"
 #include "../log.h"
 #include "../mediaoutput/GStreamerOut.h"
-#include "../mediaoutput/SDLOut.h"
 #include "../overlays/PixelOverlay.h"
 #include "../settings.h"
 
@@ -102,7 +101,6 @@ static inline bool forceOutput() {
 #ifdef HAS_GSTREAMER
            GStreamerOutput::IsOverlayingVideo() ||
 #endif
-           SDLOutput::IsOverlayingVideo() ||
            ChannelTester::INSTANCE.Testing() ||
            alwaysTransmit ||
            sequence->hasBridgeData() ||

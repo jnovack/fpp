@@ -215,10 +215,9 @@ std::unique_ptr<Command::Result> URLCommand::run(const std::vector<std::string>&
     return std::make_unique<CURLResult>(args);
 }
 
-#if defined(HAS_VLC) || defined(HAS_GSTREAMER)
+#ifdef HAS_GSTREAMER
 
 // Common data for tracking running command media
-// MediaOutputBase is the common base class for both VLC and GStreamer outputs
 std::mutex runningMediaLock;
 std::map<std::string, MediaOutputBase*> runningCommandMedia;
 
@@ -256,34 +255,6 @@ static std::string RegisterRunningMedia(const std::string& file, MediaOutputBase
     runningMediaLock.unlock();
     return filename;
 }
-
-#ifdef HAS_VLC
-class VLCPlayData : public VLCOutput {
-public:
-    VLCPlayData(const std::string& file, int l, int vol);
-    virtual ~VLCPlayData();
-    virtual void Stopped() override;
-    std::string filename;
-    int volumeAdjust = 0;
-    MediaOutputStatus status;
-};
-
-VLCPlayData::VLCPlayData(const std::string& file, int l, int vol) :
-    VLCOutput(file, &status, "--hdmi--", l),
-    filename(file),
-    volumeAdjust(vol) {
-    SetVolumeAdjustment(vol);
-    filename = RegisterRunningMedia(file, this);
-}
-
-VLCPlayData::~VLCPlayData() {
-}
-
-void VLCPlayData::Stopped() {
-    VLCOutput::Stopped();
-    RemoveRunningMedia(filename, this);
-}
-#endif
 
 #ifdef HAS_GSTREAMER
 class GStreamerPlayData : public GStreamerOutput {
@@ -363,15 +334,7 @@ std::unique_ptr<Command::Result> PlayMediaCommand::run(const std::vector<std::st
         LogInfo(VB_COMMAND, "Play Media using GStreamer backend for: %s (slot %d)\n", args[0].c_str(), slot);
     }
 #endif
-#ifdef HAS_VLC
-    if (!out) {
-        if (slot > 1) {
-            LogWarn(VB_COMMAND, "VLC backend does not support stream slots > 1, using slot 1\n");
-        }
-        out = new VLCPlayData(args[0], loop, volAdjust);
-        LogInfo(VB_COMMAND, "Play Media using VLC backend for: %s\n", args[0].c_str());
-    }
-#endif
+
     if (!out) {
         return std::make_unique<Command::ErrorResult>("No media backend available");
     }

@@ -218,7 +218,6 @@ fi
 
 # Parse build options as arguments
 clone_fpp=true
-build_vlc=false
 skip_apt_install=false
 desktop=true
 isimage=false;
@@ -290,11 +289,11 @@ while [ -n "$1" ]; do
             shift
             ;;
         --skip-vlc)
-            build_vlc=false
+            # Deprecated: VLC removed in favor of GStreamer
             shift
             ;;
         --build-vlc)
-            build_vlc=true
+            # Deprecated: VLC removed in favor of GStreamer
             shift
             ;;
         --skip-apt-install)
@@ -650,7 +649,7 @@ install_base_packages() {
                       mp3info exim4 mailutils dhcp-helper parprouted bridge-utils libiio-utils libhidapi-dev \
                       php${PHPVER} php${PHPVER}-cli php${PHPVER}-fpm php${PHPVER}-common php${PHPVER}-curl php-pear \
                       php${PHPVER}-bcmath php${PHPVER}-sqlite3 php${PHPVER}-zip php${PHPVER}-xml ccache \
-                      libavcodec-dev libavformat-dev libswresample-dev libswscale-dev libavdevice-dev libavfilter-dev libtag1-dev \
+                      libtag1-dev \
                       vorbis-tools libgraphicsmagick++1-dev graphicsmagick-libmagick-dev-compat libdrogon-dev \
                       gettext apt-utils x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain clang-format \
                       libmosquitto-dev mosquitto-clients mosquitto libzstd-dev lzma zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev libnl-3-dev libnl-genl-3-dev \
@@ -678,13 +677,9 @@ install_base_packages() {
         if $isimage; then
             PACKAGE_LIST="$PACKAGE_LIST networkd-dispatcher"
         fi
-        if ! $build_vlc; then
-            PACKAGE_LIST="$PACKAGE_LIST vlc libvlc-dev"
-            # Debian 13 breaks vlc into several plugin sub-packages; Ubuntu
-            # 24.04 keeps them bundled in the main vlc package.
-            if [ "${OSVER}" == "debian_13" ]; then
-                PACKAGE_LIST="$PACKAGE_LIST vlc-plugin-pipewire vlc-plugin-base vlc-plugin-video-output"
-            fi
+
+        if [ "${OSVER}" == "debian_12" ]; then
+            PACKAGE_LIST="$PACKAGE_LIST python3-distutils"
         fi
         PACKAGE_LIST="$PACKAGE_LIST ntpsec pipewire"
         
@@ -1226,14 +1221,7 @@ if ! git remote get-url newfeatures > /dev/null 2>&1; then
     git remote add newfeatures https://github.com/FalconChristmas/fpp-new-feature-testing.git
 fi
 
-#######################################
-# Build VLC
-if $build_vlc; then
-    echo "FPP - Building VLC"
-    cd /opt/fpp/SD
-    ./buildVLC.sh
-    rm -rf /opt/vlc/
-fi
+
 
 
 #######################################

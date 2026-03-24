@@ -64,7 +64,7 @@ else
 fi
 echo ""
 echo "The next step is to use brew to install several needed dependencies.   This includes"
-echo "   php, git, httpd, ffmpeg, ccache, make, sdl2, zstd, wget, taglib, mosquitto,"
+echo "   php, git, httpd, ccache, make, zstd, wget, taglib, mosquitto,"
 echo "   jsoncpp, drogon, graphicsmagick"
 echo ""
 echo -n "Do you wish to proceed? [N/y] "
@@ -75,7 +75,7 @@ if [ "x${ANSWER}" != "xY" -a "x${ANSWER}" != "xy" ]; then
     echo
     exit
 fi
-brew install php git httpd ffmpeg ccache make sdl2 zstd wget taglib mosquitto jsoncpp drogon graphicsmagick libusb
+brew install php git httpd ccache make zstd wget taglib mosquitto jsoncpp drogon graphicsmagick libusb
 echo ""
 ccache -M 350M
 ccache --set-config=temporary_dir=/tmp

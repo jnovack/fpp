@@ -46,6 +46,44 @@ if [ "${FPPPLATFORM}" == "MacOS" ]; then
 fi
 
 #######################################
+# 0. Remove legacy SDL / VLC / FFmpeg-dev packages
+#######################################
+echo ""
+echo "Step 0: Removing legacy SDL, VLC, and FFmpeg dev packages..."
+
+# SDL2 dev may have been held by previous installs
+apt-mark unhold libsdl2-dev 2>/dev/null || true
+
+REMOVE_PKGS=""
+for pkg in \
+    libsdl2-dev libsdl2-2.0-0 \
+    vlc libvlc-dev libvlc5 libvlccore9 vlc-data vlc-bin vlc-l10n \
+    vlc-plugin-base vlc-plugin-video-output vlc-plugin-pipewire \
+    libavcodec-dev libavformat-dev libswresample-dev libswscale-dev \
+    libavdevice-dev libavfilter-dev; do
+    dpkg -l ${pkg} 2>/dev/null | grep -q '^ii' && REMOVE_PKGS="${REMOVE_PKGS} ${pkg}"
+done
+
+if [ -n "${REMOVE_PKGS}" ]; then
+    echo "  Removing:${REMOVE_PKGS}"
+    apt-get -y remove ${REMOVE_PKGS}
+    apt-get -y autoremove
+else
+    echo "  No legacy packages to remove."
+fi
+
+# Clean up any locally-built VLC from /usr/local
+if [ -f /usr/local/lib/libvlc.so ]; then
+    echo "  Removing locally-built VLC from /usr/local..."
+    rm -f /usr/local/lib/libvlc* /usr/local/lib/libvlccore*
+    rm -rf /usr/local/lib/vlc
+    rm -rf /usr/local/include/vlc
+    rm -f /usr/local/bin/vlc /usr/local/bin/cvlc /usr/local/bin/rvlc /usr/local/bin/svlc
+    rm -f /usr/local/lib/pkgconfig/libvlc.pc /usr/local/lib/pkgconfig/vlc-plugin.pc
+    ldconfig
+fi
+
+#######################################
 # 1. Install required packages
 #######################################
 echo ""

@@ -66,11 +66,9 @@ OBJECTS_fpp_so += \
 	mediaoutput/mediaoutput.o \
 	mediaoutput/AES67Manager.o \
 	mediaoutput/GStreamerOut.o \
-	mediaoutput/SDLOut.o \
 	mediaoutput/StreamSlotManager.o \
 	mediaoutput/VideoInputManager.o \
 	mediaoutput/VideoOutputManager.o \
-	mediaoutput/VLCOut.o \
 	mqtt.o \
 	NetworkController.o \
  	NetworkMonitor.o \
@@ -150,24 +148,10 @@ LIBS_fpp_so += \
 	-lcrypto \
 	-lutil \
 	-ltag \
-	-lSDL2 \
-	-lavformat \
-	-lavcodec \
-	-lavutil \
-	-lswresample \
-	-lswscale \
 	-lGraphicsMagick \
 	-lGraphicsMagickWand \
 	-lGraphicsMagick++ \
     $(LIBS_GPIO_ADDITIONS)
-
-ifneq ($(wildcard /usr/local/include/vlc/vlc.h),)
-LIBS_fpp_so += -L/usr/local/lib -lvlc 
-else 
-ifneq ($(wildcard /usr/include/vlc/vlc.h),)
-LIBS_fpp_so += -lvlc
-endif
-endif
 
 # GStreamer support
 ifneq ($(wildcard /usr/include/gstreamer-1.0/gst/gst.h),)

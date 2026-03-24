@@ -23,7 +23,6 @@
 #endif
 
 #include <Magick++/Image.h>
-#include <SDL2/SDL_events.h>
 #include <curl/curl.h>
 #include <magick/magick.h>
 #include <sys/stat.h>
@@ -1109,10 +1108,6 @@ void MainLoop(void) {
             idleCount++;
             if (idleCount >= 20) {
                 doPing = true;
-            }
-            SDL_Event event;
-            while (SDL_PollEvent(&event)) {
-                // for now, discard event, but at least the queue doesn't grow
             }
         } else if (idleCount > 0) {
             doPing = true;
