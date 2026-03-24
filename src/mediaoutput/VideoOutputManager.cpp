@@ -23,6 +23,7 @@
 
 #include <fstream>
 #include <cstring>
+#include <thread>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -740,11 +741,14 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
         }
 
         // Check CMA memory before starting HDMI consumer — kmssink needs
-        // ~16-24 MB of CMA for dumb buffers.  If CMA is too low, wait
-        // for any pending pipeline teardowns to release DRM buffers,
-        // then re-check.  Skip this consumer if CMA is still too low.
+        // ~16-24 MB of CMA for dumb buffers.  CmaFree may appear low because
+        // the kernel uses CMA pages for general movable allocations; those
+        // pages are migrated on demand when a real DMA allocation occurs.
+        // If a teardown is in progress, wait briefly for DRM buffers to be
+        // released.  Otherwise just warn and proceed — the kernel will
+        // attempt CMA migration, and if it truly fails the DRM ioctl
+        // (and hence pipeline start) will error out on its own.
         {
-            static constexpr long CMA_MIN_KB = 20480;
             auto readCmaFree = []() -> long {
                 FILE* f = fopen("/proc/meminfo", "r");
                 if (!f) return -1;
@@ -758,21 +762,18 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
             };
 
             long cmaFreeKB = readCmaFree();
-            if (cmaFreeKB >= 0 && cmaFreeKB < CMA_MIN_KB) {
-                // A previous pipeline teardown may still be releasing
-                // DRM dumb buffers — wait for it before giving up.
+            static constexpr long CMA_WARN_KB = 20480;
+            if (cmaFreeKB >= 0 && cmaFreeKB < CMA_WARN_KB) {
                 LogInfo(VB_MEDIAOUT, "VideoOutputManager: CMA low (%ld kB) for consumer '%s', "
-                        "waiting for pending teardowns...\n",
+                        "waiting for pending teardowns then proceeding...\n",
                         cmaFreeKB, consumer.name.c_str());
-                WaitForPendingTeardowns(5000);
+                WaitForPendingTeardowns(3000);
                 cmaFreeKB = readCmaFree();
-            }
-            if (cmaFreeKB >= 0 && cmaFreeKB < CMA_MIN_KB) {
-                LogWarn(VB_MEDIAOUT, "VideoOutputManager: Skipping HDMI consumer '%s' — "
-                        "CMA memory too low (%ld kB free, need %ld+ kB). "
-                        "Restart FPPD to recover CMA.\n",
-                        consumer.name.c_str(), cmaFreeKB, CMA_MIN_KB);
-                return false;
+                if (cmaFreeKB >= 0 && cmaFreeKB < CMA_WARN_KB) {
+                    LogWarn(VB_MEDIAOUT, "VideoOutputManager: CMA still low (%ld kB) for '%s' — "
+                            "proceeding anyway (kernel will attempt CMA migration)\n",
+                            cmaFreeKB, consumer.name.c_str());
+                }
             }
         }
 

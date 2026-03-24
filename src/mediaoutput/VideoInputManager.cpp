@@ -786,6 +786,7 @@ bool VideoInputManager::StartSourceWithAudio(SourceInfo& source) {
             "node.description", G_TYPE_STRING, audioNodeDesc.c_str(),
             "node.autoconnect", G_TYPE_BOOLEAN, FALSE,
             "node.always-process", G_TYPE_BOOLEAN, TRUE,
+            "node.latency", G_TYPE_STRING, "2048/48000",
             "object.register", G_TYPE_STRING, "true",
             NULL);
         g_object_set(apwsink, "stream-properties", aprops, NULL);
