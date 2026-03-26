@@ -95,14 +95,14 @@
 
             $('html,body').css('cursor', 'wait');
             $('#checkAllUpdatesBtn').prop('disabled', true);
-            
+
             var checked = 0;
             var total = installedPlugins.length;
             var updatesFound = 0;
 
-            installedPlugins.forEach(function(plugin) {
+            installedPlugins.forEach(function (plugin) {
                 var url = 'api/plugin/' + plugin + '/updates';
-                
+
                 $.ajax({
                     url: url,
                     type: 'POST',
@@ -113,7 +113,7 @@
                             $('#row-' + plugin).find('.updatesAvailable').show();
                             updatesFound++;
                         }
-                        
+
                         if (checked === total) {
                             $('html,body').css('cursor', 'auto');
                             $('#checkAllUpdatesBtn').prop('disabled', false);
@@ -300,17 +300,17 @@
                 html += '</div><div align="right">';
                 html += '</div><div align="right">';
                 if (compatibleVersion >= 0 || untestedVersion >= 0) {
-                   let idx = compatibleVersion < 0 ? untestedVersion : compatibleVersion;
+                    let idx = compatibleVersion < 0 ? untestedVersion : compatibleVersion;
 
-                   let installText = "Install";
-                   let btnClass    = "btn-success";
+                    let installText = "Install";
+                    let btnClass = "btn-success";
 
-                   if (compatibleVersion < 0 && untestedVersion >= 0) {
-                      installText = "Install untested plugin at your own risk";
-                      btnClass    = "btn-warning";
-                   }
+                    if (compatibleVersion < 0 && untestedVersion >= 0) {
+                        installText = "Install untested plugin at your own risk";
+                        btnClass = "btn-warning";
+                    }
 
-                   html += "<button class='buttons " + btnClass + "' onClick=' InstallPlugin(\"" + data.repoName + "\", \"" + data.versions[idx].branch + "\", \"" + data.versions[idx].sha + "\");'><i class='far fa-arrow-alt-circle-down'></i> " + installText + "</button>";
+                    html += "<button class='buttons " + btnClass + "' onClick=' InstallPlugin(\"" + data.repoName + "\", \"" + data.versions[idx].branch + "\", \"" + data.versions[idx].sha + "\");'><i class='far fa-arrow-alt-circle-down'></i> " + installText + "</button>";
                 }
             }
 
@@ -358,17 +358,17 @@
                         }
                     }
                 }
-                html += '</b></div></div>';
+                html += '</b></div>';
+                if (installed) {
+                    html += '<div class="row"><div class="col" class="bad">WARNING: This plugin is already installed, but may be incompatible with this FPP version or platform.</div></div>';
+                }
+                html += '</div>';
             }
 
             if (installed) {
                 $('#installedPlugins').show();
                 if (firstInstalled) {
                     firstInstalled = 0;
-                }
-
-                if (compatibleVersion == -1) {
-                    html += '<div class="row"><div class="col" class="bad">WARNING: This plugin is already installed, but may be incompatible with this FPP version or platform.</div></div>';
                 }
 
                 InsertPluginTableItem('installedPlugins', data.name, html);
@@ -559,7 +559,9 @@
                         <div id='installedPlugins' class="fppPluginSection">
                             <div class='pluginsHeader'>
                                 <h2>Installed Plugins</h2>
-                                <button id="checkAllUpdatesBtn" class="buttons btn-outline-success" onClick='CheckAllPluginsForUpdates();' title="Check all installed plugins for updates">
+                                <button id="checkAllUpdatesBtn" class="buttons btn-outline-success"
+                                    onClick='CheckAllPluginsForUpdates();'
+                                    title="Check all installed plugins for updates">
                                     <i class='fas fa-sync-alt'></i> Check All for Updates
                                 </button>
                             </div>
