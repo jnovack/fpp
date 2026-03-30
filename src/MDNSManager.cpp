@@ -2,11 +2,10 @@
 
 #include "MDNSManager.h"
 
-#include "common.h"       // for split()
+#include "common.h"
 #include "log.h"
 #include "ping.h"
 #include "MultiSync.h"
-#include "NetworkMonitor.h"
 
 #include <chrono>
 #include <cstdio>
@@ -109,17 +108,13 @@ static void entry_group_callback(AvahiEntryGroup* g, AvahiEntryGroupState state,
         LogInfo(VB_SYNC, "MDNS service registered successfully\n");
         break;
     case AVAHI_ENTRY_GROUP_COLLISION: {
-        LogWarn(VB_SYNC, "MDNS service name collision, attempting to create alternate name\n");
+        LogWarn(VB_SYNC, "MDNS service name collision, picking alternative name\n");
 
         AvahiClient* client = avahi_entry_group_get_client(g);
         if (client) {
-            /*
-             * Reset the entry group and re-register the service. The
-             * RegisterService implementation can use Avahi's helper
-             * functions (e.g. avahi_alternative_service_name) to choose
-             * a non-conflicting name when re-adding the service.
-             */
             avahi_entry_group_reset(g);
+            // Pick an alternative name to avoid re-colliding
+            mgr->PickAlternativeServiceName();
             mgr->RegisterService(client);
         }
 
@@ -162,15 +157,13 @@ void MDNSManager::Initialize(std::map<int, std::function<bool(int)>>& callbacks)
     if (m_running)
         return;
 
-    // Register with NetworkMonitor so we can restart the browser on net events
-    std::function<void(NetworkMonitor::NetEventType, int, const std::string&)> netcb = [this](NetworkMonitor::NetEventType t, int up, const std::string& name) {
-        // On new address/link, restart browse to pick up changes
-        if (t == NetworkMonitor::NetEventType::NEW_ADDR || t == NetworkMonitor::NetEventType::NEW_LINK) {
-            // no-op for now; Avahi client will pick up changes itself.
-        }
-    };
-    // store id if needed in future (registerCallback returns int)
-    m_networkCallbackId = NetworkMonitor::INSTANCE.registerCallback(netcb);
+    // Initialize service name from hostname
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) != 0) {
+        strncpy(hostname, "fppd", sizeof(hostname) - 1);
+        hostname[sizeof(hostname) - 1] = '\0';
+    }
+    m_serviceName = hostname;
 
 #if HAVE_AVAHI
     int error;
@@ -187,34 +180,26 @@ void MDNSManager::Initialize(std::map<int, std::function<bool(int)>>& callbacks)
         } else {
             m_avahiClient = client;
             m_running = true;
-            // run the avahi event loop in its own thread
-            m_thread = new std::thread([sp]() { avahi_simple_poll_loop(sp); });
+            m_thread = std::make_unique<std::thread>([sp]() { avahi_simple_poll_loop(sp); });
         }
     }
 #else
     LogWarn(VB_SYNC, "Avahi development headers not available; MDNS disabled\n");
-    // fallback to previous behavior (no-op) -- leave m_running false
 #endif
 }
 
 void MDNSManager::Cleanup() {
-    if (m_networkCallbackId) {
-        NetworkMonitor::INSTANCE.removeCallback(m_networkCallbackId);
-        m_networkCallbackId = 0;
-    }
-
 #if HAVE_AVAHI
     // First, stop the event loop to prevent callbacks while we free objects
     if (m_avahiSimplePoll) {
         AvahiSimplePoll* sp = static_cast<AvahiSimplePoll*>(m_avahiSimplePoll);
         avahi_simple_poll_quit(sp);
     }
-    
+
     // Wait for the event loop thread to finish
     if (m_thread) {
         m_thread->join();
-        delete m_thread;
-        m_thread = nullptr;
+        m_thread.reset();
     }
 
     // Now that the event loop is stopped, free Avahi objects (no risk of use-after-free)
@@ -235,13 +220,7 @@ void MDNSManager::Cleanup() {
         avahi_simple_poll_free(sp);
         m_avahiSimplePoll = nullptr;
     }
-#else
-    if (m_thread) {
-        m_running = false;
-        m_thread->join();
-        delete m_thread;
-        m_thread = nullptr;
-    }
+    m_running = false;
 #endif
 }
 
@@ -305,11 +284,27 @@ void MDNSManager::SetServiceBrowser(void* sb) {
     m_serviceBrowser = sb;
 }
 
+void MDNSManager::PickAlternativeServiceName() {
+#if HAVE_AVAHI
+    char* alt = avahi_alternative_service_name(m_serviceName.c_str());
+    if (alt) {
+        m_serviceName = alt;
+        avahi_free(alt);
+    }
+#endif
+}
+
 void MDNSManager::RegisterService(void* client) {
 #if HAVE_AVAHI
     AvahiClient* c = static_cast<AvahiClient*>(client);
     if (!c)
         return;
+
+    // Free any existing entry group before creating a new one
+    if (m_entryGroup) {
+        avahi_entry_group_free(static_cast<AvahiEntryGroup*>(m_entryGroup));
+        m_entryGroup = nullptr;
+    }
 
     int error;
     AvahiEntryGroup* group = avahi_entry_group_new(c, entry_group_callback, this);
@@ -318,16 +313,9 @@ void MDNSManager::RegisterService(void* client) {
         return;
     }
 
-    // Get hostname for service name
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0) {
-        strncpy(hostname, "fppd", sizeof(hostname) - 1);
-        hostname[sizeof(hostname) - 1] = '\0';
-    }
-
     // Register _fppd._udp service on port 32320 (MultiSync port)
     error = avahi_entry_group_add_service(group, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, (AvahiPublishFlags)0,
-                                          hostname, "_fppd._udp", NULL, NULL, 32320, NULL);
+                                          m_serviceName.c_str(), "_fppd._udp", NULL, NULL, 32320, NULL);
     if (error < 0) {
         LogWarn(VB_SYNC, "Failed to add service: %s\n", avahi_strerror(error));
         avahi_entry_group_free(group);
@@ -343,6 +331,6 @@ void MDNSManager::RegisterService(void* client) {
     }
 
     m_entryGroup = group;
-    LogInfo(VB_SYNC, "MDNS service registration initiated for %s._fppd._udp on port 32320\n", hostname);
+    LogInfo(VB_SYNC, "MDNS service registration initiated for %s._fppd._udp on port 32320\n", m_serviceName.c_str());
 #endif
 }

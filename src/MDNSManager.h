@@ -11,8 +11,10 @@
  * included LICENSE.LGPL file.
  */
 
+#include <atomic>
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <thread>
@@ -43,10 +45,11 @@ public:
     void HandleResolveIP(const std::string& ip);
     void SetServiceBrowser(void* sb);
     void RegisterService(void* client);  // register local _fppd._udp service
+    void PickAlternativeServiceName();    // pick new name on collision
 
 private:
-    std::thread* m_thread = nullptr;
-    bool m_running = false;
+    std::unique_ptr<std::thread> m_thread;
+    std::atomic<bool> m_running{false};
 
     std::set<std::string> m_knownHosts;
 
@@ -54,8 +57,8 @@ private:
     std::map<int, std::function<void(const std::string&)>> m_callbacks;
     int m_nextCallbackId = 1;
 
-    // NetworkMonitor registration id (0 if not registered)
-    int m_networkCallbackId = 0;
+    // Service name (may be modified on collision)
+    std::string m_serviceName;
 
     // Avahi objects (opaque pointers) - only used in implementation
     void* m_avahiSimplePoll = nullptr;

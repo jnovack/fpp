@@ -315,22 +315,15 @@ static void handleCrash(int s) {
             std::chrono::system_clock::time_point stm;
 #if defined(PLATFORM_OSX)
     #if (__apple_build_version__ >= 14030022)
-            stm = std::chrono::file_clock::to_sys(ftime);
+            stm = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                std::chrono::file_clock::to_sys(ftime));
     #else
             std::time_t tt = decltype(ftime)::clock::to_time_t(ftime);
             stm = std::chrono::system_clock::from_time_t(tt);
     #endif
 #else
-            // most non‑OSX platforms support file_clock (C++20); if not,
-            // compute a corresponding system_clock time using the
-            // offset between the file clock and system_clock.
-    #if defined(__cpp_lib_chrono) || (__cplusplus >= 202002L)
-            stm = std::chrono::file_clock::to_sys(ftime);
-    #else
-            auto now_sys  = std::chrono::system_clock::now();
-            auto now_file = decltype(ftime)::clock::now();
-            stm = now_sys + std::chrono::duration_cast<std::chrono::system_clock::duration>(ftime - now_file);
-    #endif
+            stm = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                std::chrono::file_clock::to_sys(ftime));
 #endif
             auto tdiff = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - stm);
             if (tdiff.count() < 60) {
