@@ -59,6 +59,9 @@ public:
     // Disarm the wakeup timer
     void disarmTimer();
 
+    // Update the event mask on an already-registered file descriptor
+    void updateFileDescriptorEvents(int fd, uint32_t events);
+
     void shutdown();
 private:
     int epollf = -1;

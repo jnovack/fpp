@@ -3,27 +3,26 @@
 #include "MDNSManager.h"
 
 #include "common.h"
+#include "EPollManager.h"
 #include "log.h"
 #include "ping.h"
 #include "MultiSync.h"
 
-#include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <thread>
 #include <vector>
 #include <unistd.h>
+#include <sys/time.h>
 
 #if __has_include(<avahi-client/client.h>)
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
 #include <avahi-client/publish.h>
-#include <avahi-common/simple-watch.h>
 #include <avahi-common/error.h>
 #include <avahi-common/malloc.h>
 #include <avahi-common/strlst.h>
-#include <avahi-common/timeval.h>
 #include <avahi-common/alternative.h>
+#include <sys/timerfd.h>
 #define HAVE_AVAHI 1
 #else
 #define HAVE_AVAHI 0
@@ -36,6 +35,140 @@ MDNSManager::MDNSManager() = default;
 MDNSManager::~MDNSManager() {
     Cleanup();
 }
+
+// ── Custom AvahiPoll adapter ────────────────────────────────────────────
+// Avahi forward-declares AvahiWatch and AvahiTimeout as opaque types.
+// The poll adapter provides the concrete definitions and wires them into
+// the main FPP event loop via EPollManager.
+// ─────────────────────────────────────────────────────────────────────────
+
+#if HAVE_AVAHI
+
+struct AvahiWatch {
+    int fd;
+    AvahiWatchEvent requested;
+    AvahiWatchEvent last;
+    AvahiWatchCallback callback;
+    void* userdata;
+    std::function<bool(int)> epollCb;
+};
+
+struct AvahiTimeout {
+    int timerFd;
+    AvahiTimeoutCallback callback;
+    void* userdata;
+    std::function<bool(int)> epollCb;
+    bool registered;
+};
+
+static uint32_t avahiToEpoll(AvahiWatchEvent e) {
+    uint32_t ep = 0;
+    if (e & AVAHI_WATCH_IN)  ep |= EPOLLIN;
+    if (e & AVAHI_WATCH_OUT) ep |= EPOLLOUT;
+    // EPOLLERR and EPOLLHUP are always reported by epoll regardless of mask
+    return ep ? ep : EPOLLIN;
+}
+
+static void armTimerFd(int tfd, const struct timeval* tv) {
+    struct itimerspec its = {};
+    if (tv) {
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        int64_t delayUs = ((int64_t)tv->tv_sec - now.tv_sec) * 1000000
+                        + (tv->tv_usec - now.tv_usec);
+        if (delayUs < 1)
+            delayUs = 1;
+        its.it_value.tv_sec  = delayUs / 1000000;
+        its.it_value.tv_nsec = (delayUs % 1000000) * 1000;
+    }
+    // tv == NULL → its is all-zero → disarms the timer
+    timerfd_settime(tfd, 0, &its, NULL);
+}
+
+// ── AvahiPoll function table ──
+
+static AvahiWatch* fpp_watch_new(const AvahiPoll* api, int fd,
+                                 AvahiWatchEvent events,
+                                 AvahiWatchCallback callback, void* userdata) {
+    auto* w = new AvahiWatch{fd, events, (AvahiWatchEvent)0, callback, userdata, {}};
+
+    w->epollCb = [w](int) -> bool {
+        w->last = w->requested;
+        w->callback(w, w->fd, w->last, w->userdata);
+        return false;
+    };
+
+    EPollManager::INSTANCE.addFileDescriptor(fd, w->epollCb);
+    uint32_t ep = avahiToEpoll(events);
+    if (ep != EPOLLIN) {
+        EPollManager::INSTANCE.updateFileDescriptorEvents(fd, ep);
+    }
+    return w;
+}
+
+static void fpp_watch_update(AvahiWatch* w, AvahiWatchEvent events) {
+    w->requested = events;
+    EPollManager::INSTANCE.updateFileDescriptorEvents(w->fd, avahiToEpoll(events));
+}
+
+static AvahiWatchEvent fpp_watch_get_events(AvahiWatch* w) {
+    return w->last;
+}
+
+static void fpp_watch_free(AvahiWatch* w) {
+    if (!w)
+        return;
+    EPollManager::INSTANCE.removeFileDescriptor(w->fd);
+    delete w;
+}
+
+static AvahiTimeout* fpp_timeout_new(const AvahiPoll* api,
+                                     const struct timeval* tv,
+                                     AvahiTimeoutCallback callback,
+                                     void* userdata) {
+    auto* t = new AvahiTimeout{-1, callback, userdata, {}, false};
+    t->timerFd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (t->timerFd < 0) {
+        LogWarn(VB_SYNC, "Failed to create timerfd for Avahi timeout\n");
+        delete t;
+        return nullptr;
+    }
+
+    t->epollCb = [t](int) -> bool {
+        uint64_t expirations;
+        ssize_t n = read(t->timerFd, &expirations, sizeof(expirations));
+        (void)n;
+        t->callback(t, t->userdata);
+        return false;
+    };
+
+    EPollManager::INSTANCE.addFileDescriptor(t->timerFd, t->epollCb);
+    t->registered = true;
+    armTimerFd(t->timerFd, tv);
+    return t;
+}
+
+static void fpp_timeout_update(AvahiTimeout* t, const struct timeval* tv) {
+    if (!t || t->timerFd < 0)
+        return;
+    armTimerFd(t->timerFd, tv);
+}
+
+static void fpp_timeout_free(AvahiTimeout* t) {
+    if (!t)
+        return;
+    if (t->registered) {
+        EPollManager::INSTANCE.removeFileDescriptor(t->timerFd);
+    }
+    if (t->timerFd >= 0) {
+        close(t->timerFd);
+    }
+    delete t;
+}
+
+#endif // HAVE_AVAHI
+
+// ── Avahi service callbacks ─────────────────────────────────────────────
 
 #if HAVE_AVAHI
 static void resolve_callback(AvahiServiceResolver* r,
@@ -88,7 +221,6 @@ static void browse_callback(AvahiServiceBrowser* b,
         avahi_service_resolver_new(client, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC, (AvahiLookupFlags)0, resolve_callback, mgr);
         break;
     case AVAHI_BROWSER_REMOVE: {
-        // best-effort remove all matching IPs (we don't have IP here)
         // callers will remove entries when services disappear via monitor
     } break;
     default:
@@ -138,8 +270,8 @@ static void client_callback(AvahiClient* c, AvahiClientState state, void* userda
     if (state == AVAHI_CLIENT_S_RUNNING) {
         // Register local service
         mgr->RegisterService(c);
-        
-        // create a service browser for _fppd._udp
+
+        // Create a service browser for _fppd._udp
         void* sb = avahi_service_browser_new(c, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "_fppd._udp", NULL, (AvahiLookupFlags)0, browse_callback, mgr);
         if (!sb) {
             LogErr(VB_SYNC, "Failed to create Avahi service browser for _fppd._udp: %s\n",
@@ -152,6 +284,8 @@ static void client_callback(AvahiClient* c, AvahiClientState state, void* userda
     }
 }
 #endif
+
+// ── MDNSManager implementation ──────────────────────────────────────────
 
 void MDNSManager::Initialize(std::map<int, std::function<bool(int)>>& callbacks) {
     if (m_running)
@@ -166,22 +300,27 @@ void MDNSManager::Initialize(std::map<int, std::function<bool(int)>>& callbacks)
     m_serviceName = hostname;
 
 #if HAVE_AVAHI
+    // Build a custom AvahiPoll that delegates to EPollManager
+    auto* poll = new AvahiPoll{};
+    poll->watch_new        = fpp_watch_new;
+    poll->watch_update     = fpp_watch_update;
+    poll->watch_get_events = fpp_watch_get_events;
+    poll->watch_free       = fpp_watch_free;
+    poll->timeout_new      = fpp_timeout_new;
+    poll->timeout_update   = fpp_timeout_update;
+    poll->timeout_free     = fpp_timeout_free;
+    poll->userdata         = this;
+    m_avahiPoll = poll;
+
     int error;
-    m_avahiSimplePoll = avahi_simple_poll_new();
-    if (!m_avahiSimplePoll) {
-        LogWarn(VB_SYNC, "Failed to create Avahi simple poll\n");
+    AvahiClient* client = avahi_client_new(poll, (AvahiClientFlags)0, client_callback, this, &error);
+    if (!client) {
+        LogWarn(VB_SYNC, "Failed to create Avahi client: %s\n", avahi_strerror(error));
+        delete poll;
+        m_avahiPoll = nullptr;
     } else {
-        AvahiSimplePoll* sp = static_cast<AvahiSimplePoll*>(m_avahiSimplePoll);
-        AvahiClient* client = avahi_client_new(avahi_simple_poll_get(sp), (AvahiClientFlags)0, client_callback, this, &error);
-        if (!client) {
-            LogWarn(VB_SYNC, "Failed to create Avahi client: %s\n", avahi_strerror(error));
-            avahi_simple_poll_free(sp);
-            m_avahiSimplePoll = nullptr;
-        } else {
-            m_avahiClient = client;
-            m_running = true;
-            m_thread = std::make_unique<std::thread>([sp]() { avahi_simple_poll_loop(sp); });
-        }
+        m_avahiClient = client;
+        m_running = true;
     }
 #else
     LogWarn(VB_SYNC, "Avahi development headers not available; MDNS disabled\n");
@@ -190,19 +329,9 @@ void MDNSManager::Initialize(std::map<int, std::function<bool(int)>>& callbacks)
 
 void MDNSManager::Cleanup() {
 #if HAVE_AVAHI
-    // First, stop the event loop to prevent callbacks while we free objects
-    if (m_avahiSimplePoll) {
-        AvahiSimplePoll* sp = static_cast<AvahiSimplePoll*>(m_avahiSimplePoll);
-        avahi_simple_poll_quit(sp);
-    }
-
-    // Wait for the event loop thread to finish
-    if (m_thread) {
-        m_thread->join();
-        m_thread.reset();
-    }
-
-    // Now that the event loop is stopped, free Avahi objects (no risk of use-after-free)
+    // Free Avahi objects in dependency order.
+    // Freeing the client triggers watch_free / timeout_free for its internal
+    // watches and timeouts, which removes them from EPollManager automatically.
     if (m_entryGroup) {
         avahi_entry_group_free(static_cast<AvahiEntryGroup*>(m_entryGroup));
         m_entryGroup = nullptr;
@@ -215,10 +344,9 @@ void MDNSManager::Cleanup() {
         avahi_client_free(static_cast<AvahiClient*>(m_avahiClient));
         m_avahiClient = nullptr;
     }
-    if (m_avahiSimplePoll) {
-        AvahiSimplePoll* sp = static_cast<AvahiSimplePoll*>(m_avahiSimplePoll);
-        avahi_simple_poll_free(sp);
-        m_avahiSimplePoll = nullptr;
+    if (m_avahiPoll) {
+        delete static_cast<AvahiPoll*>(m_avahiPoll);
+        m_avahiPoll = nullptr;
     }
     m_running = false;
 #endif
@@ -248,7 +376,7 @@ void MDNSManager::HandleResolveIP(const std::string& ip) {
     if (!isNew)
         return;
 
-    LogInfo(VB_SYNC, "MDNS discovered new host %s\n", ip.c_str());
+    LogDebug(VB_SYNC, "MDNS discovered new host %s\n", ip.c_str());
 
     // ping and notify MultiSync
     PingManager::INSTANCE.ping(ip, 1000, [ip](int result) {
@@ -273,7 +401,6 @@ void MDNSManager::HandleResolveIP(const std::string& ip) {
 }
 
 void MDNSManager::SetServiceBrowser(void* sb) {
-    // called from C callback to set the opaque service browser pointer
     std::unique_lock<std::recursive_mutex> lk(m_callbackLock);
     if (m_serviceBrowser) {
 #if HAVE_AVAHI

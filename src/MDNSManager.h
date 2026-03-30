@@ -11,13 +11,10 @@
  * included LICENSE.LGPL file.
  */
 
-#include <atomic>
 #include <functional>
 #include <map>
-#include <memory>
 #include <set>
 #include <string>
-#include <thread>
 #include <mutex>
 
 class MDNSManager {
@@ -48,8 +45,7 @@ public:
     void PickAlternativeServiceName();    // pick new name on collision
 
 private:
-    std::unique_ptr<std::thread> m_thread;
-    std::atomic<bool> m_running{false};
+    bool m_running = false;
 
     std::set<std::string> m_knownHosts;
 
@@ -61,8 +57,8 @@ private:
     std::string m_serviceName;
 
     // Avahi objects (opaque pointers) - only used in implementation
-    void* m_avahiSimplePoll = nullptr;
+    void* m_avahiPoll = nullptr;     // custom AvahiPoll adapter
     void* m_avahiClient = nullptr;
     void* m_serviceBrowser = nullptr;
-    void* m_entryGroup = nullptr;  // for registering local service
+    void* m_entryGroup = nullptr;    // for registering local service
 };

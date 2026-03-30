@@ -180,6 +180,29 @@ void EPollManager::disarmTimer() {
 #endif
 }
 
+void EPollManager::updateFileDescriptorEvents(int fd, uint32_t events) {
+    if (epollf == -1) {
+        return;
+    }
+#ifdef USE_KQUEUE
+    struct kevent changes[2];
+    int n = 0;
+    EV_SET(&changes[n++], fd, EVFILT_READ,
+           (events & EPOLLIN) ? (EV_ADD | EV_ENABLE) : EV_DISABLE, 0, 0, NULL);
+    EV_SET(&changes[n++], fd, EVFILT_WRITE,
+           (events & EPOLLOUT) ? (EV_ADD | EV_ENABLE) : EV_DISABLE, 0, 0, NULL);
+    kevent(epollf, changes, n, NULL, 0, NULL);
+#else
+    epoll_event event;
+    memset(&event, 0, sizeof(event));
+    event.events = events;
+    event.data.fd = fd;
+    if (epoll_ctl(epollf, EPOLL_CTL_MOD, fd, &event) == -1) {
+        LogWarn(VB_GENERAL, "Failed to update descriptor events: %d  %s\n", fd, strerror(errno));
+    }
+#endif
+}
+
 EPollManager::WaitResult EPollManager::waitForEvents(int mstimeout) {
     // Implementation for waiting for events and calling the appropriate callbacks
     constexpr int MAX_EVENTS = 40;
