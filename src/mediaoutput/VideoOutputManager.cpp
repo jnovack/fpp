@@ -563,15 +563,25 @@ bool VideoOutputManager::StartHdmiConsumerGroup(const std::vector<size_t>& indic
         std::string sinkName = "sink" + std::to_string(i);
         GstElement* sink = gst_bin_get_by_name(GST_BIN(pipeline), sinkName.c_str());
         if (sink) {
-            int drmFd = c.cardPath.empty() ? -1 : GStreamerOutput::GetSharedDrmFd(c.cardPath);
+            // Prefer live-resolved card path over config value
+            std::string resolvedCard;
+            int resolvedConnId = c.connectorId;
+            if (!c.connector.empty()) {
+                auto drmCheck = GStreamerOutput::ResolveDrmConnector(c.connector);
+                resolvedCard = drmCheck.cardPath;
+                if (drmCheck.connectorId > 0)
+                    resolvedConnId = drmCheck.connectorId;
+            }
+            std::string cardForFd = !resolvedCard.empty() ? resolvedCard : c.cardPath;
+            int drmFd = cardForFd.empty() ? -1 : GStreamerOutput::GetSharedDrmFd(cardForFd);
             if (drmFd >= 0) {
                 g_object_set(sink, "fd", drmFd, NULL);
-                int planeId = GStreamerOutput::FindPrimaryPlaneForConnector(drmFd, c.connectorId);
+                int planeId = GStreamerOutput::FindPrimaryPlaneForConnector(drmFd, resolvedConnId);
                 if (planeId >= 0) {
                     g_object_set(sink, "plane-id", planeId, NULL);
                 }
                 LogInfo(VB_MEDIAOUT, "VideoOutputManager: Group sink '%s' fd=%d plane=%d connector=%d\n",
-                        c.name.c_str(), drmFd, planeId, c.connectorId);
+                        c.name.c_str(), drmFd, planeId, resolvedConnId);
             } else {
                 g_object_set(sink, "driver-name", "vc4", NULL);
             }
@@ -910,11 +920,21 @@ bool VideoOutputManager::StartConsumer(ConsumerInfo& consumer) {
     if (consumer.type == "hdmi") {
         GstElement* sink = gst_bin_get_by_name(GST_BIN(consumer.pipeline), "sink");
         if (sink) {
-            int drmFd = consumer.cardPath.empty() ? -1
-                : GStreamerOutput::GetSharedDrmFd(consumer.cardPath);
+            // Prefer live-resolved card path over config value
+            std::string resolvedCard;
+            int resolvedConnId = consumer.connectorId;
+            if (!consumer.connector.empty()) {
+                auto drmCheck = GStreamerOutput::ResolveDrmConnector(consumer.connector);
+                resolvedCard = drmCheck.cardPath;
+                if (drmCheck.connectorId > 0)
+                    resolvedConnId = drmCheck.connectorId;
+            }
+            std::string cardForFd = !resolvedCard.empty() ? resolvedCard : consumer.cardPath;
+            int drmFd = cardForFd.empty() ? -1
+                : GStreamerOutput::GetSharedDrmFd(cardForFd);
             if (drmFd >= 0) {
                 g_object_set(sink, "fd", drmFd, NULL);
-                int planeId = GStreamerOutput::FindPrimaryPlaneForConnector(drmFd, consumer.connectorId);
+                int planeId = GStreamerOutput::FindPrimaryPlaneForConnector(drmFd, resolvedConnId);
                 if (planeId >= 0) {
                     g_object_set(sink, "plane-id", planeId, NULL);
                 }

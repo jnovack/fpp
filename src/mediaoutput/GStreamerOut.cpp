@@ -863,6 +863,10 @@ int GStreamerOutput::Start(int msTime) {
                     m_streamSlot, excludeConnectors);
 
                 for (const auto& hc : hdmiConsumers) {
+                    // Resolve the DRM connector live from sysfs — the config
+                    // may have a stale cardPath (e.g. card1 when HDMI is card0).
+                    std::string resolvedCard;
+                    int resolvedConnId = hc.connectorId;
                     if (!hc.connector.empty()) {
                         auto drmCheck = ResolveDrmConnector(hc.connector);
                         if (!drmCheck.connected) {
@@ -870,12 +874,15 @@ int GStreamerOutput::Start(int msTime) {
                                     hc.connectorId, hc.connector.c_str());
                             continue;
                         }
+                        resolvedCard = drmCheck.cardPath;
+                        if (drmCheck.connectorId > 0)
+                            resolvedConnId = drmCheck.connectorId;
                     }
 
-                    std::string sinkName = "dkms_" + std::to_string(hc.connectorId);
+                    std::string sinkName = "dkms_" + std::to_string(resolvedConnId);
                     GstElement* dkmsSink = gst_element_factory_make("kmssink", sinkName.c_str());
                     if (!dkmsSink) {
-                        LogWarn(VB_MEDIAOUT, "GStreamer: kmssink not available for connector %d\n", hc.connectorId);
+                        LogWarn(VB_MEDIAOUT, "GStreamer: kmssink not available for connector %d\n", resolvedConnId);
                         continue;
                     }
 
@@ -891,20 +898,23 @@ int GStreamerOutput::Start(int msTime) {
                     // no blanking.
                     // skip-vsync=TRUE: required for vc4 atomic modesetting
                     // to avoid double-vsync wait (kmssink + kernel).
-                    std::string cardForDkms = hc.cardPath.empty() ? m_hdmiCardPath : hc.cardPath;
+                    // Prefer the live-resolved card path over the config value.
+                    std::string cardForDkms = !resolvedCard.empty() ? resolvedCard
+                                            : !hc.cardPath.empty() ? hc.cardPath
+                                            : m_hdmiCardPath;
                     int drmFd = cardForDkms.empty() ? -1 : GetSharedDrmFd(cardForDkms);
                     LogInfo(VB_MEDIAOUT, "GStreamer: dkms_%d cardPath='%s' sharedFd=%d\n",
-                            hc.connectorId, cardForDkms.c_str(), drmFd);
+                            resolvedConnId, cardForDkms.c_str(), drmFd);
                     if (drmFd >= 0) {
                         g_object_set(dkmsSink,
                                      "fd", drmFd,
-                                     "connector-id", hc.connectorId,
+                                     "connector-id", resolvedConnId,
                                      "sync", TRUE,
                                      "max-lateness", (gint64)-1,
                                      "skip-vsync", TRUE,
                                      NULL);
                         int planeId = (hc.primaryPlaneId >= 0) ? hc.primaryPlaneId
-                                      : FindPrimaryPlaneForConnector(drmFd, hc.connectorId);
+                                      : FindPrimaryPlaneForConnector(drmFd, resolvedConnId);
                         if (planeId >= 0) {
                             g_object_set(dkmsSink, "plane-id", planeId, NULL);
                         }
@@ -912,11 +922,11 @@ int GStreamerOutput::Start(int msTime) {
                         gint readbackFd = -1;
                         g_object_get(dkmsSink, "fd", &readbackFd, NULL);
                         LogInfo(VB_MEDIAOUT, "GStreamer: dkms_%d fd=%d plane=%d\n",
-                                hc.connectorId, readbackFd, planeId);
+                                resolvedConnId, readbackFd, planeId);
                     } else {
                         g_object_set(dkmsSink,
                                      "driver-name", "vc4",
-                                     "connector-id", hc.connectorId,
+                                     "connector-id", resolvedConnId,
                                      "sync", TRUE,
                                      "max-lateness", (gint64)-1,
                                      "skip-vsync", TRUE,
@@ -961,12 +971,12 @@ int GStreamerOutput::Start(int msTime) {
                     gst_object_unref(dQSink);
 
                     if (lr == GST_PAD_LINK_OK) {
-                        m_directConnectorIds.insert(hc.connectorId);
+                        m_directConnectorIds.insert(resolvedConnId);
                         LogInfo(VB_MEDIAOUT, "GStreamer: direct kmssink for connector %d (%dx%d) linked to vtee (pre-PLAYING)\n",
-                                hc.connectorId, hc.width, hc.height);
+                                resolvedConnId, hc.width, hc.height);
                     } else {
                         LogWarn(VB_MEDIAOUT, "GStreamer: failed to link vtee → kmssink for connector %d (ret=%d)\n",
-                                hc.connectorId, lr);
+                                resolvedConnId, lr);
                     }
                 }
             }
