@@ -6,7 +6,7 @@
   "devDependencies": {
     "ansi-regex": "^6.1.0",
     "autoprefixer": "^10.4.20",
-    "bootstrap": "^5.3.3",
+    "bootstrap": "^5.3.8",
     "@popperjs/core": "^2.11.8",
     "browser-sync": "^3.0.3",
     "debug": "^4.3.7",

@@ -2510,8 +2510,8 @@ function readCapes($cd, $capes)
         }
         ?>>
             <div>
-                <span id="pixel-string-details" class="text-muted text-left d-block" style="float: left;"></span>
-                <small class="text-muted text-right pt-2 d-block">
+                <span id="pixel-string-details" class="text-muted text-start d-block" style="float: left;"></span>
+                <small class="text-muted text-end pt-2 d-block">
                     Press F2 to auto set the start channel on the next row.<br>
                     <span class='capeNotes' style='display: none;'><a href='#capeNotes'>View Cape Configuration
                             Notes</a><br></span>

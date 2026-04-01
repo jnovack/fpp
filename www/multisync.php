@@ -330,7 +330,7 @@
 
             if (reorderModeActive) {
                 $table.addClass('reorder-mode');
-                $('#reorderModeBtn').html('<i class="fas fa-arrows-alt"></i> Exit Reorder Mode').removeClass('btn-default').addClass('btn-warning');
+                $('#reorderModeBtn').html('<i class="fas fa-arrows-alt"></i> Exit Reorder Mode').removeClass('btn-secondary').addClass('btn-warning');
                 $('#saveDisplayOrderBtn').show();
 
                 // Disable tablesorter header click sorting
@@ -365,7 +365,7 @@
                 });
             } else {
                 $table.removeClass('reorder-mode');
-                $('#reorderModeBtn').html('<i class="fas fa-arrows-alt"></i> Reorder Systems').removeClass('btn-warning').addClass('btn-default');
+                $('#reorderModeBtn').html('<i class="fas fa-arrows-alt"></i> Reorder Systems').removeClass('btn-warning').addClass('btn-secondary');
 
                 // Destroy sortable
                 if ($tbody.sortable('instance')) {
@@ -3062,7 +3062,7 @@
 
 
                     <!-- Bootstrap popover button for column selection  -->
-                    <button id="columnSelectorBtn" type="button" class="buttons btn btn-default"
+                    <button id="columnSelectorBtn" type="button" class="buttons btn btn-secondary"
                         data-bs-toggle="popover" data-bs-placement="bottom" data-bs-title="Select Columns to Display">
                         Select Columns to Display
                     </button>
@@ -3074,28 +3074,29 @@
                         </div>
                     </div>
                     <!-- Sort by Color Btn  -->
-                    <button id="sortbyColorBtn" type="button" class="buttons btn btn-default" data-bs-placement="bottom"
-                        data-bs-title="Sort Systems by Color"
+                    <button id="sortbyColorBtn" type="button" class="buttons btn btn-secondary"
+                        data-bs-placement="bottom" data-bs-title="Sort Systems by Color"
                         onclick="$('#fppSystemsTable').trigger('sorton', [[[9, 0]]]);">
                         Sort Systems by Color
                     </button>
 
                     <!-- Display Order Buttons -->
-                    <button id="reorderModeBtn" type="button" class="buttons btn btn-default" data-bs-placement="bottom"
-                        data-bs-title="Drag and drop systems to reorder them" onclick="toggleReorderMode();">
+                    <button id="reorderModeBtn" type="button" class="buttons btn btn-secondary"
+                        data-bs-placement="bottom" data-bs-title="Drag and drop systems to reorder them"
+                        onclick="toggleReorderMode();">
                         <i class="fas fa-arrows-alt"></i> Reorder Systems
                     </button>
-                    <button id="saveDisplayOrderBtn" type="button" class="buttons btn btn-default"
+                    <button id="saveDisplayOrderBtn" type="button" class="buttons btn btn-secondary"
                         data-bs-placement="bottom" data-bs-title="Save the current display order of systems"
                         onclick="saveDisplayOrder();">
                         <i class="fas fa-save"></i> Save Display Order
                     </button>
-                    <button id="sortBySavedOrderBtn" type="button" class="buttons btn btn-default"
+                    <button id="sortBySavedOrderBtn" type="button" class="buttons btn btn-secondary"
                         data-bs-placement="bottom" data-bs-title="Re-apply the saved display order"
                         onclick="sortBySavedOrder();" style="display:none;">
                         <i class="fas fa-sort-amount-down"></i> Saved Order
                     </button>
-                    <button id="clearDisplayOrderBtn" type="button" class="buttons btn btn-default"
+                    <button id="clearDisplayOrderBtn" type="button" class="buttons btn btn-secondary"
                         data-bs-placement="bottom" data-bs-title="Clear the saved display order"
                         onclick="clearDisplayOrder();" style="display:none;">
                         <i class="fas fa-times"></i> Clear Display Order

@@ -387,8 +387,8 @@
                 var $playlistCardHeading = $('<h3 ' + $playlistClass + '>' + $playlistName + '</h3>');
                 var $playlistCardDescription = $('<div class="text-center"/><p class="card-text mb-2 text-muted">' +
                     $playlistDescription + '</p></div>');
-                var $playlistCardDuration = $('<div class="text-left"/><p class="card-text mb-2 text-muted"><span class="fw-bold">Total Duration: </span>' + $playlistDuration + '</p></div>');
-                var $playlistCardItems = $('<div class="text-left"/><p class="card-text mb-2 text-muted"><span class="fw-bold">Total Items: </span>' + $playlistItems + '</p></div>');
+                var $playlistCardDuration = $('<div class="text-start"/><p class="card-text mb-2 text-muted"><span class="fw-bold">Total Duration: </span>' + $playlistDuration + '</p></div>');
+                var $playlistCardItems = $('<div class="text-start"/><p class="card-text mb-2 text-muted"><span class="fw-bold">Total Items: </span>' + $playlistItems + '</p></div>');
                 var $playlistActions = $("<div class='buttonActions' />");
                 var $playlistEditButton = $(
                     '<button class="playlistCardEditButton circularButton circularButton-sm circularEditButton">Edit</button>'
