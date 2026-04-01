@@ -57,6 +57,7 @@ OBJECTS_fpp_so += \
 	fseq/FSEQFile.o \
 	gpio.o \
 	httpAPI.o \
+	fpphttp_compat.o \
 	log.o \
 	FPPLocale.o \
 	MultiSync.o \

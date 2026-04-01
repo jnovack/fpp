@@ -13,6 +13,7 @@
 #include "fpp-pch.h"
 
 #include <memory>
+#include <utility>
 
 #include <sys/socket.h>
 #include <sys/wait.h>

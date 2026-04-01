@@ -4,6 +4,16 @@
 // This #define must be before any #include's
 #define _FILE_OFFSET_BITS 64
 
+// Block libhttpserver from loading: FPP now uses drogon, and fpphttp.h provides
+// source-level shims in the httpserver:: namespace for plugin compatibility.
+// Defining the guard here causes any #include <httpserver.hpp> in plugin code
+// to be silently skipped, preventing redefinition conflicts with our shims.
+#define SRC_HTTPSERVER_HPP_
+
+// Kept for backward compatibility with external plugins compiled against the
+// old libhttpserver-based API. See CLAUDE.md.
+#define HTTP_RESPONSE_CONST
+
 #if __has_include(<jsoncpp/json/json.h>)
 #include <jsoncpp/json/json.h>
 #elif __has_include(<json/json.h>)

@@ -15,8 +15,10 @@
 #include <map>
 #include <string>
 
+#include "fpphttp.h"
+
 // Increment this when the plugin ABI changes (e.g. virtual method signatures)
-#define FPP_PLUGIN_API_VERSION 2
+#define FPP_PLUGIN_API_VERSION 3
 
 // Plugins compiled with these headers will export their API version.
 // weak linkage allows multiple TUs to define this; visibility ensures .so export.
@@ -96,9 +98,36 @@ namespace FPPPlugins
         APIProviderPlugin() {}
         virtual ~APIProviderPlugin() {}
 
-        // Register/Handle API routines
-        virtual void registerApis() {}
-        virtual void unregisterApis() {}
+        // New API (called by FPP host). Default implementation calls the
+        // deprecated webserver* overload below, so old plugin source code
+        // that overrides registerApis(webserver*) still works when recompiled.
+        virtual void registerApis() {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            httpserver::webserver shimWs;
+            if (auto* p = dynamic_cast<FPPPlugins::Plugin*>(this))
+                shimWs.setPluginName(p->getName());
+            registerApis(&shimWs);
+#pragma GCC diagnostic pop
+        }
+        virtual void unregisterApis() {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            httpserver::webserver shimWs;
+            if (auto* p = dynamic_cast<FPPPlugins::Plugin*>(this))
+                shimWs.setPluginName(p->getName());
+            unregisterApis(&shimWs);
+#pragma GCC diagnostic pop
+        }
+
+        // Deprecated: old libhttpserver-based API, kept for source compatibility.
+        // Recompile against the new fpphttp.h drogon-based API and override
+        // registerApis() (no parameters) instead.
+        [[deprecated("Override registerApis() (no parameters) and use drogon::app() or fpphttp.h helpers directly")]]
+        virtual void registerApis(httpserver::webserver*) {}
+        [[deprecated("Override unregisterApis() (no parameters) instead")]]
+        virtual void unregisterApis(httpserver::webserver*) {}
+
         virtual void addControlCallbacks(std::map<int, std::function<bool(int)>>& callbacks) {}
     };
 }
