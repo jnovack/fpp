@@ -13,5 +13,5 @@ After=swap.target
 What=tmpfs
 Where=/tmp
 Type=tmpfs
-Options=mode=1777,strictatime,nosuid,nodev,size=75M,nr_inodes=1m
+Options=mode=1777,relatime,nosuid,nodev,size=30%,nr_inodes=1m
 

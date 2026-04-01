@@ -1523,7 +1523,6 @@ fi
 #######################################
 echo "FPP - Configuring FPP startup"
 cp /opt/fpp/etc/systemd/*.service /lib/systemd/system/
-cp /opt/fpp/etc/avahi/* /etc/avahi/services
 if $isimage; then
     mkdir -p /etc/networkd-dispatcher/initialized.d
     cp -a /opt/fpp/etc/networkd-dispatcher/* /etc/networkd-dispatcher
