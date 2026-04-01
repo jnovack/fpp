@@ -3587,7 +3587,17 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             // Priority 4: Use stored nodeTarget even though device isn't present
             // WirePlumber names are deterministic (based on USB VID/PID/serial),
             // so the stored name will be correct when the device reappears.
+            // However, fpp_alsa_* nodes require a physical ALSA device — if the
+            // card isn't present we must NOT create an adapter for it (PipeWire
+            // crashes fatally trying to open a missing ALSA device).
             if (isset($member['nodeTarget']) && !empty($member['nodeTarget'])) {
+                if (strpos($member['nodeTarget'], 'fpp_alsa_') === 0) {
+                    $p4CardNum = ResolveCardIdToNumber($cardId);
+                    if ($p4CardNum < 0) {
+                        $unresolvedCards[] = $cardId . " (device unplugged — will be restored when reconnected)";
+                        continue;
+                    }
+                }
                 $cardNodeMap[$cardId] = $member['nodeTarget'];
                 continue;
             }
@@ -3674,6 +3684,9 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
                 continue;
             if (!isset($cardNodeMap[$cid]))
                 continue;
+            // Verify ALSA device is still present (may have been unplugged)
+            if (ResolveCardIdToNumber($cid) < 0)
+                continue;
             // Track max channels needed per card (same card in multiple groups)
             if (!isset($customAlsaAdapters[$cid]) || $memberCh > $customAlsaAdapters[$cid]['channels']) {
                 $cidNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cid));
@@ -3735,6 +3748,13 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
         $conf .= "# These provide sinks for cards with no WirePlumber node or needing extra channels\n";
         $conf .= "context.objects = [\n";
         foreach ($customAlsaAdapters as $cid => $info) {
+            // Verify ALSA device is physically present before creating adapter.
+            // A missing device causes PipeWire to crash fatally on startup.
+            if (ResolveCardIdToNumber($cid) < 0) {
+                $conf .= "  # SKIPPED: $cid — ALSA card not present (device unplugged?)\n";
+                unset($cardNodeMap[$cid]);
+                continue;
+            }
             $posStr = isset($channelPositions[$info['channels']]) ? $channelPositions[$info['channels']] : "[ FL FR ]";
             $cardLabel = $cid;
             $conf .= "  { factory = adapter\n";

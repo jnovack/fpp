@@ -2121,6 +2121,18 @@ static void setupAudio() {
     // on the other two, so restarting fpp-pipewire triggers a cascade.
     // We restart all three explicitly to ensure clean state.
     if (usePipeWireBackend && !runningInDocker) {
+        // Pre-start validation: regenerate audio group configs BEFORE starting
+        // PipeWire so that adapters for unplugged ALSA devices are removed.
+        // The cached config may reference devices that were present when it was
+        // last generated but have since been disconnected — PipeWire crashes
+        // fatally if it tries to open a missing ALSA device via context.objects.
+        // This regeneration runs without pw-dump (PipeWire isn't up yet) and
+        // relies on stored nodeTargets + ALSA card presence checks.
+        if (hasGroupsConfig && FileExists(groupsConfDest)) {
+            printf("FPP - Validating PipeWire audio group config against current hardware...\n");
+            system("/usr/bin/php /opt/fpp/scripts/regenerate_pipewire_groups --force");
+        }
+
         exec("/usr/bin/systemctl restart fpp-pipewire.service fpp-wireplumber.service fpp-pipewire-pulse.service");
 
         // Wait for WirePlumber to enumerate ALSA devices before regenerating

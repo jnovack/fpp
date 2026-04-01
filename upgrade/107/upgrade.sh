@@ -252,6 +252,14 @@ systemctl stop fpp-wireplumber.service 2>/dev/null || true
 systemctl stop fpp-pipewire.service 2>/dev/null || true
 sleep 1
 
+# Regenerate audio group configs before starting PipeWire.
+# The config may reference ALSA devices that have been unplugged —
+# PipeWire crashes fatally trying to open missing ALSA adapters.
+if [ -f /opt/fpp/scripts/regenerate_pipewire_groups ] && [ -f /home/fpp/media/config/pipewire-audio-groups.json ]; then
+    echo "    Regenerating audio group config for current hardware..."
+    /usr/bin/php /opt/fpp/scripts/regenerate_pipewire_groups --force 2>&1 || true
+fi
+
 systemctl start fpp-pipewire.service
 sleep 2
 systemctl start fpp-wireplumber.service
