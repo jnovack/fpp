@@ -483,6 +483,10 @@ HttpResponsePtr PlayerResource::render_GET(const HttpRequestPtr& req) {
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
 
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
+
     LogDebug(VB_HTTP, "URL: %s %s\n", url.c_str(), req->query().c_str());
 
     // Keep IF statement in alphabetical order
@@ -597,6 +601,10 @@ HttpResponsePtr PlayerResource::render_POST(const HttpRequestPtr& req) {
 
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
+
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
 
     LogDebug(VB_HTTP, "POST URL: %s %s\n", url.c_str(), req->query().c_str());
 
@@ -729,6 +737,10 @@ HttpResponsePtr PlayerResource::render_DELETE(const HttpRequestPtr& req) {
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
 
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
+
     LogDebug(VB_HTTP, "DELETE URL: %s %s\n", url.c_str(), req->query().c_str());
 
     // Keep IF statement in alphabetical order
@@ -768,6 +780,10 @@ HttpResponsePtr PlayerResource::render_PUT(const HttpRequestPtr& req) {
 
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
+
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
 
     LogDebug(VB_HTTP, "PUT URL: %s %s\n", url.c_str(), req->query().c_str());
 

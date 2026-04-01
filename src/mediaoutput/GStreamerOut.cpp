@@ -761,8 +761,6 @@ int GStreamerOutput::Start(int msTime) {
         // so multiple HDMI outputs on the same card work simultaneously.
         bool haveHdmiConnector = (m_hdmiConnectorId >= 0);
         GstElement* videoQueue = gst_element_factory_make("queue", "vq");
-        GstElement* videoconvert = gst_element_factory_make("videoconvert", "vconv");
-        GstElement* videoscale = gst_element_factory_make("videoscale", "vscale");
 
         if (haveHdmiConnector) {
             m_kmssink = gst_element_factory_make("kmssink", "kmsvideosink");
@@ -794,16 +792,8 @@ int GStreamerOutput::Start(int msTime) {
             }
         }
 
-        // Scale video to display resolution if known — fills the entire screen.
-        GstElement* capsfilterVideo = nullptr;
-        if (m_hdmiDisplayWidth > 0 && m_hdmiDisplayHeight > 0) {
-            capsfilterVideo = gst_element_factory_make("capsfilter", "vcapsf");
-            GstCaps* videoCaps = gst_caps_new_simple("video/x-raw",
-                "width", G_TYPE_INT, m_hdmiDisplayWidth,
-                "height", G_TYPE_INT, m_hdmiDisplayHeight, NULL);
-            g_object_set(capsfilterVideo, "caps", videoCaps, NULL);
-            gst_caps_unref(videoCaps);
-        }
+        // kmssink handles format conversion + scaling in hardware.
+        // No capsfilter needed — let sinks negotiate with the decoder directly.
 
         if (!m_pwVideoSinkName.empty()) {
             // ── PipeWire video routing (tee + deferred pipewiresink) ──
@@ -816,20 +806,15 @@ int GStreamerOutput::Start(int msTime) {
             GstElement* vtee = gst_element_factory_make("tee", "vtee");
             g_object_set(vtee, "allow-not-linked", TRUE, NULL);
 
-            // videoQueue → videoconvert → videoscale → [capsfilter] → vtee
-            if (capsfilterVideo) {
-                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
-                                 capsfilterVideo, vtee, NULL);
-                if (!gst_element_link_many(videoQueue, videoconvert, videoscale,
-                                           capsfilterVideo, vtee, NULL)) {
-                    LogErr(VB_MEDIAOUT, "GStreamer video: Failed to link pre-tee chain\n");
-                }
-            } else {
-                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
-                                 vtee, NULL);
-                if (!gst_element_link_many(videoQueue, videoconvert, videoscale, vtee, NULL)) {
-                    LogErr(VB_MEDIAOUT, "GStreamer video: Failed to link pre-tee chain (no scaling)\n");
-                }
+            // Link videoQueue directly to vtee — skip videoconvert/videoscale.
+            // kmssink accepts the HW decoder's native output (NV12 DMA buffers)
+            // and handles format conversion + scaling in hardware.  Putting
+            // videoconvert/videoscale before the tee forces CPU-side conversion
+            // of every frame (~100% CPU on Pi4).  Paths that need specific
+            // formats (e.g., pipewiresink) include their own converter.
+            gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, vtee, NULL);
+            if (!gst_element_link_many(videoQueue, vtee, NULL)) {
+                LogErr(VB_MEDIAOUT, "GStreamer video: Failed to link vq → vtee\n");
             }
 
             if (haveHdmiConnector) {
@@ -940,29 +925,11 @@ int GStreamerOutput::Start(int msTime) {
                                  "max-size-time", (guint64)0,
                                  NULL);
 
-                    // videoconvert + capsfilter ensure the DRM plane gets a
-                    // format it can scanout (BGRx) at the display resolution.
-                    // Without this, vc4 may fail to set up the CRTC on cold
-                    // start because no explicit mode is requested.
-                    GstElement* dConvert = gst_element_factory_make("videoconvert", nullptr);
-                    GstElement* dScale = gst_element_factory_make("videoscale", nullptr);
-                    GstElement* dCapsf = gst_element_factory_make("capsfilter", nullptr);
-                    if (hc.width > 0 && hc.height > 0) {
-                        GstCaps* dCaps = gst_caps_new_simple("video/x-raw",
-                            "format", G_TYPE_STRING, "BGRx",
-                            "width", G_TYPE_INT, hc.width,
-                            "height", G_TYPE_INT, hc.height, NULL);
-                        g_object_set(dCapsf, "caps", dCaps, NULL);
-                        gst_caps_unref(dCaps);
-                    } else {
-                        GstCaps* dCaps = gst_caps_new_simple("video/x-raw",
-                            "format", G_TYPE_STRING, "BGRx", NULL);
-                        g_object_set(dCapsf, "caps", dCaps, NULL);
-                        gst_caps_unref(dCaps);
-                    }
-
-                    gst_bin_add_many(GST_BIN(m_pipeline), dQueue, dConvert, dScale, dCapsf, dkmsSink, NULL);
-                    gst_element_link_many(dQueue, dConvert, dScale, dCapsf, dkmsSink, NULL);
+                    // kmssink accepts HW decoder's native NV12/DMA output and
+                    // handles format conversion + scaling in hardware.
+                    // No CPU-side videoconvert/videoscale needed.
+                    gst_bin_add_many(GST_BIN(m_pipeline), dQueue, dkmsSink, NULL);
+                    gst_element_link_many(dQueue, dkmsSink, NULL);
 
                     GstPad* teeSrc = gst_element_request_pad_simple(vtee, "src_%u");
                     GstPad* dQSink = gst_element_get_static_pad(dQueue, "sink");
@@ -982,19 +949,13 @@ int GStreamerOutput::Start(int msTime) {
             }
         } else if (haveHdmiConnector) {
             // ── Direct kmssink (no PipeWire video routing) ──
-            if (capsfilterVideo) {
-                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
-                                 capsfilterVideo, m_kmssink, NULL);
-                if (!gst_element_link_many(videoQueue, videoconvert, videoscale,
-                                           capsfilterVideo, m_kmssink, NULL)) {
-                    LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain\n");
-                }
-            } else {
-                gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, videoconvert, videoscale,
-                                 m_kmssink, NULL);
-                if (!gst_element_link_many(videoQueue, videoconvert, videoscale, m_kmssink, NULL)) {
-                    LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain (no scaling)\n");
-                }
+            // Link directly: videoQueue → kmssink.  kmssink accepts the HW
+            // decoder's native NV12/DMA output and handles format conversion +
+            // scaling in hardware.  Skipping videoconvert/videoscale avoids
+            // CPU-side conversion (~100% CPU on Pi4).
+            gst_bin_add_many(GST_BIN(m_pipeline), videoQueue, m_kmssink, NULL);
+            if (!gst_element_link_many(videoQueue, m_kmssink, NULL)) {
+                LogErr(VB_MEDIAOUT, "GStreamer HDMI: Failed to link video chain\n");
             }
         }
 
