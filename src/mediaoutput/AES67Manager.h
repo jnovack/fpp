@@ -29,7 +29,8 @@
 #define HAS_AES67_GSTREAMER
 
 #include <gst/gst.h>
-#include <httpserver.hpp>
+
+#include "fpphttp.h"
 
 #include <atomic>
 #include <functional>
@@ -139,13 +140,12 @@ struct SAPDiscoveredStream {
 // ──────────────────────────────────────────────────────────────────────────────
 // AES67Manager — singleton managing all AES67 GStreamer pipelines
 // ──────────────────────────────────────────────────────────────────────────────
-class AES67Manager : public httpserver::http_resource {
+class AES67Manager {
 public:
     static AES67Manager& INSTANCE;
 
     // HTTP API endpoint (registered at /aes67)
-    HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> render_GET(
-        const httpserver::http_request& req);
+    HttpResponsePtr render_GET(const HttpRequestPtr& req);
 
     // Lifecycle
     bool Init();                         // Called from fppd startup

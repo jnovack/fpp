@@ -1833,10 +1833,9 @@ std::vector<AES67Manager::TestResult> AES67Manager::RunSelfTest() {
 // ──────────────────────────────────────────────────────────────────────────────
 // HTTP API endpoint — registered at /aes67
 // ──────────────────────────────────────────────────────────────────────────────
-HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> AES67Manager::render_GET(
-    const httpserver::http_request& req) {
+HttpResponsePtr AES67Manager::render_GET(const HttpRequestPtr& req) {
 
-    std::string url(req.get_path());
+    std::string url(req->path());
 
     // Strip leading /aes67/
     if (url.find("/aes67/") == 0) {
@@ -1892,8 +1891,7 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> AES67Manager::ren
         wbuilder["indentation"] = "";
         std::string resultStr = Json::writeString(wbuilder, result);
 
-        return std::shared_ptr<httpserver::http_response>(
-            new httpserver::string_response(resultStr, 200, "application/json"));
+        return makeStringResponse(resultStr, 200, "application/json");
     }
 
     if (url == "test") {
@@ -1921,12 +1919,10 @@ HTTP_RESPONSE_CONST std::shared_ptr<httpserver::http_response> AES67Manager::ren
         wbuilder["indentation"] = "  ";
         std::string resultStr = Json::writeString(wbuilder, result);
 
-        return std::shared_ptr<httpserver::http_response>(
-            new httpserver::string_response(resultStr, 200, "application/json"));
+        return makeStringResponse(resultStr, 200, "application/json");
     }
 
-    return std::shared_ptr<httpserver::http_response>(
-        new httpserver::string_response("{\"error\":\"unknown endpoint\"}", 404, "application/json"));
+    return makeStringResponse("{\"error\":\"unknown endpoint\"}", 404, "application/json");
 }
 
 #endif // HAS_AES67_GSTREAMER

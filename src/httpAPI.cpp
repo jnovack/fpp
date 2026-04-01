@@ -319,11 +319,13 @@ void APIServer::Init(void) {
     app.registerHandlerViaRegex("/fppd/testing(/.*)?", handleTesting, {drogon::Get, drogon::Post, drogon::Head});
 
 #ifdef HAS_AES67_GSTREAMER
-    // AES67 endpoint via compat shim (AES67Manager still uses httpserver types)
-    {
-        httpserver::webserver shimWs;
-        shimWs.register_resource("/aes67", &AES67Manager::INSTANCE, true);
-    }
+    // AES67 status/test endpoint
+    auto handleAES67 = [](const HttpRequestPtr& req,
+                          std::function<void(const HttpResponsePtr&)>&& callback) {
+        callback(AES67Manager::INSTANCE.render_GET(req));
+    };
+    app.registerHandler("/aes67", handleAES67, {drogon::Get, drogon::Head});
+    app.registerHandlerViaRegex("/aes67/.*", handleAES67, {drogon::Get, drogon::Head});
 #endif
 
     // PlayerResource catch-all for all other /fppd/* paths (registered AFTER
