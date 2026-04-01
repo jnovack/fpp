@@ -9,7 +9,7 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 
 ../external/RF24/librf24-bcm.so: ../external/RF24/.git $(PCH_FILE)
 	@echo "Building RF24 library"
-	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/RF24/
+	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/RF24/ CCFLAGS="-Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s -Wno-parentheses -Wno-unused-value -Wno-misleading-indentation"
 	@ln -s librf24-bcm.so.1.0 ../external/RF24/librf24-bcm.so.1
 	@ln -s librf24-bcm.so.1 ../external/RF24/librf24-bcm.so
 
@@ -24,7 +24,7 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 	@echo "Building rpi-rgb-led-matrix library"
 	@if [ -e ../external/rpi-rgb-led-matrix/lib/librgbmatrix.so ]; then rm ../external/rpi-rgb-led-matrix/lib/librgbmatrix.so; fi
 	@sed -i -e "s/-march=native//" ../external/rpi-rgb-led-matrix/lib/Makefile
-	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/rpi-rgb-led-matrix/lib/ librgbmatrix.a
+	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/rpi-rgb-led-matrix/lib/ librgbmatrix.a DEFINES="-Wno-format"
 	@cd  ../external/rpi-rgb-led-matrix/lib/ && git checkout -- Makefile
 
 #############################################################################
@@ -54,7 +54,7 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 
 ../external/spixels/lib/libspixels.a: ../external/spixels/.git  $(PCH_FILE)
 	@echo "Building spixels library"
-	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/spixels/lib/
+	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/spixels/lib/ CXXFLAGS="-Wall -O3 -I../include -I. -Wno-mismatched-new-delete"
 
 clean::
 	@if [ -e ../external/spixels/lib/libspixels.a ]; then $(MAKE) -C ../external/spixels/lib clean; fi
