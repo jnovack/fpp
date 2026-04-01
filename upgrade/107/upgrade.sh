@@ -1,6 +1,6 @@
 #!/bin/bash
 #####################################
-# Upgrade 105: Install GStreamer + PipeWire audio stack
+# Upgrade 107: Install GStreamer + PipeWire audio stack
 #
 # Sets up the complete audio stack required by the GStreamer-based
 # media engine:
@@ -34,7 +34,7 @@ if [ "${FPPPLATFORM}" != "MacOS" ]; then
     rm -f /lib/libhttpserver.so* /usr/lib/libhttpserver.so* /usr/local/lib/libhttpserver.so*
 fi
 
-echo "FPP - Upgrade 105: Install GStreamer + PipeWire audio stack"
+echo "FPP - Upgrade 107: Install GStreamer + PipeWire audio stack"
 echo "==========================================================="
 
 FPPPLATFORM=$(cat /etc/fpp/platform 2>/dev/null)
@@ -290,7 +290,7 @@ done
 
 echo ""
 if ${ALL_OK} && ${GST_OK}; then
-    echo "Upgrade 105 complete — GStreamer + PipeWire audio stack is ready."
+    echo "Upgrade 107 complete — GStreamer + PipeWire audio stack is ready."
 else
     if ! ${ALL_OK}; then
         echo "WARNING: Some PipeWire services are not running. Check: systemctl status fpp-pipewire fpp-wireplumber fpp-pipewire-pulse"
