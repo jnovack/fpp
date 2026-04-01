@@ -19,6 +19,10 @@
 
 #include "fpp-pch.h"
 
+// Defined in fppd.cpp; setting it to 0 breaks the main loop and triggers
+// FPP's normal shutdown sequence, same as SIGQUIT or a graceful stop.
+extern volatile int runMainFPPDLoop;
+
 #ifdef PLATFORM_OSX
 #include <sys/sysctl.h>
 #else
@@ -254,17 +258,17 @@ APIServer::APIServer() {
  */
 APIServer::~APIServer() {
     drogon::app().quit();
-    // Thread is detached, give it a moment to finish after quit signal
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    delete m_pr;
-    m_pr = nullptr;
+    // Release our reference. In-flight drogon requests captured m_pr by value
+    // (shared_ptr), so the PlayerResource stays alive until the last request
+    // completes — no use-after-free regardless of when drogon threads finish.
+    m_pr.reset();
 }
 
 /*
  *
  */
 void APIServer::Init(void) {
-    m_pr = new PlayerResource;
+    m_pr = std::make_shared<PlayerResource>();
 
     auto& app = drogon::app();
 
@@ -273,17 +277,17 @@ void APIServer::Init(void) {
     // so we register with {1} catch-all patterns.
 
     // PlayerResource (/fppd/*)
-    auto handleFppd = [this](const HttpRequestPtr& req,
-                             std::function<void(const HttpResponsePtr&)>&& callback) {
+    auto handleFppd = [pr = m_pr](const HttpRequestPtr& req,
+                                  std::function<void(const HttpResponsePtr&)>&& callback) {
         HttpResponsePtr resp;
         if (req->method() == drogon::Get || req->isHead())
-            resp = m_pr->render_GET(req);
+            resp = pr->render_GET(req);
         else if (req->method() == drogon::Post)
-            resp = m_pr->render_POST(req);
+            resp = pr->render_POST(req);
         else if (req->method() == drogon::Put)
-            resp = m_pr->render_PUT(req);
+            resp = pr->render_PUT(req);
         else if (req->method() == drogon::Delete)
-            resp = m_pr->render_DELETE(req);
+            resp = pr->render_DELETE(req);
         else
             resp = makeStringResponse("Method Not Allowed", 405);
         callback(resp);
@@ -395,6 +399,15 @@ void APIServer::Init(void) {
     app.addListener(FPP_BIND_ADDRESS, FPP_HTTP_PORT);
     app.setThreadNum(10);
     app.disableSession();
+
+    // Replace drogon's default SIGINT and SIGTERM handlers. Drogon's defaults
+    // only stop drogon's own threads, leaving fppd's main loop spinning.
+    // Drogon calls app().quit() itself before invoking these callbacks, so
+    // drogon is already stopping by the time the main loop sees
+    // runMainFPPDLoop == 0 and begins FPP's normal shutdown sequence.
+    auto fppShutdown = []() { runMainFPPDLoop = 0; };
+    app.setIntSignalHandler(fppShutdown);
+    app.setTermSignalHandler(fppShutdown);
 
     m_serverThread = new std::thread([]() {
         drogon::app().run();

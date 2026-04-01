@@ -65,6 +65,6 @@ public:
     void Init();
     void periodicWork();
 private:
-    PlayerResource* m_pr;
+    std::shared_ptr<PlayerResource> m_pr;
     std::thread* m_serverThread = nullptr;
 };
