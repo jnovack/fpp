@@ -169,9 +169,21 @@ function UpdateFileCount ($dir) {
 		return; // Element doesn't exist, skip update
 	}
 
-	var visibleRows = $('#tbl' + $dir + ' tbody tr')
-		.not('.unselectableRow')
-		.not('.filtered');
+	var $table = $('#tbl' + $dir);
+	var visibleRows;
+
+	// Use different logic for Bootstrap Table vs Tablesorter
+	// Bootstrap Table hides rows with display:none when filtering
+	if ($table.closest('.bootstrap-table').length) {
+		// For Bootstrap Table: count all rows that aren't hidden
+		visibleRows = $table.find('tbody tr:visible').not('.unselectableRow');
+	} else {
+		// For Tablesorter: count rows without .filtered class
+		visibleRows = $table
+			.find('tbody tr')
+			.not('.unselectableRow')
+			.not('.filtered');
+	}
 
 	$('#fileCount_' + $dir)[0].innerText = visibleRows.length;
 
@@ -198,8 +210,10 @@ function UpdateFileCount ($dir) {
 		$('#fileSize_' + $dir)[0].innerText = formatBytes(totalSize);
 	}
 
-	if ($('#tbl' + $dir + ' tbody tr.filtered').length > 0) {
-		//is filtered
+	// Check if filtered by comparing total rows to visible rows
+	const totalRows = $table.find('tbody tr').not('.unselectableRow').length;
+	if (visibleRows.length < totalRows) {
+		// is filtered
 		var headingEl = $('#div' + $dir + ' .fileCountlabelHeading')[0];
 		if (headingEl) {
 			headingEl.innerHTML = '<span class="filtered">Filtered items:<span>';
@@ -226,43 +240,23 @@ function UpdateFileCount ($dir) {
 }
 
 function FileManagerFilterToggled () {
-	value = settings.fileManagerTableFilter == '1' ? true : false;
+	var value = settings.fileManagerTableFilter == '1';
 	var $t = $('#fileManager').find('table');
-	if (!value) {
-		//logic for hidden filter
-		$('.tablesorter-filter-row').addClass('hideme');
-		$('table').trigger('filterReset');
 
-		if ($t.length) {
-			var loopSize = $t.length;
-			for (let i = 0; i < loopSize; i += 1) {
-				var tableName = $t[i].id;
-				var fileType = tableName.substring(3);
-				if ($t[i].config) {
-					$($t)[i].config.widgetOptions.filter_hideFilters = true; //set current instance
-					eval(
-						'tablesorterOptions_' + fileType
-					).widgetOptions.filter_hideFilters = true; //set config option for when tabs regenerate
+	if ($t.length) {
+		var loopSize = $t.length;
+		for (let i = 0; i < loopSize; i += 1) {
+			var tableName = $t[i].id;
+			if (!tableName) continue;
+			var $bt = $('#' + tableName);
+			if ($bt.closest('.bootstrap-table').length) {
+				var currentVisible =
+					$bt.bootstrapTable('getOptions').filterControlVisible;
+				if (currentVisible !== value) {
+					$bt.bootstrapTable('toggleFilterControl');
 				}
 			}
 		}
-	} else {
-		//logic for filter shown
-		$('.tablesorter-filter-row').removeClass('hideme');
-		if ($t.length) {
-			var loopSize = $t.length;
-			for (let i = 0; i < loopSize; i += 1) {
-				var tableName = $t[i].id;
-				var fileType = tableName.substring(3);
-				if ($t[i].config) {
-					$($t)[i].config.widgetOptions.filter_hideFilters = false; //set current instance
-					eval(
-						'tablesorterOptions_' + fileType
-					).widgetOptions.filter_hideFilters = false; //set config option for when tabs regenerate
-				}
-			}
-		}
-		$('table').trigger('filterReset');
 	}
 }
 
@@ -546,50 +540,14 @@ function pageSpecific_PageLoad_PostDOMLoad_ActionsSetup () {
 	$('#fileManager').tabs({
 		activate: function (event, ui) {
 			var $t = ui.newPanel.find('table');
+			if (!$t.length || !$t[0].id) return;
 			var $tableName = $t[0].id;
-			var fileType = $tableName.substring(3);
-			eval('tablesorterOptions_' + fileType).widgetOptions.filter_hideFilters =
-				settings.fileManagerTableFilter == '1' ? false : true;
 
 			if ($t.length && $t.find('tbody').length) {
-				$($t[0]).trigger('destroy');
-				switch ($tableName) {
-					case 'tblSequences':
-						$($t[0]).tablesorter(tablesorterOptions_Sequences);
-						break;
-					case 'tblMusic':
-						$($t[0]).tablesorter(tablesorterOptions_Music);
-						break;
-					case 'tblVideos':
-						$($t[0]).tablesorter(tablesorterOptions_Videos);
-						break;
-					case 'tblImages':
-						$($t[0]).tablesorter(tablesorterOptions_Images);
-						break;
-					case 'tblEffects':
-						$($t[0]).tablesorter(tablesorterOptions_Effects);
-						break;
-					case 'tblScripts':
-						$($t[0]).tablesorter(tablesorterOptions_Scripts);
-						break;
-					case 'tblLogs':
-						$($t[0]).tablesorter(tablesorterOptions_Logs);
-						break;
-					case 'tblUploads':
-						$($t[0]).tablesorter(tablesorterOptions_Uploads);
-						break;
-					case 'tblCrashes':
-						$($t[0]).tablesorter(tablesorterOptions_Crashes);
-						break;
-					case 'tblBackups':
-						$($t[0]).tablesorter(tablesorterOptions_Backups);
-						break;
-					default:
-						var opts = eval('tablesorterOptions_' + $tableName.substring(3));
-						$($t[0]).tablesorter(opts);
-						break;
-				}
-				$($t[0]).trigger('applyWidgets');
+				// Clean up previous Bootstrap Table instance
+				DestroyBootstrapTable($tableName);
+				// Initialize Bootstrap Table for all file manager tables
+				InitializeBootstrapTable($tableName);
 			}
 		}
 	});
@@ -1557,18 +1515,14 @@ var tablesorterOptions_Backups = $.extend(
 );
 
 function SetupTableSorter (tableName) {
-	var fileType = tableName.substring(3);
 	if ($('#' + tableName).find('tbody').length > 0) {
-		$('#' + tableName)
-			.tablesorter(eval('tablesorterOptions_' + fileType))
-			.on('filterEnd', function (event, config) {
-				if (event.type === 'filterEnd') {
-					UpdateFileCount(fileType);
-				}
-			});
-		$('#' + tableName)[0].config.widgetOptions.filter_hideFilters =
-			settings.fileManagerTableFilter == '1' ? false : true;
-		$('#' + tableName).trigger('applyWidgets');
+		// Only initialize if the table's tab is currently visible.
+		// Bootstrap Table cannot calculate column widths on hidden elements.
+		// The tab activate handler will initialize when the tab becomes visible.
+		if ($('#' + tableName).is(':visible')) {
+			DestroyBootstrapTable(tableName);
+			InitializeBootstrapTable(tableName);
+		}
 	}
 }
 

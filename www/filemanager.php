@@ -43,6 +43,12 @@
     }
     ?>
 
+    <!-- Bootstrap Table (v1.27.1) - New table sorting/filtering library -->
+    <script type="text/javascript" src="bootstrap-table/js/bootstrap-table.min.js"></script>
+    <script type="text/javascript" src="bootstrap-table/extensions/bootstrap-table-filter-control.min.js"></script>
+    <script type="text/javascript" src="bootstrap-table/extensions/bootstrap-table-export.min.js"></script>
+
+    <!-- Tablesorter (existing, deprecated but kept for backward compatibility) -->
     <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.min.js"></script>
     <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.widgets.min.js"></script>
     <script type="text/javascript" src="js/sugar/sugar.min.js"></script>
@@ -52,6 +58,8 @@
     <script type="text/javascript" src="jquery/jquery.tablesorter/widgets/widget-cssStickyHeaders.min.js"></script>
     <script type="text/javascript" src="jquery/jquery.tablesorter/extras/jquery.metadata.min.js"></script>
     <script type="text/javascript" src="js/fpp-filemanager.js?ref=<?= filemtime('js/fpp-filemanager.js'); ?>"></script>
+    <script type="text/javascript"
+        src="js/fpp-bootstrap-table.js?ref=<?= filemtime('js/fpp-bootstrap-table.js'); ?>"></script>
 
     <script>
         const pluginFileExtensions = [ <? echo implode(", ", array_map(fn($arg) => "'$arg'", $fileExtensions)); ?>];
@@ -70,6 +78,10 @@
     <script src="jquery/jQuery-Form-Plugin/js/jquery.form.js"></script>
     <script src="js/filepond.min.js"></script>
 
+    <!-- Bootstrap Table CSS -->
+    <link rel="stylesheet" href="bootstrap-table/css/bootstrap-table.min.css" />
+    <link rel="stylesheet" href="bootstrap-table/extensions/bootstrap-table-filter-control.min.css" />
+    <!-- Filepond CSS -->
     <link rel="stylesheet" href="css/filepond.min.css" />
     <style>
         .fileponduploader {
@@ -216,13 +228,12 @@
                                     </div>
 
                                     <div id="divSeqData" class="fileManagerDivData">
-                                        <table id="tblSequences" class="tablesorter">
+                                        <table id="tblSequences">
                                             <thead>
                                                 <tr>
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="size">Size</th>
+                                                    <th data-field="dateModified">Date Modified</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -285,12 +296,12 @@
                                     </div>
 
                                     <div id="divMusicData" class="fileManagerDivData">
-                                        <table id="tblMusic" class="tablesorter">
+                                        <table id="tblMusic">
                                             <thead>
                                                 <tr>
-                                                    <th>File</th>
-                                                    <th>Duration</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="duration">Duration</th>
+                                                    <th data-field="dateModified">Date Modified</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -351,12 +362,12 @@
                                     </div>
 
                                     <div id="divVideoData" class="fileManagerDivData">
-                                        <table id="tblVideos" class="tablesorter">
+                                        <table id="tblVideos">
                                             <thead>
                                                 <tr>
-                                                    <th class="tablesorter-header filenameColumn">File</th>
-                                                    <th class="tablesorter-header">Duration</th>
-                                                    <th class="sorter-sugar"">Date Modified</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="duration">Duration</th>
+                                                    <th data-field="dateModified">Date Modified</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -366,25 +377,24 @@
 
                                     <div class='form-actions'>
                                         <input onclick=" ClearSelections('Videos');" class="buttons" type="button"
-                                                        value="Clear" />
-                                                    <input onclick="ButtonHandler('Videos', 'playInBrowser');"
-                                                        class="disableButtons noDirButton singleVideosButton"
-                                                        type="button" value="View" />
-                                                    <input onclick="ButtonHandler('Videos', 'videoInfo');"
-                                                        class="disableButtons noDirButton singleVideosButton"
-                                                        type="button" value="Video Info" />
-                                                    <input onclick="ButtonHandler('Videos', 'addToPlaylist');"
-                                                        class="disableButtons noDirButton singleMusicButton multiMusicButton"
-                                                        type="button" value="Add To Playlist" />
-                                                    <input onclick="ButtonHandler('Videos', 'download');"
-                                                        class="disableButtons noDirButton singleVideosButton multiVideosButton"
-                                                        type="button" value="Download" />
-                                                    <input onclick="ButtonHandler('Videos', 'rename');"
-                                                        class="disableButtons singleVideosButton" type="button"
-                                                        value="Rename" />
-                                                    <input onclick="ButtonHandler('Videos', 'delete');"
-                                                        class="disableButtons singleVideosButton multiVideosButton"
-                                                        type="button" value="Delete" />
+                                            value="Clear" />
+                                        <input onclick="ButtonHandler('Videos', 'playInBrowser');"
+                                            class="disableButtons noDirButton singleVideosButton" type="button"
+                                            value="View" />
+                                        <input onclick="ButtonHandler('Videos', 'videoInfo');"
+                                            class="disableButtons noDirButton singleVideosButton" type="button"
+                                            value="Video Info" />
+                                        <input onclick="ButtonHandler('Videos', 'addToPlaylist');"
+                                            class="disableButtons noDirButton singleMusicButton multiMusicButton"
+                                            type="button" value="Add To Playlist" />
+                                        <input onclick="ButtonHandler('Videos', 'download');"
+                                            class="disableButtons noDirButton singleVideosButton multiVideosButton"
+                                            type="button" value="Download" />
+                                        <input onclick="ButtonHandler('Videos', 'rename');"
+                                            class="disableButtons singleVideosButton" type="button" value="Rename" />
+                                        <input onclick="ButtonHandler('Videos', 'delete');"
+                                            class="disableButtons singleVideosButton multiVideosButton" type="button"
+                                            value="Delete" />
                                     </div>
                                     <div class="note"><strong>CTRL+Click to select multiple items</strong></div>
                                 </div>
@@ -415,14 +425,13 @@
                                     </div>
 
                                     <div id="divImagesData" class="fileManagerDivData">
-                                        <table id="tblImages" class="tablesorter">
+                                        <table id="tblImages">
                                             <thead>
                                                 <tr>
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
-                                                    <th class="filter-false">Thumbnail</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="size">Size</th>
+                                                    <th data-field="dateModified">Date Modified</th>
+                                                    <th data-field="thumbnail">Thumbnail</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -473,13 +482,12 @@
                                     </div>
 
                                     <div id="divEffectsData" class="fileManagerDivData">
-                                        <table id="tblEffects" class="tablesorter">
+                                        <table id="tblEffects">
                                             <thead>
                                                 <tr>
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="duration">Duration</th>
+                                                    <th data-field="dateModified">Date Modified</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -529,13 +537,12 @@
                                     </div>
 
                                     <div id="divScriptsData" class="fileManagerDivData">
-                                        <table id="tblScripts" class="tablesorter">
+                                        <table id="tblScripts">
                                             <thead>
                                                 <tr>
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="size">Size</th>
+                                                    <th data-field="dateModified">Date Modified</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -599,13 +606,12 @@
 
                                     </div>
                                     <div id="divLogsData" class="fileManagerDivData">
-                                        <table id="tblLogs" class="tablesorter">
+                                        <table id="tblLogs">
                                             <thead>
                                                 <tr>
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="size">Size</th>
+                                                    <th data-field="dateModified">Date Modified</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -659,13 +665,12 @@
 
                                     </div>
                                     <div id="divUploadsData" class="fileManagerDivData">
-                                        <table id="tblUploads" class="tablesorter">
+                                        <table id="tblUploads">
                                             <thead>
                                                 <tr>
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="size">Size</th>
+                                                    <th data-field="dateModified">Date Modified</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -712,14 +717,13 @@
 
                                     </div>
                                     <div id="divCrashesData" class="fileManagerDivData">
-                                        <table id="tblCrashes" class="tablesorter">
+                                        <table id="tblCrashes">
                                             <thead>
-                                                <tr">
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date Modified</th>
-                                                    </tr>
+                                                <tr>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="size">Size</th>
+                                                    <th data-field="dateModified">Date Modified</th>
+                                                </tr>
                                             </thead>
                                             <tbody>
                                             </tbody>
@@ -762,15 +766,13 @@
 
                                     </div>
                                     <div id="divBackupsData" class="fileManagerDivData">
-                                        <table id="tblBackups" class="tablesorter">
+                                        <table id="tblBackups">
                                             <thead>
-                                                <tr">
-                                                    <th>File</th>
-                                                    <th class="sorter-metric" data-metric-name-full="byte|Byte|BYTE"
-                                                        data-metric-name-abbr="b|B">Size</th>
-                                                    <th class="sorter-sugar">Date
-                                                        Modified</th>
-                                                    </tr>
+                                                <tr>
+                                                    <th data-field="filename">File</th>
+                                                    <th data-field="size">Size</th>
+                                                    <th data-field="dateModified">Date Modified</th>
+                                                </tr>
                                             </thead>
                                             <tbody>
                                                 <tr class='unselectableRow'>

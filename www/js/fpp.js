@@ -4362,19 +4362,23 @@ function GetFiles (dir) {
 				)
 					thumbSize = settings['fileManagerThumbnailSize'];
 
+				var detailField = 'playtimeSeconds' in f ? 'duration' : 'size';
+
 				var tableRow = '';
 				if (dir == 'Images' && thumbSize > 0) {
 					if (parseInt(f.sizeBytes) > 0) {
 						tableRow =
 							"<tr class='fileDetails' id='fileDetail_" +
 							i +
-							"'><td class ='filenameColumn fileName'>" +
+							"'><td data-field='filename' class ='filenameColumn fileName'>" +
 							f.name.replace(/&/g, '&amp;').replace(/</g, '&lt;') +
-							"</td><td class='fileExtraInfo'>" +
+							"</td><td data-field='" +
+							detailField +
+							"' class='fileExtraInfo'>" +
 							detail +
-							"</td><td class ='fileTime'>" +
+							"</td><td data-field='dateModified' class ='fileTime'>" +
 							f.mtime +
-							"</td><td><img style='display: block; max-width: " +
+							"</td><td data-field='thumbnail'><img style='display: block; max-width: " +
 							thumbSize +
 							'px; max-height: ' +
 							thumbSize +
@@ -4389,23 +4393,27 @@ function GetFiles (dir) {
 						tableRow =
 							"<tr class='fileDetails fileIsDirectory' id='fileDetail_" +
 							i +
-							"'><td class ='filenameColumn fileName'>" +
+							"'><td data-field='filename' class ='filenameColumn fileName'>" +
 							f.name.replace(/&/g, '&amp;').replace(/</g, '&lt;') +
-							"</td><td class='fileExtraInfo'>" +
+							"</td><td data-field='" +
+							detailField +
+							"' class='fileExtraInfo'>" +
 							detail +
-							"</td><td class ='fileTime'>" +
+							"</td><td data-field='dateModified' class ='fileTime'>" +
 							f.mtime +
-							'</td><td>Subdir</td></tr>';
+							"</td><td data-field='thumbnail'>Subdir</td></tr>";
 					}
 				} else {
 					tableRow =
 						"<tr class='fileDetails' id='fileDetail_" +
 						i +
-						"'><td class ='filenameColumn fileName'>" +
+						"'><td data-field='filename' class ='filenameColumn fileName'>" +
 						f.name.replace(/&/g, '&amp;').replace(/</g, '&lt;') +
-						"</td><td class='fileExtraInfo'>" +
+						"</td><td data-field='" +
+						detailField +
+						"' class='fileExtraInfo'>" +
 						detail +
-						"</td><td class ='fileTime'>" +
+						"</td><td data-field='dateModified' class ='fileTime'>" +
 						f.mtime +
 						'</td></tr>';
 				}
