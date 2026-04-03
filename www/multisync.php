@@ -8,12 +8,10 @@
     require_once "common.php";
     include 'common/menuHead.inc';
     ?>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.widgets.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/parsers/parser-network.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/widgets/widget-columnSelector.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/widgets/widget-grouping.min.js"></script>
-    <link href="jquery/jquery.tablesorter/css/widget.grouping.css" rel="stylesheet">
+    <script type="text/javascript" src="bootstrap-table/js/bootstrap-table.min.js"></script>
+    <script type="text/javascript" src="bootstrap-table/extensions/bootstrap-table-filter-control.min.js"></script>
+    <link rel="stylesheet" href="bootstrap-table/css/bootstrap-table.min.css" />
+    <link rel="stylesheet" href="bootstrap-table/extensions/bootstrap-table-filter-control.min.css" />
 
     <script type="text/javascript" src="js/xlsx.full.min.js" async></script>
     <script type="text/javascript" src="js/FileSaver.min.js" async></script>
@@ -96,6 +94,67 @@
             color: #ddd;
         }
 
+        /* Bootstrap Table header styling — replaces old .tablesorter thead rules */
+        #fppSystemsTable thead th {
+            background-color: #d9d9d9;
+            padding-top: 1.1em;
+        }
+
+        #fppSystemsTable thead th:first-child {
+            border-top-left-radius: 8px;
+        }
+
+        #fppSystemsTable thead th:last-child {
+            border-top-right-radius: 8px;
+        }
+
+        #fppSystemsTable thead td {
+            background-color: #d9d9d9;
+            padding-bottom: 1.1em;
+        }
+
+        #fppSystemsTable thead td:first-child {
+            border-bottom-left-radius: 8px;
+        }
+
+        #fppSystemsTable thead td:last-child {
+            border-bottom-right-radius: 8px;
+        }
+
+        /* Ensure the select-all checkbox in the header is not clipped by BT's th-inner */
+        #fppSystemsTable th .th-inner:has(#selectAllCheckbox) {
+            overflow: visible;
+            text-overflow: clip;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Align row checkboxes to center like the header checkbox */
+        #fppSystemsTable td.centerCenter {
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        #fppSystemsTable .multisyncRowCheckbox {
+            margin: 0;
+            vertical-align: middle;
+        }
+
+        /* Make the unsorted (both arrows) icon visible on the grey header */
+        #fppSystemsTable thead th .both {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%23888"><path d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1zm0,429.3l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
+        }
+
+        /* Active sort arrow — bold dark blue so it's clearly distinct from the grey unsorted icon */
+        #fppSystemsTable thead th .asc {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%230d47a1"><path d="m136.9496,41.4c-9.3763,-12.5 -24.60342,-12.5 -33.97972,0l-96.01334,128c-6.90096,9.2 -8.92624,22.9 -5.17572,34.9s12.45173,19.8 22.20309,19.8l192.02668,0c9.67634,0 18.45256,-7.8 22.20309,-19.8s1.65023,-25.7 -5.17572,-34.9l-96.01334,-128l-0.07501,0z"/></svg>');
+        }
+
+        #fppSystemsTable thead th .desc {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%230d47a1"><path d="m136.94959,471.6c-9.3763,12.5 -24.60342,12.5 -33.97972,0l-96.01334,-128c-6.90096,-9.2 -8.92624,-22.9 -5.17572,-34.9s12.45173,-19.8 22.20308,-19.8l192.02667,0c9.67634,0 18.45256,7.8 22.20308,19.8s1.65023,25.7 -5.17572,34.9l-96.01334,128l-0.07501,0z"/></svg>');
+        }
+
         #columnSelector input[type="checkbox"] {
             margin-right: 8px;
             margin-bottom: 2px;
@@ -113,17 +172,6 @@
 
         #columnSelector label:nth-of-type(2) {
             margin-top: -8px;
-        }
-
-        /*Hide columns only used for grouping functionality */
-        /* Hide the column used for grouping by Color Value*/
-        #fppSystemsTable td:nth-child(10),
-        #fppSystemsTable th:nth-child(10) {
-            display: none;
-        }
-
-        #fppSystemsTable .group-header {
-            display: none;
         }
 
         /* Drag-and-drop reorder mode */
@@ -224,13 +272,13 @@
         /**
          * Saves the current visible table row order as the display order.
          * Captures system identifiers from the current DOM order (which reflects
-         * any tablesorter column sort the user has applied).
+         * any column sort the user has applied).
          */
         function saveDisplayOrder() {
             var order = [];
             var seen = {};
             $('#fppSystems tr.systemRow').each(function () {
-                var ipList = $(this).attr('ipList');
+                var ipList = $(this).attr('data-iplist');
                 if (!ipList) return;
                 var primaryIp = ipList.split(',')[0];
                 for (var i = 0; i < systemsList.length; i++) {
@@ -254,10 +302,8 @@
             // Store as pipe-delimited string to avoid JSON-in-INI quoting issues
             SetSetting('MultiSyncDisplayOrder', order.join('|'), 0, 0);
 
-            // Clear tablesorter saved sort so our custom order takes effect on next load
-            if ($.tablesorter && $.tablesorter.storage) {
-                $.tablesorter.storage($('#fppSystemsTable')[0], 'tablesorter-savesort', '');
-            }
+            // Clear sort so our custom order takes effect on next load
+            $('#fppSystemsTable').bootstrapTable('sortReset');
 
             updateDisplayOrderButtons();
 
@@ -296,8 +342,8 @@
                 return;
             }
             parseFPPSystems(systemsList);
-            // Clear tablesorter sort to preserve our DOM order
-            $('#fppSystemsTable').trigger('sorton', [[]]);
+            // Clear sort to preserve our DOM order
+            $('#fppSystemsTable').bootstrapTable('sortReset');
         }
 
         /**
@@ -320,8 +366,8 @@
         /**
          * Toggles reorder mode on/off.
          * When enabled: adds drag handles, enables jQuery UI sortable on tbody,
-         * disables tablesorter column sorting.
-         * When disabled: removes sortable, re-enables tablesorter.
+         * disables column sorting.
+         * When disabled: removes sortable, re-enables sorting.
          */
         function toggleReorderMode() {
             reorderModeActive = !reorderModeActive;
@@ -333,10 +379,10 @@
                 $('#reorderModeBtn').html('<i class="fas fa-arrows-alt"></i> Exit Reorder Mode').removeClass('btn-secondary').addClass('btn-warning');
                 $('#saveDisplayOrderBtn').show();
 
-                // Disable tablesorter header click sorting
+                // Disable header click sorting
                 $table.find('th').css('pointer-events', 'none');
                 // Disable filter inputs
-                $table.find('.tablesorter-filter').prop('disabled', true);
+                $table.find('.filter-control input, .filter-control select').prop('disabled', true);
 
                 // Enable jQuery UI sortable on tbody
                 $tbody.sortable({
@@ -372,10 +418,10 @@
                     $tbody.sortable('destroy');
                 }
 
-                // Re-enable tablesorter header click sorting
+                // Re-enable header click sorting
                 $table.find('th').css('pointer-events', '');
                 // Re-enable filter inputs
-                $table.find('.tablesorter-filter').prop('disabled', false);
+                $table.find('.filter-control input, .filter-control select').prop('disabled', false);
             }
         }
 
@@ -1157,7 +1203,7 @@
                 updatesAvailable = 1;
             }
             <? if (!$settings['hideExternalURLs']) { ?>
-                var localVer = "<a target='host_" + ip + "' href='" + wrapUrlWithProxy(ip, '/about.php') + "' target='_blank' ip='" + ip + "'>";
+                var localVer = "<a target='host_" + ip + "' href='" + wrapUrlWithProxy(ip, '/about.php') + "' target='_blank' data-ip='" + ip + "'>";
             <? } else { ?>
                 var localVer = "";
             <? } ?>
@@ -1342,19 +1388,19 @@
                             });
                             if (wifi_html.length > 0) {
                                 $('#' + rowID + "_ip").find(".wifi-icon").remove();
-                                $(wifi_html.join('')).appendTo('td[ip="' + ip + '"]');
+                                $(wifi_html.join('')).appendTo('td[data-ip="' + ip + '"]');
                             }
                         }
 
-                        if ($('#' + rowID).attr('ip') != ip)
-                            $('#' + rowID).attr('ip', ip);
+                        if ($('#' + rowID).attr('data-ip') != ip)
+                            $('#' + rowID).attr('data-ip', ip);
 
                         $('#' + rowID + '_elapsed').html(elapsed);
 
                         if (data.warnings != null && data.warnings.length > 0) {
                             $('#' + rowID + '_warnings').removeAttr('style'); // Remove 'display: none' style
 
-                            // Handle tablesorter bug not assigning same color to child rows
+                            // Ensure child rows match parent striping color
                             if ($('#' + rowID).hasClass('odd'))
                                 $('#' + rowID + '_warnings').addClass('odd');
 
@@ -1487,7 +1533,7 @@
 
                                     if (wifi_html.length > 0) {
                                         $('#' + rowID + "_ip").find(".wifi-icon").remove();
-                                        $(wifi_html.join('')).appendTo('td[ip="' + ip + '"]');
+                                        $(wifi_html.join('')).appendTo('td[data-ip="' + ip + '"]');
                                     }
 
                                     //u += "<tr><td>RSSI:</td><td>" + rssi + "dBm / " + quality + "%</td></tr>";
@@ -1523,9 +1569,6 @@
                         }
                     });
 
-                    if ($('.logRow:visible').length == 0)
-                        $('#fppSystems').trigger('update', true);
-
                 }).always(function () {
                     if (Array.isArray(ipAddresses) && $('#MultiSyncRefreshStatus').is(":checked")) {
                         refreshTimer = setTimeout(function () { getFPPSystemStatus(ipAddresses, true); }, 2000);
@@ -1539,7 +1582,7 @@
             <? if ($settings['hideExternalURLs']) { ?>
                 return ip;
             <? } else { ?>
-                return "<a target='host_" + ip + "' href='" + wrapUrlWithProxy(ip, "/") + "' ip='" + ip + "'>" + ip + "</a>";
+                return "<a target='host_" + ip + "' href='" + wrapUrlWithProxy(ip, "/") + "' data-ip='" + ip + "'>" + ip + "</a>";
             <? } ?>
         }
 
@@ -1547,6 +1590,13 @@
             // Apply saved display order if one exists
             if (savedDisplayOrder && savedDisplayOrder.length > 0) {
                 data = applySavedDisplayOrder(data, savedDisplayOrder);
+            }
+
+            // Destroy Bootstrap Table before manipulating DOM so destroy
+            // doesn't restore a stale snapshot over our new rows
+            var $tbl = $('#fppSystemsTable');
+            if ($tbl.closest('.bootstrap-table').length) {
+                $tbl.bootstrapTable('destroy');
             }
 
             $('#fppSystems').empty();
@@ -1650,7 +1700,7 @@
 
                     $('#' + rowID + '_ip').append('<br>' + ipLink(data[i].address));
 
-                    $('#' + rowID).attr('ipList', $('#' + rowID).attr('ipList') + ',' + data[i].address);
+                    $('#' + rowID).attr('data-iplist', $('#' + rowID).attr('data-iplist') + ',' + data[i].address);
 
                     if (data[i].fppModeString == 'remote') {
                         $('#' + rowID + '_ip').append(star);
@@ -1693,9 +1743,9 @@
                     <? } ?>
 
 
-                    var newRow = "<tr id='" + rowID + "' ip='" + data[i].address + "' ipList='" + data[i].address + "' class='systemRow'>" +
+                    var newRow = "<tr id='" + rowID + "' data-ip='" + data[i].address + "' data-iplist='" + data[i].address + "' class='systemRow'>" +
                         "<td class='hostnameColumn'><span class='reorder-grip'><i class='rowGripIcon fpp-icon-grip'></i></span><span id='fpp_" + ip.replace(/\./g, '_') + "_hostname'" + hnSpanStyle + ">" + hostTxt + "</span><br><small class='hostDescriptionSM' id='fpp_" + ip.replace(/\./g, '_') + "_desc'>" + hostDescription + "</small></td>" +
-                        "<td id='" + rowID + "_ip' ip='" + data[i].address + "'>" + ipTxt + "</td>" +
+                        "<td id='" + rowID + "_ip' data-ip='" + data[i].address + "'>" + ipTxt + "</td>" +
                         "<td><span id='" + rowID + "_platform'>" + data[i].type + "</span><br><small id='" + rowID + "_variant'>" + data[i].model + "</small><span class='hidden typeId'>" + data[i].typeId + "</span>"
                         + "<span class='hidden version'>" + data[i].version + "</span></td>" +
                         "<td id='" + rowID + "_mode'>" + fppMode + "</td>" +
@@ -1747,11 +1797,11 @@
                         checkRemoteChannelIO(data[i].address, rowID, data[i]);
                     }
 
-                    var colspan = 9;
-                    newRow = "<tr id='" + rowID + "_warnings' class='tablesorter-childRow warning-row'><td colspan='" + colspan + "' id='" + rowID + "_warningCell'></td></tr>";
+                    var colspan = 11;
+                    newRow = "<tr id='" + rowID + "_warnings' class='child-row warning-row'><td colspan='" + colspan + "' id='" + rowID + "_warningCell'></td></tr>";
                     $('#fppSystems').append(newRow);
 
-                    newRow = "<tr id='" + rowID + "_logs' style='display:none' class='logRow tablesorter-childRow'><td colspan='" + colspan + "' id='" + rowID + "_logCell'><table class='multiSyncVerboseTable' width='100%'><tr><td>Log:</td><td width='100%'><textarea id='" + rowID + "_logText' style='width: 100%;' rows='8' disabled></textarea></td></tr><tr><td></td><td><div class='right' id='" + rowID + "_doneButtons' style='display: none;'><input type='button' class='buttons' value='Restart FPPD' onClick='restartSystem(\"" + rowID + "\");' style='float: left;'><input type='button' class='buttons' value='Reboot' onClick='rebootRemoteFPP(\"" + rowID + "\", \"" + ip + "\");' style='float: left;'><input type='button' class='buttons' value='Close Log' onClick='$(\"#" + rowID + "_logs\").hide(); rowSpanSet(\"" + rowID + "\");'></div></td></tr></table></td></tr>";
+                    newRow = "<tr id='" + rowID + "_logs' style='display:none' class='logRow child-row'><td colspan='" + colspan + "' id='" + rowID + "_logCell'><table class='multiSyncVerboseTable' width='100%'><tr><td>Log:</td><td width='100%'><textarea id='" + rowID + "_logText' style='width: 100%;' rows='8' disabled></textarea></td></tr><tr><td></td><td><div class='right' id='" + rowID + "_doneButtons' style='display: none;'><input type='button' class='buttons' value='Restart FPPD' onClick='restartSystem(\"" + rowID + "\");' style='float: left;'><input type='button' class='buttons' value='Reboot' onClick='rebootRemoteFPP(\"" + rowID + "\", \"" + ip + "\");' style='float: left;'><input type='button' class='buttons' value='Close Log' onClick='$(\"#" + rowID + "_logs\").hide(); rowSpanSet(\"" + rowID + "\");'></div></td></tr></table></td></tr>";
                     $('#fppSystems').append(newRow);
 
                     if (isFPP(data[i].typeId)) {
@@ -1810,13 +1860,142 @@
                 SetSetting("MultiSyncExtraRemotes", extras, 0, 0);
             }
 
-            // When saved display order is active, don't re-sort (preserve our pre-sorted DOM order)
-            // Otherwise, allow tablesorter to apply its saved/default sort
-            if (savedDisplayOrder && savedDisplayOrder.length > 0) {
-                $('#fppSystems').trigger('update', false);
-            } else {
-                $('#fppSystems').trigger('update', true);
+            // Initialize Bootstrap Table now that DOM rows are populated
+            var $tbl = $('#fppSystemsTable');
+
+            // Detach child rows (warnings/logs) before BT init so they
+            // don't enter BT's data model — they have a single colspan
+            // cell that doesn't map to BT's column structure.
+            var $detachedChildren = $('#fppSystems > tr.child-row').detach();
+
+            $tbl.bootstrapTable({
+                filterControl: true,
+                filterControlVisible: true,
+                sortName: (savedDisplayOrder && savedDisplayOrder.length > 0) ? undefined : 'hostname',
+                sortOrder: 'asc',
+                showColumns: false,
+                striped: true,
+                undefinedText: ''
+            });
+
+            // Re-attach child rows after their parent system rows
+            reattachChildRows($tbl, $detachedChildren);
+
+            // Monkey-patch the BT instance so sort / filter / column
+            // toggle operations don't mangle child rows.
+            var bt = $tbl.data('bootstrap.table');
+            if (bt) {
+                var origInitBody = bt.initBody;
+                bt.initBody = function (fixedScroll, updatedUid) {
+                    var $body = this.$el.find('>tbody');
+                    // Detach child rows before BT re-renders tbody
+                    var $childRows = $body.length
+                        ? $body.find('>tr.child-row').detach() : $();
+
+                    // Sync any async DOM cell updates back into BT's
+                    // data model so they survive the upcoming render.
+                    syncDOMToModel(this);
+
+                    // Original render (replaces tbody content)
+                    origInitBody.call(this, fixedScroll, updatedUid);
+
+                    // Put child rows back in the correct position
+                    if ($childRows.length) {
+                        reattachChildRows($tbl, $childRows);
+                    }
+                };
             }
+
+            if (typeof buildColumnSelector === 'function') buildColumnSelector();
+        }
+
+        /**
+         * Sync current DOM cell contents back into BT's data model so
+         * async status updates (written directly to DOM) survive the
+         * next sort / filter / column-toggle re-render.
+         *
+         * Uses getVisibleFields() to correctly map TD positions to
+         * field names regardless of which columns are hidden.
+         *
+         * IMPORTANT: skips sync when the number of TDs in a row does
+         * not match the expected visible-field count.  This happens
+         * during column-toggle operations where initHeader already
+         * changed the visibility but initBody hasn't re-rendered yet.
+         */
+        function syncDOMToModel(bt) {
+            if (!bt || !bt.options.data || !bt.options.data.length) return;
+            var $tbody = bt.$el.find('>tbody');
+            if (!$tbody.length) return;
+
+            var visibleFields = bt.getVisibleFields();
+            if (!visibleFields.length) return;
+
+            var expectedTds = visibleFields.length;
+
+            for (var d = 0; d < bt.options.data.length; d++) {
+                var item = bt.options.data[d];
+                if (!item._id) continue;
+                var tr = $tbody[0].querySelector('#' + CSS.escape(item._id));
+                if (!tr) continue;
+                var tds = tr.querySelectorAll(':scope > td');
+
+                // If TD count doesn't match visible fields the DOM was
+                // rendered with a different column set — skip this row
+                // to avoid mapping cells to the wrong fields.
+                if (tds.length !== expectedTds) continue;
+
+                // Sync TR-level data-* attributes (e.g. data-ip updates)
+                var ds = tr.dataset;
+                var newData = {};
+                for (var key in ds) {
+                    if (key !== 'index' && key !== 'uniqueid' && key !== 'hasDetailView') {
+                        newData[key] = ds[key];
+                    }
+                }
+                item._data = newData;
+
+                for (var i = 0; i < visibleFields.length; i++) {
+                    var td = tds[i];
+                    if (!td) break;
+                    var field = visibleFields[i];
+                    item[field] = td.innerHTML.trim();
+                    // Preserve cell-level id, class, data-* and style
+                    if (td.id) item['_' + field + '_id'] = td.id;
+                    var cls = td.getAttribute('class');
+                    if (cls) item['_' + field + '_class'] = cls;
+                    var stl = td.getAttribute('style');
+                    if (stl) item['_' + field + '_style'] = stl;
+                }
+            }
+        }
+
+        /**
+         * Insert child rows (warnings / logs) immediately after their
+         * parent system row inside the table body.
+         */
+        function reattachChildRows($tbl, $children) {
+            if (!$children || !$children.length) return;
+            var $tbody = $tbl.find('>tbody');
+            if (!$tbody.length) $tbody = $tbl.find('tbody');
+            $children.each(function () {
+                var id = this.id || '';
+                // Derive parent row id: strip _warnings or _logs suffix
+                var parentId = id.replace(/_warnings$|_logs$/, '');
+                var $parent = $tbody.find('#' + parentId);
+                if ($parent.length) {
+                    // Insert after parent row, but after any sibling
+                    // child rows that already follow it.
+                    var $after = $parent;
+                    $parent.nextAll('.child-row').each(function () {
+                        if (this.id && this.id.startsWith(parentId + '_')) {
+                            $after = $(this);
+                        } else {
+                            return false; // stop at first non-sibling
+                        }
+                    });
+                    $after.after(this);
+                }
+            });
         }
 
         var systemsList = [];
@@ -2095,7 +2274,7 @@
 
                             if (testmode == true || overtemp == true) {
                                 $('#' + rowId + '_warnings').removeAttr('style'); // Remove 'display: none' style
-                                // Handle tablesorter bug not assigning same color to child rows
+                                // Ensure child rows match parent striping color
                                 if ($('#' + rowId).hasClass('odd'))
                                     $('#' + rowId + '_warnings').addClass('odd');
 
@@ -2344,8 +2523,6 @@
             getWLEDControllerStatus(wips, true);
             getBaldrickControllerStatus(bips, true);
             getFalconControllerStatus(fv3ips, fv4ips, true);
-            $('#columnSelector').empty(); //required to overcome bug where columnSelector widget appends on update rather than clearing first
-            $('#fppSystemsTable').trigger("updateAll"); // Refresh Tablesorter 
         }
 
         function MultiSyncEnableToggled() {
@@ -2414,7 +2591,7 @@
 
         function getReachableIPFromRowID(id) {
             var ip = ipFromRowID(id);
-            var ipListStr = $('#' + id).attr('ipList');
+            var ipListStr = $('#' + id).attr('data-iplist');
 
             if (ip == ipListStr)
                 return ip;
@@ -2436,7 +2613,7 @@
         }
 
         function ipFromRowID(id) {
-            ip = $('#' + id).attr('ip');
+            ip = $('#' + id).attr('data-ip');
 
             return ip;
         }
@@ -2446,10 +2623,10 @@
                 // hostnames for the remotes as well or CORS will trigger
                 var ip = $('#' + id + "_hostname").html();
                 if (ip == "") {
-                    ip = $('#' + id).attr('ip');
+                    ip = $('#' + id).attr('data-ip');
                 }
             <? } else { ?>
-                var ip = $('#' + id).attr('ip');
+                var ip = $('#' + id).attr('data-ip');
             <? } ?>
             return ip;
         }
@@ -2504,7 +2681,7 @@
         }
 
         function showLogsRow(rowID) {
-            // Handle tablesorter bug not assigning same color to child rows
+            // Ensure child rows match parent striping color
             if ($('#' + rowID).hasClass('odd'))
                 $('#' + rowID + '_logs').addClass('odd');
 
@@ -3076,7 +3253,7 @@
                     <!-- Sort by Color Btn  -->
                     <button id="sortbyColorBtn" type="button" class="buttons btn btn-secondary"
                         data-bs-placement="bottom" data-bs-title="Sort Systems by Color"
-                        onclick="$('#fppSystemsTable').trigger('sorton', [[[9, 0]]]);">
+                        onclick="$('#fppSystemsTable').bootstrapTable('sortBy', {field: 'fppcolor', sortOrder: 'asc'});">
                         Sort Systems by Color
                     </button>
 
@@ -3105,30 +3282,30 @@
 
                     <div id='fppSystemsTableWrapper' class='fppTableWrapper fppTableWrapperAsTable backdrop'>
                         <div class='fppTableContents' role="region" aria-labelledby="fppSystemsTable" tabindex="0">
-                            <table id='fppSystemsTable' class="tablesorter bootstrap-popup" cellpadding='3'>
+                            <table id='fppSystemsTable' class="bootstrap-popup" cellpadding='3'>
                                 <thead>
                                     <tr>
-                                        <th class="hostnameColumn" data-selector-name="Host Name"
-                                            data-placeholder="Hostname" data-priority="critical">
+                                        <th data-field="hostname" data-sortable="true" data-filter-control="input">
                                             Hostname</th>
-                                        <th data-placeholder="IP Address" data-selector-name="IP Address"
-                                            data-priority="4">IP Address</th>
-                                        <th data-priority="5" data-selector-name="Platform">Platform</th>
-                                        <th data-priority="4" data-selector-name="Mode">Mode</th>
-                                        <th data-placeholder="Status" data-priority="1" data-selector-name="Status">
+                                        <th data-field="ipaddress" data-sortable="true" data-filter-control="input"
+                                            data-sorter="ipSorter">IP Address</th>
+                                        <th data-field="platform" data-sortable="true" data-filter-control="select"
+                                            data-filter-data="var:platformFilterOptions"
+                                            data-filter-custom-search="platformFilterSearch">Platform</th>
+                                        <th data-field="mode" data-sortable="true" data-filter-control="select"
+                                            data-filter-data="var:modeFilterOptions"
+                                            data-filter-custom-search="modeFilterSearch">Mode</th>
+                                        <th data-field="status" data-sortable="true" data-filter-control="input">
                                             Status</th>
-                                        <th data-sorter='false' data-filter='false' data-priority="2"
-                                            data-selector-name="Elapsed">Elapsed</th>
-                                        <th data-placeholder="Version" data-priority="4" data-selector-name="Version">
+                                        <th data-field="elapsed" data-sortable="false">Elapsed</th>
+                                        <th data-field="version" data-sortable="true" data-filter-control="input">
                                             Version</th>
-                                        <th data-sorter='false' data-filter='false' data-priority="5"
-                                            data-selector-name="Git Versions">Git Versions</th>
-                                        <th data-sorter='false' data-filter='false' data-priority="6"
-                                            data-selector-name="Utilization">Utilization</th>
-                                        <th data-filter='false' data-priority="6" data-selector-name="FPPColor"
-                                            class="columnSelector-disable group-word">
+                                        <th data-field="gitversions" data-sortable="false">Git Versions</th>
+                                        <th data-field="utilization" data-sortable="false">Utilization</th>
+                                        <th data-field="fppcolor" data-sortable="true" data-visible="false">
                                             FPPColor</th>
-                                        <th data-sorter='false' data-filter='false' class="columnSelector-disable">
+                                        <th data-field="selectbox" data-sortable="false" data-filter-control="false"
+                                            data-switchable="false">
                                             <input id='selectAllCheckbox' type='checkbox'
                                                 class='largeCheckbox multisyncRowCheckbox'
                                                 onChange='selectAllChanged();' />
@@ -3326,8 +3503,8 @@
 
                 // Update any existing links now that proxies
                 // are loaded
-                $("a[ip]").each(function () {
-                    let ip = $(this).attr('ip');
+                $("a[data-ip]").each(function () {
+                    let ip = $(this).attr('data-ip');
                     $(this).attr('href', wrapUrlWithProxy(ip, "/"));
                 });
 
@@ -3349,238 +3526,177 @@
             $("#MultiSyncBroadcast").on("change", validateMultiSyncSettings);
             $("#MultiSyncMulticast").on("change", validateMultiSyncSettings);
 
-            $.tablesorter.addParser({
-                id: 'FPPIPParser',
-                is: function () {
-                    return false;
-                },
-                format: function (s, table, cell) {
-                    s = $(cell).attr('ip');
-                    return s;
+            // Custom IP sorter for Bootstrap Table - extracts IP from 'data-ip' attribute
+            window.ipSorter = function (a, b, rowA, rowB) {
+                var ipA = $(rowA).find('td[data-ip]').attr('data-ip') || a;
+                var ipB = $(rowB).find('td[data-ip]').attr('data-ip') || b;
+                var partsA = String(ipA).split('.').map(Number);
+                var partsB = String(ipB).split('.').map(Number);
+                for (var i = 0; i < 4; i++) {
+                    if ((partsA[i] || 0) !== (partsB[i] || 0)) {
+                        return (partsA[i] || 0) - (partsB[i] || 0);
+                    }
                 }
-            });
+                return 0;
+            };
 
-            $table
-                .tablesorter({
-                    widthFixed: false,
-                    theme: 'fpp',
-                    cssInfoBlock: 'tablesorter-no-sort',
-                    widgets: ['zebra', 'filter', 'staticRow', 'saveSort', 'columnSelector', 'group'],
-                    headers: {
-                        0: { sortInitialOrder: 'asc' },
-                        1: { extractor: 'FPPIPParser', sorter: 'ipAddress' }
-                    },
-                    widgetOptions: {
-                        saveSort: true,
-                        filter_childRows: true,
-                        filter_childByColumn: false,
-                        filter_childWithSibs: false,
-                        filter_saveFilters: true,
-                        filter_functions: {
-                            2: {
-                                "FPP (All)": function (e, n, f, i, $r, c, data) {
-                                    return isFPP($r.find('span.typeId').html());
-                                },
-                                "FPP (Raspberry Pi)": function (e, n, f, i, $r, c, data) {
-                                    return isFPPPi($r.find('span.typeId').html());
-                                },
-                                "FPP (BeagleBone)": function (e, n, f, i, $r, c, data) {
-                                    return isFPPBeagleBone($r.find('span.typeId').html());
-                                },
-                                "FPP (Armbian)": function (e, n, f, i, $r, c, data) {
-                                    return isFPPArmbian($r.find('span.typeId').html());
-                                },
-                                "FPP (MacOS)": function (e, n, f, i, $r, c, data) {
-                                    return isFPPMac($r.find('span.typeId').html());
-                                },
-                                "Falcon": function (e, n, f, i, $r, c, data) {
-                                    return isFalcon($r.find('span.typeId').html());
-                                },
-                                "FalconV4": function (e, n, f, i, $r, c, data) {
-                                    return isFalconV4($r.find('span.typeId').html());
-                                },
-                                "ESPixelStick": function (e, n, f, i, $r, c, data) {
-                                    return isESPixelStick($r.find('span.typeId').html());
-                                },
-                                "Genius": function (e, n, f, i, $r, c, data) {
-                                    return isGenius($r.find('span.typeId').html());
-                                },
-                                "SanDevices": function (e, n, f, i, $r, c, data) {
-                                    return isSanDevices($r.find('span.typeId').html());
-                                },
-                                "WLED": function (e, n, f, i, $r, c, data) {
-                                    return isWLED($r.find('span.typeId').html());
-                                },
-                                "Unknown": function (e, n, f, i, $r, c, data) {
-                                    return isUnknownController($r.find('span.typeId').html());
-                                }
-                            },
-                            3: {
-                                "Master": function (e, n, f, i, $r, c, data) { return e === "Master"; }, // Can this be removed now?
-                                "Player": function (e, n, f, i, $r, c, data) { return e === "Player"; },
-                                "Multisync": function (e, n, f, i, $r, c, data) { return e === "Player w/ Multisync"; },
-                                "Bridge": function (e, n, f, i, $r, c, data) { return e === "Bridge"; },
-                                "Remote": function (e, n, f, i, $r, c, data) { return e === "Remote"; }
-                            }
-                        },
-                        // target the column selector markup
-                        columnSelector_container: $('#columnSelector'),
-                        // column status, true = display, false = hide
-                        // disable = do not display on list
-                        columnSelector_columns: {
-                            0: 'disable', /* Hostname - set to disabled; not allowed to unselect it */
-                            1: true, /* IP Address */
-                            2: true, /* Platform */
-                            3: true, /* Mode */
-                            4: true, /* Status */
-                            5: true, /* Elapsed */
-                            6: true, /* Version */
-                            7: true, /* Git Versions */
-                            8: true, /* Utilization */
-                            9: false /* FPPColor - hidden as only used for grouping */
-                        },
-                        // remember selected columns (requires $.tablesorter.storage)
-                        columnSelector_saveColumns: true,
+            // Custom Platform filter dropdown options and search function
+            window.platformFilterOptions = {
+                'FPP (All)': 'FPP (All)',
+                'FPP (Raspberry Pi)': 'FPP (Raspberry Pi)',
+                'FPP (BeagleBone)': 'FPP (BeagleBone)',
+                'FPP (Armbian)': 'FPP (Armbian)',
+                'FPP (MacOS)': 'FPP (MacOS)',
+                'Falcon': 'Falcon',
+                'FalconV4': 'FalconV4',
+                'ESPixelStick': 'ESPixelStick',
+                'Genius': 'Genius',
+                'SanDevices': 'SanDevices',
+                'WLED': 'WLED',
+                'Unknown': 'Unknown'
+            };
+            window.platformFilterSearch = function (text, value, field, data) {
+                if (!text || text === '') return true;
+                // value is HTML-stripped lowercased cell text which includes hidden typeId hex
+                // Extract the hex typeId (e.g. "0x02") from the concatenated text
+                var match = value.match(/0x[0-9a-f]+/i);
+                var typeId = match ? match[0] : '0x00';
+                // filter-control lowercases the search text, so normalize
+                switch (text.toLowerCase()) {
+                    case 'fpp (all)': return isFPP(typeId);
+                    case 'fpp (raspberry pi)': return isFPPPi(typeId);
+                    case 'fpp (beaglebone)': return isFPPBeagleBone(typeId);
+                    case 'fpp (armbian)': return isFPPArmbian(typeId);
+                    case 'fpp (macos)': return isFPPMac(typeId);
+                    case 'falcon': return isFalcon(typeId);
+                    case 'falconv4': return isFalconV4(typeId);
+                    case 'espixelstick': return isESPixelStick(typeId);
+                    case 'genius': return isGenius(typeId);
+                    case 'sandevices': return isSanDevices(typeId);
+                    case 'wled': return isWLED(typeId);
+                    case 'unknown': return isUnknownController(typeId);
+                    default: return true;
+                }
+            };
 
-                        // container layout
-                        columnSelector_layout: '<label><input type="checkbox">{name}</label><br>',
-                        // layout customizer callback called for each column
-                        // function($cell, name, column) { return name || $cell.html(); }
-                        columnSelector_layoutCustomizer: null,
-                        // data attribute containing column name to use in the selector container
-                        columnSelector_name: 'data-selector-name',
+            // Custom Mode filter dropdown options and search function
+            window.modeFilterOptions = {
+                'Master': 'Master',
+                'Player': 'Player',
+                'Player w/ Multisync': 'Multisync',
+                'Bridge': 'Bridge',
+                'Remote': 'Remote'
+            };
+            window.modeFilterSearch = function (text, value, field, data) {
+                if (!text || text === '') return true;
+                // value is HTML-stripped lowercased cell text (icons stripped away)
+                var v = value.trim();
+                var t = text.toLowerCase();
+                if (t === 'player w/ multisync') return v.indexOf('player w/ multisync') === 0;
+                if (t === 'player') return v === 'player' || (v.indexOf('player') === 0 && v.indexOf('player w/ multisync') !== 0);
+                return v.indexOf(t) === 0;
+            };
 
-                        /* Responsive Media Query settings */
-                        // enable/disable mediaquery breakpoints
-                        columnSelector_mediaquery: true,
-                        // toggle checkbox name
-                        columnSelector_mediaqueryName: 'Auto: ',
-                        // breakpoints checkbox initial setting
-                        columnSelector_mediaqueryState: true,
-                        // hide columnSelector false columns while in auto mode
-                        columnSelector_mediaqueryHidden: true,
+            // Build column selector checkboxes for Bootstrap Table
+            // Responsive breakpoints matching old tablesorter columnSelector config
+            var columnResponsivePriority = {
+                'ipaddress': 6,   // hide at <= 70em
+                'platform': 5,    // hide at <= 60em
+                'mode': 4,        // hide at <= 50em
+                'status': 3,      // hide at <= 40em
+                'elapsed': 2,     // hide at <= 30em
+                'version': 1,     // hide at <= 20em
+                'gitversions': 1,
+                'utilization': 2
+            };
+            var columnBreakpoints = ['20em', '30em', '40em', '50em', '60em', '70em'];
+            var autoResponsive = true;
 
-                        // set the maximum and/or minimum number of visible columns; use null to disable
-                        columnSelector_maxVisible: null,
-                        columnSelector_minVisible: null,
-                        // responsive table hides columns with priority 1-6 at these breakpoints
-                        // see http://view.jquerymobile.com/1.3.2/dist/demos/widgets/table-column-toggle/#Applyingapresetbreakpoint
-                        // *** set to false to disable ***
-                        columnSelector_breakpoints: ['20em', '30em', '40em', '50em', '60em', '70em'],
-                        // data attribute containing column priority
-                        // duplicates how jQuery mobile uses priorities:
-                        // http://view.jquerymobile.com/1.3.2/dist/demos/widgets/table-column-toggle/
-                        columnSelector_priority: 'data-priority',
-
-                        // class name added to checked checkboxes - this fixes an issue with Chrome not updating FontAwesome
-                        // applied icons; use this class name (input.checked) instead of input:checked
-                        columnSelector_cssChecked: 'checked',
-
-                        // class name added to rows that have a span (e.g. grouping widget & other rows inside the tbody)
-                        columnSelector_classHasSpan: 'hasSpan',
-
-                        // event triggered when columnSelector completes
-                        columnSelector_updated: 'columnSelectorUpdate',
-
-                        group_collapsible: true,  // make the group header clickable and collapse the rows below it.
-                        group_collapsed: false, // start with all groups collapsed (if true)
-                        group_saveGroups: true,  // remember collapsed groups
-                        group_saveReset: '.group_reset', // element to clear saved collapsed groups
-                        //group_count: " ({num})", // if not false, the "{num}" string is replaced with the number of rows in the group
-                        group_count: false, // disable the count of rows in the group; set to false to disable
-
-                        // apply the grouping widget only to selected column
-                        group_forceColumn: [9],   // only the first value is used; set as an array for future expansion
-                        group_enforceSort: true, // only apply group_forceColumn when a sort is applied to the table
-                        group_enforce: true, // only apply group_forceColumn when the grouping widget is initialized
-
-                        // checkbox parser text used for checked/unchecked values
-                        group_checkbox: ['checked', 'unchecked'],
-
-                        // change these default date names based on your language preferences (see Globalize section for details)
-                        group_months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-                        group_week: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-                        group_time: ["AM", "PM"],
-
-                        // use 12 vs 24 hour time
-                        group_time24Hour: false,
-                        // group header text added for invalid dates
-                        group_dateInvalid: 'Invalid Date',
-
-                        // this function is used when "group-date" is set to create the date string
-                        // you can just return date, date.toLocaleString(), date.toLocaleDateString() or d.toLocaleTimeString()
-                        // reference: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date#Conversion_getter
-                        group_dateString: function (date) {
-                            return date.toLocaleString();
-                        },
-
-                        group_formatter: function (txt, col, table, c, wo, data) {
-                            // txt = current text; col = current column
-                            // table = current table (DOM); c = table.config; wo = table.config.widgetOptions
-                            // data = group data including both group & row data
-
-                            /* example
-                            if (col === 7 && txt.indexOf("GMT") > 0) {
-                                // remove "GMT-0000 (Xxxx Standard Time)" from the end of the full date
-                                // this code is needed if group_dateString returns date.toString(); (not localeString)
-                                txt = txt.substring(0, txt.indexOf("GMT"));
-                            }
-                            // If there are empty cells, name the group "Empty"
-                            return txt === "" ? "Empty" : txt;
-                            */
-
-                            return txt === "" ? "Empty" : txt; // return the text as is, or modify it as needed
-                        },
-
-                        group_callback: function ($cell, $rows, column, table) {
-                            // callback allowing modification of the group header labels
-                            // $cell = current table cell (containing group header cells ".group-name" & ".group-count"
-                            // $rows = all of the table rows for the current group; table = current table (DOM)
-                            // column = current column being sorted/grouped
-
-                            /* Example
-                                                        if (column === 2) {
-                                                            var subtotal = 0;
-                                                            $rows.each(function () {
-                                                                subtotal += parseFloat($(this).find("td").eq(column).text());
-                                                            });
-                                                            $cell.find(".group-count").append("; subtotal: " + subtotal);
-                                                        }
-                                                            */
-                        },
-                        // event triggered on the table when the grouping widget has finished work
-                        group_complete: "groupingComplete"
+            function applyResponsiveColumns() {
+                if (!autoResponsive) return;
+                var $tbl = $('#fppSystemsTable');
+                if (!$tbl.closest('.bootstrap-table').length) return;
+                var viewWidth = window.innerWidth;
+                Object.keys(columnResponsivePriority).forEach(function (field) {
+                    var priority = columnResponsivePriority[field];
+                    var bpStr = columnBreakpoints[priority - 1];
+                    // Convert em to px (assume 16px base)
+                    var bpPx = parseFloat(bpStr) * 16;
+                    if (viewWidth <= bpPx) {
+                        $tbl.bootstrapTable('hideColumn', field);
+                    } else {
+                        $tbl.bootstrapTable('showColumn', field);
                     }
                 });
-
-            // If a saved display order exists, clear any tablesorter saved sort
-            // so our custom order takes priority on initial load
-            if (savedDisplayOrder && savedDisplayOrder.length > 0) {
-                if ($.tablesorter && $.tablesorter.storage) {
-                    $.tablesorter.storage($table[0], 'tablesorter-savesort', '');
-                }
-                // Apply empty sort to preserve DOM insertion order
-                $table.trigger('sorton', [[]]);
+                // Update checkboxes to reflect current state
+                $('#columnSelector input[type="checkbox"]').each(function () {
+                    var field = $(this).data('field');
+                    if (field) {
+                        var isVisible = $tbl.bootstrapTable('getVisibleColumns').some(function (c) { return c.field === field; });
+                        $(this).prop('checked', isVisible);
+                    }
+                });
             }
+
+            window.buildColumnSelector = function () {
+                var $tbl = $('#fppSystemsTable');
+                var $container = $('#columnSelector');
+                $container.empty();
+
+                // Auto responsive toggle (first label gets dotted border via CSS)
+                var autoLabel = $('<label></label>');
+                var autoCheckbox = $('<input type="checkbox">').prop('checked', autoResponsive);
+                autoCheckbox.on('change', function () {
+                    autoResponsive = $(this).prop('checked');
+                    if (autoResponsive) {
+                        applyResponsiveColumns();
+                        // Disable manual checkboxes in auto mode
+                        $container.find('input[type="checkbox"]').not(this).prop('disabled', true);
+                    } else {
+                        $container.find('input[type="checkbox"]').not(this).prop('disabled', false);
+                    }
+                });
+                autoLabel.append(autoCheckbox).append(' Auto');
+                $container.append(autoLabel).append('<br>');
+
+                // Individual column checkboxes
+                var columns = $tbl.bootstrapTable('getVisibleColumns').concat($tbl.bootstrapTable('getHiddenColumns'));
+                columns.forEach(function (col) {
+                    if (col.field === 'hostname' || col.field === 'selectbox' || col.field === 'fppcolor') return;
+                    var isVisible = $tbl.bootstrapTable('getVisibleColumns').some(function (c) { return c.field === col.field; });
+                    var label = $('<label></label>');
+                    var checkbox = $('<input type="checkbox">').prop('checked', isVisible).data('field', col.field);
+                    if (autoResponsive) checkbox.prop('disabled', true);
+                    checkbox.on('change', function () {
+                        var field = $(this).data('field');
+                        if ($(this).prop('checked')) {
+                            $tbl.bootstrapTable('showColumn', field);
+                        } else {
+                            $tbl.bootstrapTable('hideColumn', field);
+                        }
+                    });
+                    label.append(checkbox).append(' ' + col.title);
+                    $container.append(label).append('<br>');
+                });
+
+                if (autoResponsive) {
+                    applyResponsiveColumns();
+                }
+            };
+
+            $(window).on('resize', function () {
+                if (autoResponsive) applyResponsiveColumns();
+            });
+
+            // Don't init BT here - parseFPPSystems will init after rows are populated
 
             // Update display order button visibility
             updateDisplayOrderButtons();
 
-            // call this function to copy the column selection code into the popover
-            //$table.tablesorter.columnSelector.attachTo($('.bootstrap-popup'), '#columnSelector');
-
             // Initialize Bootstrap Popover with Column Selector inside
             var popover = new bootstrap.Popover(document.getElementById("columnSelectorBtn"), {
                 html: true,
-                //content: document.getElementById("columnSelector").innerHTML
                 content: $('#columnSelector')
-            });
-
-            // Toggle column visibility when checkboxes change
-            $(".toggle-column").on("change", function () {
-                var columnIndex = $(this).data("column");
-                var isChecked = $(this).prop("checked");
-                $("#fppSystemsTable").trigger("toggleColumn", [columnIndex, isChecked]);
             });
 
             // Prevent popover from closing when clicking inside
@@ -3596,13 +3712,6 @@
                 }
             });
 
-            $('#fppSystemsTable').on('columnSelectorUpdate', function () {
-                // little hack to ensure columns of children tables are shown which columnSelector is hiding by mistake
-                $('#fppSystemsTable tbody tr td table tbody tr td').each(function () {
-                    $(this).show(); // Ensure child tables stay visible
-                });
-
-            });
 
             let mouseX = 0;
             let mouseY = 0;
