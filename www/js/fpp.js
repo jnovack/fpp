@@ -5292,8 +5292,6 @@ function niceDuration (ms) {
 }
 
 function ShowMultiSyncStats (data) {
-	$('#syncStats').empty();
-
 	var master =
 		"<a href='http://" + data.masterIP + "'>" + data.masterIP + '</a>';
 	if (data.masterHostname != '') master += ' (' + data.masterHostname + ')';
@@ -5301,67 +5299,42 @@ function ShowMultiSyncStats (data) {
 	$('#syncMaster').html(master);
 
 	var now = new Date().getTime();
+	var rows = [];
 
 	for (var i = 0; i < data.systems.length; i++) {
 		var s = data.systems[i];
-		var row = '<tr>' + '<td>' + s.sourceIP;
-
-		if (s.hostname != '') row += '&nbsp;(' + s.hostname + ')';
-
-		row += '</td>';
+		var hostText = s.sourceIP;
+		if (s.hostname != '') hostText += '&nbsp;(' + s.hostname + ')';
 
 		var ms = now - new Date(s.lastReceiveTime).getTime();
-		row +=
-			'<td><span title="' +
-			s.lastReceiveTime +
-			'">' +
-			niceDuration(ms) +
-			'</span></td>' +
-			'<td class="right">' +
-			s.pktSyncSeqOpen +
-			'</td>' +
-			'<td class="right">' +
-			s.pktSyncSeqStart +
-			'</td>' +
-			'<td class="right">' +
-			s.pktSyncSeqStop +
-			'</td>' +
-			'<td class="right">' +
-			s.pktSyncSeqSync +
-			'</td>' +
-			'<td class="right">' +
-			s.pktSyncMedOpen +
-			'</td>' +
-			'<td class="right">' +
-			s.pktSyncMedStart +
-			'</td>' +
-			'<td class="right">' +
-			s.pktSyncMedStop +
-			'</td>' +
-			'<td class="right">' +
-			s.pktSyncMedSync +
-			'</td>' +
-			'<td class="right">' +
-			s.pktBlank +
-			'</td>' +
-			'<td class="right">' +
-			s.pktPing +
-			'</td>' +
-			'<td class="right">' +
-			s.pktPlugin +
-			'</td>' +
-			'<td class="right">' +
-			s.pktFPPCommand +
-			'</td>' +
-			'<td class="right">' +
-			s.pktError +
-			'</td>' +
-			'</tr>';
-
-		$('#syncStats').append(row);
+		rows.push({
+			host: hostText,
+			lastrcvd:
+				'<span title="' +
+				s.lastReceiveTime +
+				'">' +
+				niceDuration(ms) +
+				'</span>',
+			seqopen: s.pktSyncSeqOpen,
+			seqstart: s.pktSyncSeqStart,
+			seqstop: s.pktSyncSeqStop,
+			seqsync: s.pktSyncSeqSync,
+			medopen: s.pktSyncMedOpen,
+			medstart: s.pktSyncMedStart,
+			medstop: s.pktSyncMedStop,
+			medsync: s.pktSyncMedSync,
+			blank: s.pktBlank,
+			ping: s.pktPing,
+			plugin: s.pktPlugin,
+			fppcmd: s.pktFPPCommand,
+			errors: s.pktError
+		});
 	}
 
-	$('#syncStats').trigger('update', true);
+	var $tbl = $('#syncStatsTable');
+	if ($tbl.closest('.bootstrap-table').length) {
+		$tbl.bootstrapTable('load', rows);
+	}
 }
 
 function ResetMultiSyncStats () {

@@ -10,11 +10,10 @@
     include 'playlistEntryTypes.php';
     include 'common/menuHead.inc';
     ?>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.widgets.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/parsers/parser-network.min.js"></script>
-
-    <link rel="stylesheet" href="jquery/jquery.tablesorter/css/theme.blue.css">
+    <script type="text/javascript" src="bootstrap-table/js/bootstrap-table.min.js"></script>
+    <script type="text/javascript" src="bootstrap-table/extensions/bootstrap-table-filter-control.min.js"></script>
+    <link rel="stylesheet" href="bootstrap-table/css/bootstrap-table.min.css">
+    <link rel="stylesheet" href="bootstrap-table/extensions/bootstrap-table-filter-control.min.css">
 
     <link rel="manifest" href="manifest.json">
 
@@ -35,19 +34,13 @@
                 PlayEntrySelected = parseInt($(this).attr('id').substr(11));
             });
 
-            //Setup Tablesorter on Sync Stats Table (shown on E1.31/DDP Input)
-            $('#syncStatsTable').tablesorter({
-                headers: {
-                    1: {
-                        sorter: 'ipAddress'
-                    }
-                },
-                widthFixed: false,
-                theme: 'fpp',
-                widgets: ['zebra', 'filter', 'staticRow'],
-                widgetOptions: {
-                    filter_hideFilters: true
-                }
+            //Setup Bootstrap Table on Sync Stats Table (shown on E1.31/DDP Input)
+            $('#syncStatsTable').bootstrapTable({
+                sortName: 'host',
+                sortOrder: 'asc',
+                striped: true,
+                showColumns: false,
+                undefinedText: ''
             });
 
             // Pin Player Controls to top of index page
@@ -499,28 +492,28 @@
 
                     <div class='fppTableWrapper backdrop'>
                         <div class='fppTableContents' role="region" aria-labelledby="syncStatsTable" tabindex="0">
-                            <table id='syncStatsTable' class="tablesorter">
+                            <table id='syncStatsTable' cellpadding='3'>
                                 <thead>
                                     <tr>
-                                        <th rowspan=2>Host</th>
-                                        <th rowspan=2 data-filter='false'>Last<br>Rcvd</th>
-                                        <th colspan=4 class="sorter-false">Sequence Sync</th>
-                                        <th colspan=4 class="sorter-false">Media Sync</th>
-                                        <th rowspan=2 data-filter='false'>Blank<br>Data</th>
-                                        <th rowspan=2 data-filter='false'>Ping</th>
-                                        <th rowspan=2 data-filter='false'>Plugin</th>
-                                        <th rowspan=2 data-filter='false'>FPP<br>Cmd</th>
-                                        <th rowspan=2 data-filter='false'>Errors</th>
+                                        <th data-field="host" data-sortable="true" rowspan=2>Host</th>
+                                        <th data-field="lastrcvd" data-sortable="true" rowspan=2>Last<br>Rcvd</th>
+                                        <th colspan=4>Sequence Sync</th>
+                                        <th colspan=4>Media Sync</th>
+                                        <th data-field="blank" data-sortable="false" rowspan=2>Blank<br>Data</th>
+                                        <th data-field="ping" data-sortable="false" rowspan=2>Ping</th>
+                                        <th data-field="plugin" data-sortable="false" rowspan=2>Plugin</th>
+                                        <th data-field="fppcmd" data-sortable="false" rowspan=2>FPP<br>Cmd</th>
+                                        <th data-field="errors" data-sortable="false" rowspan=2>Errors</th>
                                     </tr>
                                     <tr>
-                                        <th data-filter='false'>Open</th>
-                                        <th data-filter='false'>Start</th>
-                                        <th data-filter='false'>Stop</th>
-                                        <th data-filter='false'>Sync</th>
-                                        <th data-filter='false'>Open</th>
-                                        <th data-filter='false'>Start</th>
-                                        <th data-filter='false'>Stop</th>
-                                        <th data-filter='false'>Sync</th>
+                                        <th data-field="seqopen" data-sortable="false">Open</th>
+                                        <th data-field="seqstart" data-sortable="false">Start</th>
+                                        <th data-field="seqstop" data-sortable="false">Stop</th>
+                                        <th data-field="seqsync" data-sortable="false">Sync</th>
+                                        <th data-field="medopen" data-sortable="false">Open</th>
+                                        <th data-field="medstart" data-sortable="false">Start</th>
+                                        <th data-field="medstop" data-sortable="false">Stop</th>
+                                        <th data-field="medsync" data-sortable="false">Sync</th>
                                     </tr>
                                 </thead>
                                 <tbody id='syncStats'>
