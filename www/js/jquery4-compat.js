@@ -2,7 +2,7 @@
  * jQuery 4.0 Compatibility Shim
  *
  * Restores APIs removed in jQuery 4.0 that are still used by third-party
- * plugins (tablesorter, jquery.form, jgrowl, touch-punch, etc.).
+ * plugins (jquery.form, jgrowl, touch-punch, bootstrap-table, etc.).
  *
  * Load this immediately after jquery-latest.min.js.
  */
@@ -106,7 +106,7 @@
 	}
 
 	// $.fn.bind() / $.fn.unbind() - removed in jQuery 4.0
-	// Used by tablesorter, jgrowl, floatThead, jcanvas, msgBox, etc.
+	// Used by jgrowl, floatThead, jcanvas, msgBox, etc.
 	if (!$.fn.bind) {
 		$.fn.bind = function (types, data, fn) {
 			return this.on(types, null, data, fn);
@@ -134,7 +134,7 @@
 
 	// Array methods on jQuery objects - removed in jQuery 4.0
 	// jQuery objects no longer inherit from Array, but plugins like
-	// tablesorter rely on .sort(), .splice(), and .push() being available.
+	// some plugins rely on .sort(), .splice(), and .push() being available.
 	var arrayMethods = ['push', 'sort', 'splice'];
 	arrayMethods.forEach(function (method) {
 		if (!$.fn[method]) {

@@ -221,7 +221,7 @@ button.close {
     background: radial-gradient(circle, $blue 35%, rgba($blue,0) 35%);
 
 }
-input[type=text], input[type=number], input[type=password], input[type=email], input[type=date], input[type=search],select, .tablesorter input{
+input[type=text], input[type=number], input[type=password], input[type=email], input[type=date], input[type=search],select{
     @include border-radius($input-border-radius, 0);
 
     @include box-shadow($input-box-shadow);

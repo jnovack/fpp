@@ -17842,11 +17842,13 @@ body.mobile-menu-open .hamburger--spin .hamburger-inner::after {
 .ajax-file-upload-statusbar {
   background-color: #F5F5F5;
   border-radius: 12px;
-  margin: 1em 0;
-  padding: 1em;
 }
 .ajax-file-upload-statusbar .backdrop, .ajax-file-upload-statusbar .backdrop-disabled, .ajax-file-upload-statusbar .backdrop-success, .ajax-file-upload-statusbar .backdrop-dark {
   border-radius: 8px;
+}
+.ajax-file-upload-statusbar {
+  margin: 1em 0;
+  padding: 1em;
 }
 
 .ajax-file-upload-filename {
@@ -18294,9 +18296,28 @@ button.close {
   background: radial-gradient(circle, #6B95EC 35%, rgba(107, 149, 236, 0) 35%);
 }
 
-input[type=text], input[type=number], input[type=password], input[type=email], input[type=date], input[type=search], select, .tablesorter input {
+input[type=text], input[type=number], input[type=password], input[type=email], input[type=date], input[type=search], select {
   border-radius: var(--bs-border-radius);
   transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  input[type=text], input[type=number], input[type=password], input[type=email], input[type=date], input[type=search], select {
+    transition: none;
+  }
+}
+input[type=text]::-ms-expand, input[type=number]::-ms-expand, input[type=password]::-ms-expand, input[type=email]::-ms-expand, input[type=date]::-ms-expand, input[type=search]::-ms-expand, select::-ms-expand {
+  background-color: transparent;
+  border: 0;
+}
+input[type=text]::-moz-placeholder, input[type=number]::-moz-placeholder, input[type=password]::-moz-placeholder, input[type=email]::-moz-placeholder, input[type=date]::-moz-placeholder, input[type=search]::-moz-placeholder, select::-moz-placeholder {
+  color: var(--bs-secondary-color);
+  opacity: 1;
+}
+input[type=text]::placeholder, input[type=number]::placeholder, input[type=password]::placeholder, input[type=email]::placeholder, input[type=date]::placeholder, input[type=search]::placeholder, select::placeholder {
+  color: var(--bs-secondary-color);
+  opacity: 1;
+}
+input[type=text], input[type=number], input[type=password], input[type=email], input[type=date], input[type=search], select {
   border: 1px solid #D2D2D2;
   color: #171720;
   -webkit-appearance: none;
@@ -18306,33 +18327,16 @@ input[type=text], input[type=number], input[type=password], input[type=email], i
   vertical-align: middle;
   font-size: 0.95rem;
 }
-@media (prefers-reduced-motion: reduce) {
-  input[type=text], input[type=number], input[type=password], input[type=email], input[type=date], input[type=search], select, .tablesorter input {
-    transition: none;
-  }
-}
-input[type=text]::-ms-expand, input[type=number]::-ms-expand, input[type=password]::-ms-expand, input[type=email]::-ms-expand, input[type=date]::-ms-expand, input[type=search]::-ms-expand, select::-ms-expand, .tablesorter input::-ms-expand {
-  background-color: transparent;
-  border: 0;
-}
-input[type=text]::-moz-placeholder, input[type=number]::-moz-placeholder, input[type=password]::-moz-placeholder, input[type=email]::-moz-placeholder, input[type=date]::-moz-placeholder, input[type=search]::-moz-placeholder, select::-moz-placeholder, .tablesorter input::-moz-placeholder {
-  color: var(--bs-secondary-color);
-  opacity: 1;
-}
-input[type=text]::placeholder, input[type=number]::placeholder, input[type=password]::placeholder, input[type=email]::placeholder, input[type=date]::placeholder, input[type=search]::placeholder, select::placeholder, .tablesorter input::placeholder {
-  color: var(--bs-secondary-color);
-  opacity: 1;
-}
-body.has-touch input[type=text], body.has-touch input[type=number], body.has-touch input[type=password], body.has-touch input[type=email], body.has-touch input[type=date], body.has-touch input[type=search], body.has-touch select, body.has-touch .tablesorter input {
+body.has-touch input[type=text], body.has-touch input[type=number], body.has-touch input[type=password], body.has-touch input[type=email], body.has-touch input[type=date], body.has-touch input[type=search], body.has-touch select {
   font-size: 16px;
 }
-.pageContent .fppTableContents input[type=text], .pageContent .fppTableContents input[type=number], .pageContent .fppTableContents input[type=password], .pageContent .fppTableContents input[type=email], .pageContent .fppTableContents input[type=date], .pageContent .fppTableContents input[type=search], .pageContent .fppTableContents select, .pageContent .fppTableContents .tablesorter input {
+.pageContent .fppTableContents input[type=text], .pageContent .fppTableContents input[type=number], .pageContent .fppTableContents input[type=password], .pageContent .fppTableContents input[type=email], .pageContent .fppTableContents input[type=date], .pageContent .fppTableContents input[type=search], .pageContent .fppTableContents select {
   font-family: Arial, Helvetica, sans-serif;
   padding-top: 0.1rem;
   padding-bottom: 0.1rem;
   background-position: right 7px center;
 }
-body.has-touch .pageContent .fppTableContents input[type=text], body.has-touch .pageContent .fppTableContents input[type=number], body.has-touch .pageContent .fppTableContents input[type=password], body.has-touch .pageContent .fppTableContents input[type=email], body.has-touch .pageContent .fppTableContents input[type=date], body.has-touch .pageContent .fppTableContents input[type=search], body.has-touch .pageContent .fppTableContents select, body.has-touch .pageContent .fppTableContents .tablesorter input {
+body.has-touch .pageContent .fppTableContents input[type=text], body.has-touch .pageContent .fppTableContents input[type=number], body.has-touch .pageContent .fppTableContents input[type=password], body.has-touch .pageContent .fppTableContents input[type=email], body.has-touch .pageContent .fppTableContents input[type=date], body.has-touch .pageContent .fppTableContents input[type=search], body.has-touch .pageContent .fppTableContents select {
   padding-top: 0.33rem;
   padding-bottom: 0.33rem;
 }
@@ -18690,10 +18694,12 @@ input[type=checkbox][disabled=""]:checked {
 .backdrop, .backdrop-disabled, .backdrop-success, .backdrop-dark {
   background-color: #F5F5F5;
   border-radius: 12px;
-  padding: 1.1em 1.25em;
 }
 .backdrop .backdrop, .backdrop-disabled .backdrop, .backdrop .backdrop-disabled, .backdrop-disabled .backdrop-disabled, .backdrop-success .backdrop, .backdrop-success .backdrop-disabled, .backdrop .backdrop-success, .backdrop-disabled .backdrop-success, .backdrop-success .backdrop-success, .backdrop-dark .backdrop, .backdrop-dark .backdrop-disabled, .backdrop-dark .backdrop-success, .backdrop .backdrop-dark, .backdrop-disabled .backdrop-dark, .backdrop-success .backdrop-dark, .backdrop-dark .backdrop-dark {
   border-radius: 8px;
+}
+.backdrop, .backdrop-disabled, .backdrop-success, .backdrop-dark {
+  padding: 1.1em 1.25em;
 }
 
 .dropdown-menu.show {
@@ -18943,7 +18949,6 @@ table.settingsTable div.th {
   background-color: transparent;
   background-image: none;
   border-color: #fff;
-  transition: none;
 }
 .fppActionTable.fppActionTable-success > tbody > tr .btn-danger:hover {
   color: #171720;
@@ -18956,6 +18961,9 @@ table.settingsTable div.th {
 .fppActionTable.fppActionTable-success > tbody > tr .btn-danger.disabled, .fppActionTable.fppActionTable-success > tbody > tr .pageContent .btn-danger.disableButtons, .pageContent .fppActionTable.fppActionTable-success > tbody > tr .btn-danger.disableButtons, .fppActionTable.fppActionTable-success > tbody > tr .ui-dialog .btn-danger.disableButtons, .ui-dialog .fppActionTable.fppActionTable-success > tbody > tr .btn-danger.disableButtons, .fppActionTable.fppActionTable-success > tbody > tr .modal .btn-danger.disableButtons, .modal .fppActionTable.fppActionTable-success > tbody > tr .btn-danger.disableButtons, .fppActionTable.fppActionTable-success > tbody > tr .btn-danger:disabled {
   color: #fff;
   background-color: transparent;
+}
+.fppActionTable.fppActionTable-success > tbody > tr .btn-danger {
+  transition: none;
 }
 
 .fppActionTable.fppActionTable-success > tbody > tr .btn-danger:hover {

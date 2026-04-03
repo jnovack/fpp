@@ -48,15 +48,7 @@
     <script type="text/javascript" src="bootstrap-table/extensions/bootstrap-table-filter-control.min.js"></script>
     <script type="text/javascript" src="bootstrap-table/extensions/bootstrap-table-export.min.js"></script>
 
-    <!-- Tablesorter (existing, deprecated but kept for backward compatibility) -->
-    <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.widgets.min.js"></script>
     <script type="text/javascript" src="js/sugar/sugar.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/parsers/parser-metric.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/parsers/parser-date.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/parsers/parser-date-two-digit-year.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/widgets/widget-cssStickyHeaders.min.js"></script>
-    <script type="text/javascript" src="jquery/jquery.tablesorter/extras/jquery.metadata.min.js"></script>
     <script type="text/javascript" src="js/fpp-filemanager.js?ref=<?= filemtime('js/fpp-filemanager.js'); ?>"></script>
     <script type="text/javascript"
         src="js/fpp-bootstrap-table.js?ref=<?= filemtime('js/fpp-bootstrap-table.js'); ?>"></script>

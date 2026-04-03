@@ -2359,58 +2359,8 @@ body .sm-clean a .sub-arrow {
 	margin-top: 0;
 }
 
-.tablesorter thead td,
-.tablesorter thead th {
-	background-color: #ececec;
-}
-
-.tablesorter thead th:first-child {
-	border-top-left-radius: 8px;
-}
-
-.tablesorter thead th:last-child {
-	border-top-right-radius: 8px;
-}
-
-.tablesorter thead td:first-child {
-	border-bottom-left-radius: 8px;
-}
-
-.tablesorter thead td:last-child {
-	border-bottom-right-radius: 8px;
-}
-
 .hideme {
 	display: none;
-}
-
-.tablesorter thead th {
-	padding-top: 1.1em;
-}
-
-.tablesorter thead td {
-	padding-bottom: 1.1em;
-}
-
-.tablesorter thead input {
-	width: 100%;
-}
-
-.tablesorter thead > tr > :first-child {
-	padding-left: 1em;
-}
-
-.tablesorter thead > tr > :last-child {
-	padding-right: 1em;
-}
-
-.tablesorter-filter option {
-	color: #000000 !important;
-}
-
-.tablesorter-filter:not(:checked) {
-	color: #56b760 !important;
-	font-weight: bold;
 }
 
 .circularVirtualStringButton {
@@ -2474,10 +2424,6 @@ table#fppSystemsTable > thead > tr:last-child > td {
 	text-decoration: underline;
 }
 
-.pageContent .fppTableContents .tablesorter input[type='checkbox'] {
-	background-position: center center;
-}
-
 .wifi-icon {
 	height: 20px;
 	display: inline-block;
@@ -2487,10 +2433,6 @@ table#fppSystemsTable > thead > tr:last-child > td {
 
 .systemRow .wifi-icon {
 	margin-left: 0.5em;
-}
-
-#fppSystemsTable .tablesorter-filter-row > td:last-child input {
-	display: none;
 }
 
 #selectAllCheckbox {
@@ -2510,10 +2452,6 @@ table#fppSystemsTable > thead > tr:last-child > td {
 	display: block;
 }
 
-.tablesorter .filtered {
-	display: none;
-}
-
 .txtIP {
 	width: 150px;
 }
@@ -2524,56 +2462,6 @@ table#fppSystemsTable > thead > tr:last-child > td {
 
 .singleDigitInput {
 	width: 85px;
-}
-
-.tablesorter-fpp .header,
-.tablesorter-fpp .tablesorter-header {
-	background-image: url(data:image/gif;base64,R0lGODlhFQAJAIAAACMtMP///yH5BAEAAAEALAAAAAAVAAkAAAIXjI+AywnaYnhUMoqt3gZXPmVg94yJVQAAOw==);
-	background-repeat: no-repeat;
-	background-position: bottom 10px right 10px;
-	white-space: normal;
-	cursor: pointer;
-}
-
-.tablesorter-fpp .headerSortUp,
-.tablesorter-fpp .tablesorter-headerSortUp,
-.tablesorter-fpp .tablesorter-headerAsc {
-	background-image: url(data:image/gif;base64,R0lGODlhFQAEAIAAACMtMP///yH5BAEAAAEALAAAAAAVAAQAAAINjI8Bya2wnINUMopZAQA7);
-}
-
-.tablesorter-fpp .headerSortDown,
-.tablesorter-fpp .tablesorter-headerSortDown,
-.tablesorter-fpp .tablesorter-headerDesc {
-	background-image: url(data:image/gif;base64,R0lGODlhFQAEAIAAACMtMP///yH5BAEAAAEALAAAAAAVAAQAAAINjB+gC+jP2ptn0WskLQA7);
-}
-
-.tablesorter-fpp thead .sorter-false {
-	background-image: none;
-	cursor: default;
-	padding: 4px;
-}
-
-/* tfoot */
-.tablesorter-fpp tfoot .tablesorter-headerSortUp,
-.tablesorter-fpp tfoot .tablesorter-headerSortDown,
-.tablesorter-fpp tfoot .tablesorter-headerAsc,
-.tablesorter-fpp tfoot .tablesorter-headerDesc {
-	/* remove sort arrows from footer */
-	background-image: none;
-}
-
-input[type='search'].tablesorter-filter {
-	background-image: url(/images/redesign/search-24px.svg);
-	background-repeat: no-repeat;
-	background-position: right 10px center;
-}
-
-input[type='search'].tablesorter-filter:not(:placeholder-shown) {
-	background-image: none;
-}
-
-input[type='search'].tablesorter-filter:disabled {
-	background-image: none;
 }
 
 /* #tblSchedule .schDay{

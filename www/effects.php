@@ -16,10 +16,36 @@
   include 'common/menuHead.inc';
   ?>
 
-  <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.min.js"></script>
-  <script type="text/javascript" src="jquery/jquery.tablesorter/jquery.tablesorter.widgets.min.js"></script>
-  <script type="text/javascript" src="jquery/jquery.tablesorter/widgets/widget-cssStickyHeaders.min.js"></script>
-  <script type="text/javascript" src="jquery/jquery.tablesorter/extras/jquery.metadata.min.js"></script>
+  <link rel="stylesheet" href="bootstrap-table/css/bootstrap-table.min.css">
+  <link rel="stylesheet" href="bootstrap-table/extensions/bootstrap-table-filter-control.min.css">
+  <script src="bootstrap-table/js/bootstrap-table.min.js"></script>
+  <script src="bootstrap-table/extensions/bootstrap-table-filter-control.min.js"></script>
+
+  <style>
+    #tblEffectLibrary thead th {
+      background-color: #d9d9d9;
+    }
+
+    #tblEffectLibrary thead th:first-child {
+      border-top-left-radius: 8px;
+    }
+
+    #tblEffectLibrary thead th:last-child {
+      border-top-right-radius: 8px;
+    }
+
+    #tblEffectLibrary thead th .both {
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%23888"><path d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1zm0,429.3l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
+    }
+
+    #tblEffectLibrary thead th .asc {
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%230d47a1"><path d="m136.9496,41.4c-9.3763,-12.5 -24.60342,-12.5 -33.97972,0l-96.01334,128c-6.90096,9.2 -8.92624,22.9 -5.17572,34.9s12.45173,19.8 22.20309,19.8l192.02668,0c9.67634,0 18.45256,-7.8 22.20309,-19.8s1.65023,-25.7 -5.17572,-34.9l-96.01334,-128l-0.07501,0z"/></svg>');
+    }
+
+    #tblEffectLibrary thead th .desc {
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%230d47a1"><path d="m136.94959,471.6c-9.3763,12.5 -24.60342,12.5 -33.97972,0l-96.01334,-128c-6.90096,-9.2 -8.92624,-22.9 -5.17572,-34.9s12.45173,-19.8 22.20308,-19.8l192.02667,0c9.67634,0 18.45256,7.8 22.20308,19.8s1.65023,25.7 -5.17572,34.9l-96.01334,128l-0.07501,0z"/></svg>');
+    }
+  </style>
 
 
   <script>
@@ -71,27 +97,27 @@
       });
     });
 
-  $(document).on('click', '.stop-overlay-effects', function () {
-    const model = $(this).data('model');
-    SelectedOverlayModel = model;
-  
-    const url = 'api/command/' +
-                encodeURIComponent('Overlay Model Effect') + '/' +
-                encodeURIComponent(model) + '/' +
-                'Enabled/' +
-                encodeURIComponent('Stop Effects');
-    
-    const $btn = $(this).prop('disabled', true);
-  
-    $.get(url)
-      .done(() => {
-        $.jGrowl('Stopped all effects on ' + model, { themeState: 'success' });
-        GetRunningOverlayEffects();
-      })
-      .fail(() => {
-        DialogError('Error', 'Error stopping effects on ' + model);
-        GetRunningOverlayEffects();
-      });
+    $(document).on('click', '.stop-overlay-effects', function () {
+      const model = $(this).data('model');
+      SelectedOverlayModel = model;
+
+      const url = 'api/command/' +
+        encodeURIComponent('Overlay Model Effect') + '/' +
+        encodeURIComponent(model) + '/' +
+        'Enabled/' +
+        encodeURIComponent('Stop Effects');
+
+      const $btn = $(this).prop('disabled', true);
+
+      $.get(url)
+        .done(() => {
+          $.jGrowl('Stopped all effects on ' + model, { themeState: 'success' });
+          GetRunningOverlayEffects();
+        })
+        .fail(() => {
+          DialogError('Error', 'Error stopping effects on ' + model);
+          GetRunningOverlayEffects();
+        });
     });
 
 
@@ -131,15 +157,13 @@
     function pageSpecific_PageLoad_DOM_Setup() {
       var $table = $('#tblEffectLibrary');
 
-      $table.tablesorter({
-        widthFixed: false,
-        theme: 'fpp',
-        widgets: ['zebra', 'filter', 'staticRow', 'saveSort'],
-        headers: {
-          0: { sorter: 'text', sortInitialOrder: 'asc' },
-          1: { sorter: 'text' },
-          2: { sorter: false, filter: false }
-        }
+      $table.bootstrapTable({
+        sortName: 'name',
+        sortOrder: 'asc',
+        filterControl: true,
+        striped: true,
+        showColumns: false,
+        undefinedText: ''
       });
 
     }
@@ -196,13 +220,12 @@
             <div id="divEffectLibrary">
               <div class='fppTableWrapper'>
                 <div class='fppTableContents'>
-                  <table id="tblEffectLibrary" class="tablesorter" width="100%" cellpadding=1 cellspacing=0
-                    class="fppActionTable">
+                  <table id="tblEffectLibrary" class="fppActionTable" width="100%" cellpadding=1 cellspacing=0>
                     <thead>
                       <tr>
-                        <th>Effect Name</th>
-                        <th>Type</th>
-                        <th width='15%'></th>
+                        <th data-field="name" data-sortable="true" data-filter-control="input">Effect Name</th>
+                        <th data-field="type" data-sortable="true" data-filter-control="input">Type</th>
+                        <th data-field="action" width='15%'></th>
                       </tr>
                     </thead>
                     <tbody id='tblEffectLibraryBody'>
@@ -237,9 +260,9 @@
                 </div>
               </div>
             </div>
- 
+
             <div style="height: 20px;"></div>
-            
+
             <div id="divOverlayEffects" class="divOverlayEffectsDisabled">
               <h2 id="overlayEffectsTitle">Overlay Model Effects</h2>
               <!-- <input id="btnStopEffect" type="button" class="disableButtons" value="Stop Effect" onclick="StopEffect();" /><br> -->
