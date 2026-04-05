@@ -120,10 +120,15 @@
 				"Longitude"
 			]
 		},
+		"avModes": {
+			"description": "A/V Mode",
+			"settings": [
+				"AudioBackend"
+			]
+		},
 		"generalAudio": {
 			"description": "General Audio",
 			"settings": [
-				"AudioBackend",
 				"WLEDAudioInput",
 				"WLEDAudioSyncMode",
 				"WLEDAudioSyncDest",
@@ -168,7 +173,7 @@
 			]
 		},
 		"generalVideo": {
-			"description": "Video",
+			"description": "Hardware Direct Video",
 			"settings": [
 				"VideoOutput",
 				"ForceHDMI",
@@ -756,16 +761,16 @@
 		},
 		"AudioBackend": {
 			"name": "AudioBackend",
-			"description": "Audio Backend",
-			"tip": "Select whether FPP talks directly to ALSA hardware or routes playback through the PipeWire stack. PipeWire enables low-latency mixing via WirePlumber/pipewire-pulse, while ALSA keeps the legacy direct-to-device path.",
+			"description": "Media Backend",
+			"tip": "Select how FPP handles audio and video playback. Hardware Direct talks directly to ALSA for audio and sends video to a single output device. PipeWire routes all media through the PipeWire stack, enabling multi-device audio groups, video fan-out, and advanced routing.",
 			"gatherStats": true,
 			"restart": 0,
 			"reboot": 0,
 			"default": "alsa",
 			"type": "select",
 			"options": {
-				"Direct ALSA (Default)": "alsa",
-				"PipeWire (Experimental)": "pipewire"
+				"Hardware Direct": "alsa",
+				"PipeWire": "pipewire"
 			},
 			"children": {
 				"pipewire": [
@@ -781,7 +786,13 @@
 					"AudioOutput",
 					"AudioMixerDevice",
 					"AudioBufferSize",
-					"ForceAudioId"
+					"ForceAudioId",
+					"VideoOutput",
+					"ForceHDMI",
+					"EnableBBBHDMI",
+					"ForceHDMIResolution",
+					"ForceHDMIResolutionPort2",
+					"HardwareDecoding"
 				]
 			},
 			"platforms": [

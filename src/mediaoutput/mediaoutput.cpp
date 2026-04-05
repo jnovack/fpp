@@ -334,15 +334,14 @@ MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::
     slotStatus->output = "";
 
 #ifdef HAS_GSTREAMER
-    // Use GStreamer for audio when PipeWire audio backend is active (unified clock)
-    bool useGStreamer = false;
+    // GStreamer is the sole media player.  In PipeWire mode audio/video are
+    // routed through the PipeWire stack; in Hardware Direct (ALSA) mode
+    // GStreamer talks directly to ALSA for audio and uses kmssink for video.
+    bool useGStreamer = true;
     {
         std::string backend = getSetting("MediaBackend");
-        if (backend == "gstreamer") {
-            useGStreamer = true;
-        } else if (backend.empty()) {
-            std::string audioBackend = getSetting("AudioBackend");
-            useGStreamer = (audioBackend == "pipewire");
+        if (!backend.empty() && backend != "gstreamer") {
+            useGStreamer = false;
         }
     }
 

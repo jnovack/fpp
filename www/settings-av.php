@@ -39,6 +39,8 @@ if (!isset($settings['AudioMixerDevice'])) {
 ?>
 
 <?
+PrintSettingGroup('avModes');
+
 PrintSettingGroup('generalAudio');
 
 // PipeWire section — always rendered, visibility controlled dynamically by AudioBackend
@@ -74,10 +76,14 @@ PrintSettingGroup('generalAudio');
                     var val = $('#AudioBackend').val();
                     if (val === 'pipewire') {
                         $('#pipeWireSection').show();
+                        $('#pipeWireVideoSection').show();
                         $('#alsaHardwareAudioSection').hide();
+                        $('#hardwareDirectVideoSection').hide();
                     } else {
                         $('#pipeWireSection').hide();
+                        $('#pipeWireVideoSection').hide();
                         $('#alsaHardwareAudioSection').show();
+                        $('#hardwareDirectVideoSection').show();
                     }
                 };
             }
@@ -87,10 +93,14 @@ PrintSettingGroup('generalAudio');
 }
 ?>
 
-<?
-PrintSettingGroup('pipeWireVideo');
-?>
+<div id="pipeWireVideoSection" <?= (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') ? '' : ' style="display:none;"' ?>>
+    <?
+    PrintSettingGroup('pipeWireVideo');
+    ?>
+</div>
 
-<?
-PrintSettingGroup('generalVideo');
-?>
+<div id="hardwareDirectVideoSection" <?= (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') ? ' style="display:none;"' : '' ?>>
+    <?
+    PrintSettingGroup('generalVideo');
+    ?>
+</div>
