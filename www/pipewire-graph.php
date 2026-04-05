@@ -1199,17 +1199,29 @@
                         .on('drag', dragged)
                         .on('end', dragEnded));
 
-                // Set opacity for virtual/inactive nodes
+                // Set opacity for virtual/inactive nodes (media sources stay opaque
+                // so they render above the column background boxes)
                 nodeGroups.style('opacity', d => {
                     const p = d.properties || {};
-                    return p['fpp.stream.virtual'] ? 0.45 : 1.0;
+                    const col = d._col;
+                    if (p['fpp.stream.virtual'] && col !== 1) return 0.45;
+                    return 1.0;
                 });
 
                 // Background rect
                 nodeGroups.append('rect')
                     .attr('width', d => d._w)
                     .attr('height', d => d._h)
-                    .attr('fill', d => nodeColor(d))
+                    .attr('fill', d => {
+                        const base = nodeColor(d);
+                        const p = d.properties || {};
+                        if (p['fpp.stream.virtual'] && d._col === 1) {
+                            const c = d3.color(base);
+                            // Desaturate and lighten to a very pale version
+                            return d3.interpolate(base, '#e8e8e8')(0.7);
+                        }
+                        return base;
+                    })
                     .attr('stroke', d => {
                         const p = d.properties || {};
                         return p['fpp.stream.virtual']
@@ -1239,6 +1251,10 @@
                 nodeGroups.append('text')
                     .attr('class', 'pw-node-label')
                     .attr('x', 10).attr('y', 16)
+                    .style('fill', d => {
+                        const p = d.properties || {};
+                        return (p['fpp.stream.virtual'] && d._col === 1) ? '#555' : null;
+                    })
                     .text(d => {
                         const p = d.properties || {};
                         if ((d.name || '').startsWith('alsa_') && p['api.alsa.card.name']) {
@@ -1251,12 +1267,20 @@
                 nodeGroups.append('text')
                     .attr('class', 'pw-node-sublabel')
                     .attr('x', 10).attr('y', 30)
+                    .style('fill', d => {
+                        const p = d.properties || {};
+                        return (p['fpp.stream.virtual'] && d._col === 1) ? 'rgba(80,80,80,0.7)' : null;
+                    })
                     .text(d => d.mediaClass || '');
 
                 // Metadata line (delay, format, etc.)
                 nodeGroups.append('text')
                     .attr('class', 'pw-node-meta')
                     .attr('x', 10).attr('y', 41)
+                    .style('fill', d => {
+                        const p = d.properties || {};
+                        return (p['fpp.stream.virtual'] && d._col === 1) ? 'rgba(80,80,80,0.5)' : null;
+                    })
                     .text(d => nodeMetaText(d));
 
                 // Draw ports as circles on the node groups
