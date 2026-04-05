@@ -3667,7 +3667,7 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
     // are driven.  The filter-chain playback then targets our custom
     // adapter instead of the default stereo node.
     // ---------------------------------------------------------------
-    $customAlsaAdapters = array(); // cardId -> array('nodeName','channels')
+    $customAlsaAdapters = array(); // cardId -> array('nodeName','channels','rate','periodSize','format')
 
     foreach ($groups as $group) {
         if (!isset($group['enabled']) || !$group['enabled'])
@@ -3677,7 +3677,13 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
         foreach ($group['members'] as $member) {
             $memberCh = isset($member['channels']) ? intval($member['channels']) : 2;
             $cid = isset($member['cardId']) ? $member['cardId'] : '';
-            if (empty($cid) || $memberCh <= 2)
+            if (empty($cid))
+                continue;
+            $memberRate = isset($member['sampleRate']) ? intval($member['sampleRate']) : 0;
+            $memberPeriod = isset($member['periodSize']) ? intval($member['periodSize']) : 0;
+            // Need a custom adapter if channels >2 or explicit rate/period override
+            $needsCustom = ($memberCh > 2 || $memberRate > 0 || $memberPeriod > 0);
+            if (!$needsCustom)
                 continue;
             // Skip AES67 virtual sinks — they don't use ALSA adapters
             if (strpos($cid, 'aes67_') === 0)
@@ -3709,9 +3715,18 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
                 $customAlsaAdapters[$cid] = array(
                     'nodeName' => 'fpp_alsa_' . $cidNorm,
                     'channels' => $memberCh,
-                    'rate' => 0,  // resolved below after all cards are collected
+                    'rate' => $memberRate,
+                    'periodSize' => $memberPeriod,
                     'format' => $adapterFmt,
                 );
+            } else {
+                // Card already tracked — merge per-card overrides (first non-zero wins)
+                if ($memberRate > 0 && $customAlsaAdapters[$cid]['rate'] == 0) {
+                    $customAlsaAdapters[$cid]['rate'] = $memberRate;
+                }
+                if ($memberPeriod > 0 && $customAlsaAdapters[$cid]['periodSize'] == 0) {
+                    $customAlsaAdapters[$cid]['periodSize'] = $memberPeriod;
+                }
             }
         }
     }
@@ -3777,11 +3792,21 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             $conf .= "      node.description = \"$descStr\"\n";
             $conf .= "      media.class = \"Audio/Sink\"\n";
             $conf .= "      api.alsa.path = \"hw:$cid\"\n";
-            $conf .= "      api.alsa.period-size = 1024\n";
+            $adapterPeriod = isset($info['periodSize']) && $info['periodSize'] > 0 ? intval($info['periodSize']) : 1024;
+            $conf .= "      api.alsa.period-size = $adapterPeriod\n";
             $conf .= "      api.alsa.headroom = 256\n";
             $adapterFormat = isset($info['format']) ? $info['format'] : 'S16LE';
             $conf .= "      audio.format = \"$adapterFormat\"\n";
-            $conf .= "      audio.rate = " . $info['rate'] . "\n";
+            $adapterRate = isset($info['rate']) && $info['rate'] > 0 ? intval($info['rate']) : 0;
+            if ($adapterRate == 0) {
+                // Fall back to auto-detection: WirePlumber negotiated rate, then ALSA HW query, then global setting
+                if (isset($sinkCardRateMap[$cid])) {
+                    $adapterRate = $sinkCardRateMap[$cid];
+                } else {
+                    $adapterRate = QueryAlsaCardBestRate($cid, $allowedRates, $alsaRate);
+                }
+            }
+            $conf .= "      audio.rate = " . $adapterRate . "\n";
             $conf .= "      audio.channels = " . $info['channels'] . "\n";
             $conf .= "      audio.position = $posStr\n";
             $conf .= "    }\n";

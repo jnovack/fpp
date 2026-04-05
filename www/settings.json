@@ -124,8 +124,6 @@
 			"description": "General Audio",
 			"settings": [
 				"AudioBackend",
-				"AudioFormat",
-				"AudioPeriodSize",
 				"WLEDAudioInput",
 				"WLEDAudioSyncMode",
 				"WLEDAudioSyncDest",
@@ -140,6 +138,8 @@
 			"settings": [
 				"AudioOutput",
 				"AudioMixerDevice",
+				"AudioFormat",
+				"AudioPeriodSize",
 				"AudioBufferSize",
 				"AudioLayout",
 				"ForceAudioId"
@@ -634,7 +634,7 @@
 		"AudioFormat": {
 			"name": "AudioFormat",
 			"description": "Audio Output Format",
-			"tip": "Sets the sample rate and bit depth for audio output. In ALSA mode this controls the hardware directly. In PipeWire mode this sets the rate for the primary card only — other cards in an audio group negotiate their own rates automatically via PipeWire. Leave at 'Default' unless you are experiencing issues with a specific device.",
+			"tip": "Sets the sample rate and bit depth for Direct ALSA audio output. In PipeWire mode, per-card sample rates are configured in the PipeWire Audio Groups settings instead.",
 			"gatherStats": true,
 			"level": 1,
 			"restart": 0,
@@ -706,7 +706,7 @@
 		"AudioPeriodSize": {
 			"name": "AudioPeriodSize",
 			"description": "Audio Period Size",
-			"tip": "The size of the DMA transfer from the audio buffer to the hardware.  Should be an even fraction of the Audio Buffer Size",
+			"tip": "The size of the DMA transfer from the audio buffer to the hardware for Direct ALSA mode. Should be an even fraction of the Audio Buffer Size. In PipeWire mode, per-card period sizes are configured in the PipeWire Audio Groups settings instead.",
 			"gatherStats": true,
 			"level": 1,
 			"restart": 0,

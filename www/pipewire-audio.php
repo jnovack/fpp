@@ -673,6 +673,8 @@
             html += '<th>Channel Mapping' + HelpIcon('Maps each of this card\'s channels to a position in the group\'s channel layout. For example, you can route the group\'s Front-Left to this card\'s Front-Left, or remap surround channels to stereo outputs.') + '</th>';
             html += '<th>Volume' + HelpIcon('Per-card volume. Adjusts this member\'s output level independently from the group master volume. Useful for balancing levels between different sound cards. Adjusts in real-time.') + '</th>';
             html += '<th>Delay (ms)' + HelpIcon('Per-card delay compensation in milliseconds. Use this to synchronize outputs that have different inherent latencies (e.g. AES67 network audio vs local USB). Delay the faster outputs so they match the slowest one. Adjustable in real-time. Use the Sync Calibration tool to dial in the exact values.') + '</th>';
+            html += '<th>Rate' + HelpIcon('Sample rate for this card\u2019s ALSA adapter. \u201cAuto\u201d lets PipeWire negotiate the best rate. Override only if a specific card needs a fixed rate.') + '</th>';
+            html += '<th>Period' + HelpIcon('ALSA period size (DMA transfer size) for this card. \u201cAuto\u201d uses the default (1024). Larger values increase latency but improve stability for some USB devices.') + '</th>';
             html += '<th style="width:60px"></th>';
             html += '</tr></thead>';
             html += '<tbody id="members-' + group.id + '">';
@@ -682,7 +684,7 @@
                     html += RenderMemberRow(group, index, m);
                 }
             } else {
-                html += '<tr class="no-members-row"><td colspan="7" style="text-align:center;color:var(--bs-secondary-color,#6c757d);padding:1.5rem;">';
+                html += '<tr class="no-members-row"><td colspan="9" style="text-align:center;color:var(--bs-secondary-color,#6c757d);padding:1.5rem;">';
                 html += '<i class="fas fa-info-circle"></i> No sound cards added to this group yet';
                 html += '</td></tr>';
             }
@@ -768,6 +770,26 @@
             html += 'oninput="ScheduleDelayUpdate(' + groupIndex + ',' + memberIndex + ', parseFloat(this.value))">';
             html += '</div>';
             html += '</td>';
+            // Sample rate
+            html += '<td>';
+            var curRate = member.sampleRate || 0;
+            html += '<select class="form-select form-select-sm" style="width:auto;" onchange="UpdateMemberSampleRate(' + groupIndex + ',' + memberIndex + ', parseInt(this.value))">';
+            var rateOpts = [{ v: 0, l: 'Auto' }, { v: 44100, l: '44100' }, { v: 48000, l: '48000' }, { v: 96000, l: '96000' }];
+            for (var ri = 0; ri < rateOpts.length; ri++) {
+                html += '<option value="' + rateOpts[ri].v + '"' + (curRate === rateOpts[ri].v ? ' selected' : '') + '>' + rateOpts[ri].l + '</option>';
+            }
+            html += '</select>';
+            html += '</td>';
+            // Period size
+            html += '<td>';
+            var curPeriod = member.periodSize || 0;
+            html += '<select class="form-select form-select-sm" style="width:auto;" onchange="UpdateMemberPeriodSize(' + groupIndex + ',' + memberIndex + ', parseInt(this.value))">';
+            var periodOpts = [{ v: 0, l: 'Auto' }, { v: 1024, l: '1024' }, { v: 1536, l: '1536' }, { v: 2048, l: '2048' }, { v: 2560, l: '2560' }, { v: 3072, l: '3072' }, { v: 4096, l: '4096' }, { v: 8192, l: '8192' }];
+            for (var pi = 0; pi < periodOpts.length; pi++) {
+                html += '<option value="' + periodOpts[pi].v + '"' + (curPeriod === periodOpts[pi].v ? ' selected' : '') + '>' + periodOpts[pi].l + '</option>';
+            }
+            html += '</select>';
+            html += '</td>';
             html += '<td>';
             html += '<button class="buttons btn-outline-danger btn-group-action" onclick="RemoveMember(' + groupIndex + ',' + memberIndex + ')" title="Remove"><i class="fas fa-times"></i></button>';
             html += '</td>';
@@ -775,7 +797,7 @@
 
             // EQ panel row (expandable)
             html += '<tr id="eq-panel-row-' + groupIndex + '-' + memberIndex + '" style="display:none;">';
-            html += '<td colspan="7">';
+            html += '<td colspan="9">';
             html += '<div id="eq-panel-content-' + groupIndex + '-' + memberIndex + '">';
             html += BuildEQPanel(groupIndex, memberIndex, member);
             html += '</div>';
@@ -1136,6 +1158,8 @@
                 channels: 2,
                 volume: 100,
                 delayMs: 0,
+                sampleRate: 0,
+                periodSize: 0,
                 channelMapping: null,
                 eq: { enabled: false, bands: DefaultEQBands() }
             };
@@ -1282,6 +1306,14 @@
         /////////////////////////////////////////////////////////////////////////////
         // Per-member delay compensation — debounced for real-time adjustment
         var delayTimers = {};
+
+        function UpdateMemberSampleRate(groupIndex, memberIndex, rate) {
+            audioGroups.groups[groupIndex].members[memberIndex].sampleRate = rate;
+        }
+
+        function UpdateMemberPeriodSize(groupIndex, memberIndex, periodSize) {
+            audioGroups.groups[groupIndex].members[memberIndex].periodSize = periodSize;
+        }
 
         function UpdateMemberDelay(groupIndex, memberIndex, delayMs) {
             delayMs = Math.max(0, Math.min(5000, parseInt(delayMs) || 0));
