@@ -206,12 +206,46 @@ function addPluginEndpoints()
     if ($dir = opendir($baseDir)) {
         while (($file = readdir($dir)) !== false) {
             if (!in_array($file, array('.', '..')) && is_dir($baseDir . $file) && is_file($baseDir . $file . '/api.php')) {
+                $functionsBefore = get_defined_functions();
+                $userFunctionsBefore = array();
+                if (isset($functionsBefore['user'])) {
+                    $userFunctionsBefore = $functionsBefore['user'];
+                }
+
                 require_once $baseDir . $file . '/api.php';
 
-                $sfile = preg_replace('/-/', '', $file);
+                $functionsAfter = get_defined_functions();
+                $userFunctionsAfter = array();
+                if (isset($functionsAfter['user'])) {
+                    $userFunctionsAfter = $functionsAfter['user'];
+                }
 
-                $endpoints = call_user_func("getEndpoints$sfile");
+                $newUserFunctions = array_diff($userFunctionsAfter, $userFunctionsBefore);
+
+                $sfile = preg_replace('/-/', '', $file);
+                $endpointFunction = "getEndpoints$sfile";
+
+                if (!is_callable($endpointFunction)) {
+                    foreach ($newUserFunctions as $funcName) {
+                        if (stripos($funcName, 'getEndpoints') === 0) {
+                            $endpointFunction = $funcName;
+                            break;
+                        }
+                    }
+                }
+
+                if (!is_callable($endpointFunction)) {
+                    error_log("Skipping plugin API endpoint registration for '$file': no callable getEndpoints* function found");
+                    continue;
+                }
+
+                $endpoints = call_user_func($endpointFunction);
                 foreach ($endpoints as $ep) {
+                    if (!isset($ep['callback']) || !is_callable($ep['callback'])) {
+                        error_log("Skipping plugin endpoint for '$file': callback missing or not callable");
+                        continue;
+                    }
+
                     if ($ep['method'] == 'GET') {
                         dispatch_get('/plugin/' . $file . '/' . $ep['endpoint'], $ep['callback']);
                     } else if ($ep['method'] == 'POST') {
