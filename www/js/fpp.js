@@ -5528,7 +5528,7 @@ function SetSetting (
 	hideChange = false,
 	isBool = null,
 	callback = '',
-	failcallback = ''
+	failCallback = ''
 ) {
 	// console.log("api/settings/", key);
 	$.ajax({

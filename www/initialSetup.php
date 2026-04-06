@@ -54,27 +54,48 @@
                 }
             <? } ?>
 
+            // Password verify fields are UI-only confirmation values.
+            var filteredSettings = {};
+            $.each(pendingSettings, function (key, value) {
+                if (key !== 'passwordVerify' && key !== 'osPasswordVerify') {
+                    filteredSettings[key] = value;
+                }
+            });
+
             // Save all pending settings
-            var settingsToSave = Object.keys(pendingSettings).length;
+            var settingsToSave = Object.keys(filteredSettings).length;
             var settingsSaved = 0;
+            var failedSettings = [];
+
+            function completeSetup() {
+                if (failedSettings.length > 0) {
+                    DialogError('Save Setting', 'Failed to save: ' + failedSettings.join(', '));
+                    return;
+                }
+
+                Put('api/settings/initialSetup-02', false, '1');
+                var redirectURL = <?= json_encode($_GET['redirect'] ?? '') ?>;
+                location.href = (redirectURL == '') ? 'index.php' : redirectURL;
+            }
 
             if (settingsToSave > 0) {
-                $.each(pendingSettings, function (key, value) {
+                $.each(filteredSettings, function (key, value) {
                     SetSetting(key, value, 0, 0, false, null, function () {
                         settingsSaved++;
                         if (settingsSaved == settingsToSave) {
-                            // All settings saved, now set completion flag
-                            Put('api/settings/initialSetup-02', false, '1');
-                            var redirectURL = '<?= $_GET['redirect'] ?>';
-                            location.href = (redirectURL == '') ? 'index.php' : redirectURL;
+                            completeSetup();
+                        }
+                    }, function () {
+                        failedSettings.push(key);
+                        settingsSaved++;
+                        if (settingsSaved == settingsToSave) {
+                            completeSetup();
                         }
                     });
                 });
             } else {
                 // No settings changed, just set completion flag
-                Put('api/settings/initialSetup-02', false, '1');
-                var redirectURL = '<?= $_GET['redirect'] ?>';
-                location.href = (redirectURL == '') ? 'index.php' : redirectURL;
+                completeSetup();
             }
         }
 
