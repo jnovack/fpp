@@ -1443,7 +1443,11 @@
                                 $('#' + rowID).css('color', "#FFF");
                                 $('#' + rowID + " a").css('color', "#989898");
                                 $('#' + rowID + "_warnings .warning-text").css('color', "#FF8080");
-                                $('#advancedViewFPPColor_' + rowID).html(parseInt(data.advancedView.backgroundColor, 16));
+                                var colorInt = parseInt(data.advancedView.backgroundColor, 16);
+                                $('#advancedViewFPPColor_' + rowID).html(colorInt);
+                                setBTColorData(rowID, data.advancedView.backgroundColor);
+                            } else {
+                                setBTColorData(rowID, '');
                             }
                             if (data.advancedView.hasOwnProperty("RemoteGitVersion")) {
                                 var u = "<table class='multiSyncVerboseTable'>";
@@ -1875,7 +1879,25 @@
                 sortOrder: 'asc',
                 showColumns: false,
                 striped: true,
-                undefinedText: ''
+                undefinedText: '',
+                rowStyle: function (row) {
+                    if (row && row.fppcolor !== '' && row.fppcolor !== null && row.fppcolor !== undefined) {
+                        var colorNum = parseInt(row.fppcolor, 10);
+                        if (!isNaN(colorNum)) {
+                            var hex = colorNum.toString(16);
+                            while (hex.length < 6) {
+                                hex = '0' + hex;
+                            }
+                            return {
+                                css: {
+                                    background: '#' + hex,
+                                    color: '#FFF'
+                                }
+                            };
+                        }
+                    }
+                    return {};
+                }
             });
 
             // Re-attach child rows after their parent system rows
@@ -1996,6 +2018,35 @@
                     $after.after(this);
                 }
             });
+        }
+
+        function findBTItemByRowId(rowID) {
+            var bt = $('#fppSystemsTable').data('bootstrap.table');
+            if (!bt || !bt.options || !Array.isArray(bt.options.data)) return null;
+
+            for (var i = 0; i < bt.options.data.length; i++) {
+                if (bt.options.data[i] && bt.options.data[i]._id === rowID) {
+                    return bt.options.data[i];
+                }
+            }
+
+            return null;
+        }
+
+        function setBTColorData(rowID, colorHex) {
+            var item = findBTItemByRowId(rowID);
+            if (!item) return;
+
+            if (colorHex && colorHex !== '') {
+                var colorInt = parseInt(colorHex, 16);
+                if (!isNaN(colorInt)) {
+                    item.fppcolor = colorInt;
+                }
+                item._style = 'background: #' + colorHex + '; color: #FFF;';
+            } else {
+                item.fppcolor = '';
+                delete item._style;
+            }
         }
 
         var systemsList = [];
@@ -3302,7 +3353,8 @@
                                             Version</th>
                                         <th data-field="gitversions" data-sortable="false">Git Versions</th>
                                         <th data-field="utilization" data-sortable="false">Utilization</th>
-                                        <th data-field="fppcolor" data-sortable="true" data-visible="false">
+                                        <th data-field="fppcolor" data-sortable="true" data-sorter="fppColorSorter"
+                                            data-visible="false">
                                             FPPColor</th>
                                         <th data-field="selectbox" data-sortable="false" data-filter-control="false"
                                             data-switchable="false">
@@ -3538,6 +3590,14 @@
                     }
                 }
                 return 0;
+            };
+
+            window.fppColorSorter = function (a, b) {
+                var colorA = parseInt(a, 10);
+                var colorB = parseInt(b, 10);
+                if (isNaN(colorA)) colorA = -1;
+                if (isNaN(colorB)) colorB = -1;
+                return colorA - colorB;
             };
 
             // Custom Platform filter dropdown options and search function
