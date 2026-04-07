@@ -143,16 +143,16 @@
 
         /* Make the unsorted (both arrows) icon visible on the grey header */
         #fppSystemsTable thead th .both {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%23888"><path d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1zm0,429.3l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><path fill="%23888" d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1z"/><path fill="%23888" d="m103.05877,470.7l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
         }
 
-        /* Active sort arrow — bold dark blue so it's clearly distinct from the grey unsorted icon */
+        /* Active sort: show both arrows, active one dark blue, inactive one light grey */
         #fppSystemsTable thead th .asc {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%230d47a1"><path d="m136.9496,41.4c-9.3763,-12.5 -24.60342,-12.5 -33.97972,0l-96.01334,128c-6.90096,9.2 -8.92624,22.9 -5.17572,34.9s12.45173,19.8 22.20309,19.8l192.02668,0c9.67634,0 18.45256,-7.8 22.20309,-19.8s1.65023,-25.7 -5.17572,-34.9l-96.01334,-128l-0.07501,0z"/></svg>');
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><path fill="%230d47a1" d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1z"/><path fill="%23ccc" d="m103.05877,470.7l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
         }
 
         #fppSystemsTable thead th .desc {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%230d47a1"><path d="m136.94959,471.6c-9.3763,12.5 -24.60342,12.5 -33.97972,0l-96.01334,-128c-6.90096,-9.2 -8.92624,-22.9 -5.17572,-34.9s12.45173,-19.8 22.20308,-19.8l192.02667,0c9.67634,0 18.45256,7.8 22.20308,19.8s1.65023,25.7 -5.17572,34.9l-96.01334,128l-0.07501,0z"/></svg>');
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><path fill="%23ccc" d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1z"/><path fill="%230d47a1" d="m103.05877,470.7l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
         }
 
         #columnSelector input[type="checkbox"] {
@@ -1750,7 +1750,7 @@
                     var newRow = "<tr id='" + rowID + "' data-ip='" + data[i].address + "' data-iplist='" + data[i].address + "' class='systemRow'>" +
                         "<td class='hostnameColumn'><span class='reorder-grip'><i class='rowGripIcon fpp-icon-grip'></i></span><span id='fpp_" + ip.replace(/\./g, '_') + "_hostname'" + hnSpanStyle + ">" + hostTxt + "</span><br><small class='hostDescriptionSM' id='fpp_" + ip.replace(/\./g, '_') + "_desc'>" + hostDescription + "</small></td>" +
                         "<td id='" + rowID + "_ip' data-ip='" + data[i].address + "'>" + ipTxt + "</td>" +
-                        "<td><span id='" + rowID + "_platform'>" + data[i].type + "</span><br><small id='" + rowID + "_variant'>" + data[i].model + "</small><span class='hidden typeId'>" + data[i].typeId + "</span>"
+                        "<td><span id='" + rowID + "_platform'>" + data[i].type + "</span><br><small id='" + rowID + "_variant'>" + data[i].model + "</small><span class='hidden typeId'> 0x" + parseInt(data[i].typeId).toString(16) + " </span>"
                         + "<span class='hidden version'>" + data[i].version + "</span></td>" +
                         "<td id='" + rowID + "_mode'>" + fppMode + "</td>" +
                         "<td id='" + rowID + "_status'>Last Seen:<br>" + data[i].lastSeenStr + "</td>" +
@@ -3578,12 +3578,16 @@
             $("#MultiSyncBroadcast").on("change", validateMultiSyncSettings);
             $("#MultiSyncMulticast").on("change", validateMultiSyncSettings);
 
-            // Custom IP sorter for Bootstrap Table - extracts IP from 'data-ip' attribute
-            window.ipSorter = function (a, b, rowA, rowB) {
-                var ipA = $(rowA).find('td[data-ip]').attr('data-ip') || a;
-                var ipB = $(rowB).find('td[data-ip]').attr('data-ip') || b;
-                var partsA = String(ipA).split('.').map(Number);
-                var partsB = String(ipB).split('.').map(Number);
+            // Custom IP sorter for Bootstrap Table - numeric IP comparison
+            window.ipSorter = function (a, b) {
+                // Extract first IP address from cell HTML (may contain links/tags)
+                var ipRe = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/;
+                var mA = String(a).match(ipRe);
+                var mB = String(b).match(ipRe);
+                var ipA = mA ? mA[1] : '0.0.0.0';
+                var ipB = mB ? mB[1] : '0.0.0.0';
+                var partsA = ipA.split('.').map(Number);
+                var partsB = ipB.split('.').map(Number);
                 for (var i = 0; i < 4; i++) {
                     if ((partsA[i] || 0) !== (partsB[i] || 0)) {
                         return (partsA[i] || 0) - (partsB[i] || 0);
@@ -3595,8 +3599,12 @@
             window.fppColorSorter = function (a, b) {
                 var colorA = parseInt(a, 10);
                 var colorB = parseInt(b, 10);
-                if (isNaN(colorA)) colorA = -1;
-                if (isNaN(colorB)) colorB = -1;
+                var hasA = !isNaN(colorA) && colorA >= 0;
+                var hasB = !isNaN(colorB) && colorB >= 0;
+                // Rows with a color sort before rows without
+                if (hasA && !hasB) return -1;
+                if (!hasA && hasB) return 1;
+                if (!hasA && !hasB) return 0;
                 return colorA - colorB;
             };
 
