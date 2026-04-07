@@ -97,7 +97,11 @@
         /* Bootstrap Table header styling — replaces old .tablesorter thead rules */
         #fppSystemsTable thead th {
             background-color: #d9d9d9;
-            padding-top: 1.1em;
+            padding-top: 0.4em;
+        }
+
+        #fppSystemsTable thead th .th-inner {
+            padding-top: 0.2em;
         }
 
         #fppSystemsTable thead th:first-child {
