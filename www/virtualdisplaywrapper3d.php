@@ -11,8 +11,8 @@
     <script type="importmap">
     {
         "imports": {
-            "three": "/js/three.module.js",
-            "three/addons/": "/js/"
+            "three": "/js/logic/three/three.module.js",
+            "three/addons/": "/js/logic/three/"
         }
     }
     </script>
@@ -83,9 +83,9 @@
     <!-- Load Three.js modules after import map is defined -->
     <script type="module">
         import * as THREE from 'three';
-        import { OBJLoader } from 'three/addons/OBJLoader.module.js';
-        import { MTLLoader } from 'three/addons/MTLLoader.module.js';
-        import { OrbitControls } from 'three/addons/OrbitControls.module.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.module.js';
+        import { MTLLoader } from 'three/addons/loaders/MTLLoader.module.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.module.js';
 
         // Make THREE and loaders globally available
         window.THREE = THREE;
@@ -264,7 +264,8 @@
                         <h3>Upload 3D Object Files</h3>
                         <p>Until xLights supports automatic upload of 3D object files (.obj, .mtl, .png, .jpg), you can
                             manually upload them here. Files will be saved to
-                            <code>/home/fpp/media/virtualdisplay_assets</code>.</p>
+                            <code>/home/fpp/media/virtualdisplay_assets</code>.
+                        </p>
                         <div id="fileponduploader" class="fileponduploader">
                             <input type="file" class="filepond" id="filepondInput" multiple>
                         </div>
