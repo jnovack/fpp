@@ -483,7 +483,11 @@ int GStreamerOutput::Start(int msTime) {
         // values with spaces break the parser).  Set it post-launch instead.
         sinkStr = "pipewiresink name=pwsink sync=true target-object=" + pipelineSinkName;
     } else {
-        sinkStr = "autoaudiosink";
+        // Use alsasink directly — autoaudiosink probes pulsesink first
+        // which fails slowly in ALSA-only mode, causing startup delay.
+        // buffer-time=500000 (500ms) gives USB audio devices adequate ring
+        // buffer headroom to avoid underruns during initial isochronous scheduling.
+        sinkStr = "alsasink buffer-time=500000";
     }
 
     GError* error = nullptr;
@@ -529,7 +533,9 @@ int GStreamerOutput::Start(int msTime) {
             g_object_set(sink, "stream-properties", props, NULL);
             gst_structure_free(props);
         } else {
-            sink = gst_element_factory_make("autoaudiosink", "audiosink");
+            // Use alsasink directly — avoids autoaudiosink probe delay.
+            sink = gst_element_factory_make("alsasink", "audiosink");
+            g_object_set(sink, "buffer-time", (gint64)500000, NULL);
         }
         GstElement* queue2 = gst_element_factory_make("queue", "q2");
         GstElement* audioconvert2 = gst_element_factory_make("audioconvert", "aconv2");
@@ -693,7 +699,9 @@ int GStreamerOutput::Start(int msTime) {
             g_object_set(sink, "stream-properties", props, NULL);
             gst_structure_free(props);
         } else {
-            sink = gst_element_factory_make("autoaudiosink", "audiosink");
+            // Use alsasink directly — avoids autoaudiosink probe delay.
+            sink = gst_element_factory_make("alsasink", "audiosink");
+            g_object_set(sink, "buffer-time", (gint64)500000, NULL);
         }
         GstElement* queue2 = gst_element_factory_make("queue", "q2");
         GstElement* audioconvert2 = gst_element_factory_make("audioconvert", "aconv2");
