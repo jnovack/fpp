@@ -2013,6 +2013,10 @@ static void setupAudio() {
         mkdir("/run/fppd", 0755);
         std::ostringstream audioEnv;
         audioEnv << "SDL_AUDIODRIVER=" << (usePipeWireBackend ? "pulse" : "alsa") << "\n";
+        // Keep OpenAL on the same backend as the rest of FPP audio.
+        // In hardware (ALSA) mode this prevents OpenAL from defaulting to
+        // PulseAudio and aborting during teardown if Pulse is unavailable.
+        audioEnv << "ALSOFT_DRIVERS=" << (usePipeWireBackend ? "pulse" : "alsa") << "\n";
         if (usePipeWireBackend) {
             audioEnv << "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp\n"
                      << "XDG_RUNTIME_DIR=/run/pipewire-fpp\n"

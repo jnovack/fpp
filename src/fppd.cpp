@@ -659,6 +659,12 @@ bool checkASan(int argc, char** argv) {
 }
 
 int main(int argc, char* argv[]) {
+    auto ensureEnvDefault = [](const char* key, const char* value) {
+        if (!getenv(key)) {
+            setenv(key, value, 0);
+        }
+    };
+
     // Force line-buffered stdout so logs via systemd/journald appear promptly
     setvbuf(stdout, NULL, _IOLBF, 0);
 
@@ -669,6 +675,20 @@ int main(int argc, char* argv[]) {
         return 1;
 
     LoadSettings(argv[0]);
+
+    // Align runtime audio library backend defaults with configured FPP backend.
+    // This is a safety net in case the service env file is stale/missing.
+    std::string audioBackend = toLowerCopy(getSetting("AudioBackend"));
+    if (audioBackend == "pipewire") {
+        ensureEnvDefault("SDL_AUDIODRIVER", "pulse");
+        ensureEnvDefault("ALSOFT_DRIVERS", "pulse");
+    } else {
+        ensureEnvDefault("SDL_AUDIODRIVER", "alsa");
+        ensureEnvDefault("ALSOFT_DRIVERS", "alsa");
+    }
+    LogInfo(VB_MEDIAOUT, "Audio env: SDL_AUDIODRIVER=%s  ALSOFT_DRIVERS=%s\n",
+            getenv("SDL_AUDIODRIVER") ? getenv("SDL_AUDIODRIVER") : "(unset)",
+            getenv("ALSOFT_DRIVERS") ? getenv("ALSOFT_DRIVERS") : "(unset)");
 
     curl_global_init(CURL_GLOBAL_ALL);
 
