@@ -146,46 +146,41 @@ void GetCurrentFPPDStatus(Json::Value& result) {
     result["timeStr"] = GetTimeStr(getSetting("TimeFormat"));
     result["dateStr"] = GetDateStr(getSetting("DateFormat"));
 
-    std::time_t timeDiff = std::time(nullptr) - startupTime;
-    int totalseconds = (int)timeDiff;
+    // FPPD process uptime (time since fppd started)
+    int totalseconds = (int)(std::time(nullptr) - startupTime);
+    int days = totalseconds / 86400;
+    int hours = (totalseconds % 86400) / 3600;
+    int minutes = (totalseconds % 3600) / 60;
+    int seconds = totalseconds % 60;
 
-#ifdef PLATFORM_OSX
-    struct timeval boot;
-    struct timeval now;
-    int mib[] = { CTL_KERN, KERN_BOOTTIME };
-    size_t size = sizeof(boot);
-    if (sysctl(mib, 2, &boot, &size, 0, 0) == 0 && gettimeofday(&now, 0)) {
-        uint64_t uptime_micro = (now.tv_sec * 1000000 + now.tv_usec) - (boot.tv_sec * 1000000 + boot.tv_usec);
-        totalseconds = (int)(uptime_micro / 1000000);
-    }
-#else
-    struct sysinfo sysInf;
-    if (sysinfo(&sysInf) == 0) {
-        int uptimeSecs = sysInf.uptime;
-        if (uptimeSecs < totalseconds) {
-            startupTime = std::time(nullptr);
-            timeDiff = std::time(nullptr) - startupTime;
-            totalseconds = (int)timeDiff;
-        }
-    }
-#endif
-    double days = ((double)timeDiff) / 86400;
-    double hours = ((double)(totalseconds % 86400)) / 3600;
-    int seconds = totalseconds % 86400 % 3600;
-    double minutes = ((double)seconds) / 60;
-    seconds = seconds % 60;
-
-    result["uptime"] = secondsToTime((int)timeDiff);
-    result["uptimeTotalSeconds"] = (int)timeDiff;
+    result["uptime"] = secondsToTime(totalseconds);
+    result["uptimeTotalSeconds"] = totalseconds;
     result["uptimeSeconds"] = seconds;
-    result["uptimeDays"] = days;
     result["uptimeMinutes"] = minutes;
     result["uptimeHours"] = hours;
     result["uptimeDays"] = days;
 
     std::stringstream totalTime;
-    totalTime << (int)days << " days, " << (int)hours << " hours, " << (int)minutes << " minutes, " << seconds << " seconds";
+    totalTime << days << " days, " << hours << " hours, " << minutes << " minutes, " << seconds << " seconds";
     result["uptimeStr"] = totalTime.str();
+
+    // System uptime
+    int systemUptimeSecs = 0;
+#ifdef PLATFORM_OSX
+    struct timeval boot;
+    struct timeval now;
+    int mib[] = { CTL_KERN, KERN_BOOTTIME };
+    size_t size = sizeof(boot);
+    if (sysctl(mib, 2, &boot, &size, 0, 0) == 0 && gettimeofday(&now, 0) == 0) {
+        systemUptimeSecs = (int)(now.tv_sec - boot.tv_sec);
+    }
+#else
+    struct sysinfo sysInf;
+    if (sysinfo(&sysInf) == 0) {
+        systemUptimeSecs = (int)sysInf.uptime;
+    }
+#endif
+    result["systemUptimeTotalSeconds"] = systemUptimeSecs;
 
     Sensors::INSTANCE.reportSensors(result);
     for (auto& warn : WarningHolder::GetWarnings()) {
