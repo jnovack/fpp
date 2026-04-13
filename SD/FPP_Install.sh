@@ -252,6 +252,10 @@ while [ -n "$1" ]; do
             shift
             shift
             ;;
+        --yes|-y)
+            FPP_INSTALL_YES=1
+            shift
+            ;;
         *)
             echo "Unknown option $1" >&2
             exit 1
@@ -288,14 +292,18 @@ if $isimage; then
 fi
 echo ""
 
-echo -n "Do you wish to proceed? [N/y] "
-read ANSWER
-if [ "x${ANSWER}" != "xY" -a "x${ANSWER}" != "xy" ]
-then
-	echo
-	echo "Install cancelled."
-	echo
-	exit
+if [ "x${FPP_INSTALL_YES}" = "x1" ]; then
+    echo "Non-interactive mode (FPP_INSTALL_YES=1), proceeding."
+else
+    echo -n "Do you wish to proceed? [N/y] "
+    read ANSWER
+    if [ "x${ANSWER}" != "xY" -a "x${ANSWER}" != "xy" ]
+    then
+        echo
+        echo "Install cancelled."
+        echo
+        exit
+    fi
 fi
 
 STARTTIME=$(date)
