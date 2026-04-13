@@ -23,9 +23,10 @@
 #include <string>
 #include <unistd.h>
 
-#if __has_include(<kms++/kms++.h>)
-#include <kms++/kms++.h>
-#include <kms++util/kms++util.h>
+#if __has_include(<xf86drm.h>)
+#include <xf86drm.h>
+#include <xf86drmMode.h>
+#include <libdrm/drm_fourcc.h>
 #define HAS_KMS_FB
 #endif
 
@@ -51,12 +52,11 @@ void Usage(char* appname);
 socklen_t address_length;
 
 #ifdef HAS_KMS_FB
-using namespace kms;
-inline std::string FourCCFromPixelFormat(PixelFormat f) {
-    char buf[5] = { (char)(((uint32_t)f >> 0) & 0xff),
-                    (char)(((uint32_t)f >> 8) & 0xff),
-                    (char)(((uint32_t)f >> 16) & 0xff),
-                    (char)(((uint32_t)f >> 24) & 0xff),
+static inline std::string FourCCToString(uint32_t f) {
+    char buf[5] = { (char)(f & 0xff),
+                    (char)((f >> 8) & 0xff),
+                    (char)((f >> 16) & 0xff),
+                    (char)((f >> 24) & 0xff),
                     0 };
     return std::string(buf);
 }
@@ -65,29 +65,81 @@ inline std::string FourCCFromPixelFormat(PixelFormat f) {
 void GetFrameBufferDevices(Json::Value& v, bool debug) {
 #ifdef HAS_KMS_FB
     for (int cn = 0; cn < 10; cn++) {
-        if (FileExists("/dev/dri/card" + std::to_string(cn))) {
-            kms::Card card("/dev/dri/card" + std::to_string(cn));
-            for (auto& c : card.get_connectors()) {
-                std::string cname = c->fullname();
+        std::string path = "/dev/dri/card" + std::to_string(cn);
+        if (FileExists(path)) {
+            int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
+            if (fd < 0) continue;
+            drmSetClientCap(fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+
+            drmModeResPtr res = drmModeGetResources(fd);
+            if (!res) {
+                close(fd);
+                continue;
+            }
+
+            for (int ci = 0; ci < res->count_connectors; ci++) {
+                drmModeConnectorPtr conn = drmModeGetConnector(fd, res->connectors[ci]);
+                if (!conn) continue;
+
+                const char* typeName = drmModeGetConnectorTypeName(conn->connector_type);
+                std::string cname = std::string(typeName ? typeName : "Unknown") + "-" + std::to_string(conn->connector_type_id);
+
                 if (debug) {
-                    std::set<std::string> formats;
-                    if (c->get_current_crtc()) {
-                        for (auto& f : c->get_current_crtc()->get_primary_plane()->get_formats()) {
-                            formats.insert(FourCCFromPixelFormat(f));
+                    Json::Value v2(Json::objectValue);
+
+                    // Get formats from primary plane if connector has an active CRTC
+                    if (conn->encoder_id) {
+                        drmModeEncoderPtr enc = drmModeGetEncoder(fd, conn->encoder_id);
+                        if (enc && enc->crtc_id) {
+                            int crtcIndex = -1;
+                            for (int k = 0; k < res->count_crtcs; k++) {
+                                if (res->crtcs[k] == enc->crtc_id) {
+                                    crtcIndex = k;
+                                    break;
+                                }
+                            }
+
+                            if (crtcIndex >= 0) {
+                                drmModePlaneResPtr planes = drmModeGetPlaneResources(fd);
+                                if (planes) {
+                                    std::set<std::string> formats;
+                                    for (uint32_t pi = 0; pi < planes->count_planes; pi++) {
+                                        drmModePlanePtr plane = drmModeGetPlane(fd, planes->planes[pi]);
+                                        if (plane && (plane->possible_crtcs & (1u << crtcIndex))) {
+                                            for (uint32_t fi = 0; fi < plane->count_formats; fi++) {
+                                                formats.insert(FourCCToString(plane->formats[fi]));
+                                            }
+                                            drmModeFreePlane(plane);
+                                            break; // primary plane found
+                                        }
+                                        if (plane) drmModeFreePlane(plane);
+                                    }
+                                    drmModeFreePlaneResources(planes);
+                                    for (auto& a : formats) {
+                                        v2["formats"].append(a);
+                                    }
+                                }
+                            }
+                            drmModeFreeEncoder(enc);
                         }
                     }
-                    Json::Value v2(Json::objectValue);
-                    for (auto m : c->get_modes()) {
-                        v2["modes"].append(m.to_string_short());
-                    }
-                    for (auto& a : formats) {
-                        v2["formats"].append(a);
+
+                    for (int mi = 0; mi < conn->count_modes; mi++) {
+                        drmModeModeInfo& m = conn->modes[mi];
+                        std::string modeStr = std::to_string(m.hdisplay) + "x" + std::to_string(m.vdisplay);
+                        if (m.vrefresh) {
+                            modeStr += "@" + std::to_string(m.vrefresh);
+                        }
+                        v2["modes"].append(modeStr);
                     }
                     v[cname] = v2;
                 } else {
                     v.append(cname);
                 }
+                drmModeFreeConnector(conn);
             }
+            drmModeFreeResources(res);
+            close(fd);
         }
     }
 #endif

@@ -519,7 +519,7 @@ case "${OSVER}" in
         if [ "$FPPPLATFORM" == "Raspberry Pi" -o "$FPPPLATFORM" == "BeagleBone Black"  -o "$FPPPLATFORM" == "BeagleBone 64" ]; then
             PACKAGE_LIST="$PACKAGE_LIST firmware-realtek firmware-atheros firmware-ralink firmware-brcm80211 firmware-iwlwifi firmware-libertas firmware-zd1211 firmware-ti-connectivity zram-tools"
             if [ "$FPPPLATFORM" == "Raspberry Pi" ]; then
-                PACKAGE_LIST="$PACKAGE_LIST libva-dev smartmontools edid-decode"
+                PACKAGE_LIST="$PACKAGE_LIST libva-dev smartmontools edid-decode kms++-utils"
             fi
             if [ "$FPPPLATFORM" == "BeagleBone Black"  -o "$FPPPLATFORM" == "BeagleBone 64" ]; then
                 PACKAGE_LIST="$PACKAGE_LIST ti-pru-cgt-v2.3"
@@ -554,9 +554,6 @@ case "${OSVER}" in
             echo "--------------------------"
             apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install ${PACKAGE_LIST}
         fi
-        
-        echo "FPP - Installing libkms++"
-        (cd /opt/ && git clone https://github.com/tomba/kmsxx && cd kmsxx && git checkout 0f18e6d0616b597fc32bba78b38dfc5c922ec9a4 && apt-get install -y meson cmake libfmt-dev && meson setup build --prefix=/usr -Dpykms=disabled && ninja -j ${CPUS} -C build install && cd /opt/ && rm -rf kmsxx && apt-get remove -y --purge --autoremove meson cmake libfmt-dev && ccache -C)
         
         if $isimage; then
             apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install systemd wpasupplicant

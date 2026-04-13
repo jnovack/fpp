@@ -11,13 +11,34 @@
  * included LICENSE.LGPL file.
  */
 
-#if __has_include(<kms++/kms++.h>)
+#if __has_include(<xf86drm.h>)
 #include "FrameBuffer.h"
-#include <kms++/kms++.h>
-#include <kms++util/kms++util.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 #define HAS_KMS_FB
 
 #include <map>
+#include <string>
+#include <vector>
+
+struct DumbBuffer {
+    uint32_t handle = 0;
+    uint32_t fb_id = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t stride = 0;
+    uint32_t format = 0;
+    uint64_t size = 0;
+    void* mapped = nullptr;
+};
+
+struct CardInfo {
+    int fd = -1;
+    std::string path;
+    std::vector<uint32_t> reservedConnectors;
+    std::vector<uint32_t> reservedCrtcs;
+    std::vector<uint32_t> reservedPlanes;
+};
 
 class KMSFrameBuffer : public FrameBuffer {
 public:
@@ -33,16 +54,23 @@ public:
     virtual void DisableDisplay() override;
 
     int m_cardFd = -1;
-    kms::Connector* m_connector = nullptr;
-    kms::Crtc* m_crtc = nullptr;
-    kms::Videomode m_mode;
-    kms::DumbFramebuffer* m_fb[3] = { nullptr, nullptr, nullptr };
-    kms::Plane* m_plane = nullptr;
-    kms::ResourceManager* m_resourceManager = nullptr;
-    bool m_displayEnabled = false;  // Track if CRTC/plane is enabled
+    uint32_t m_connectorId = 0;
+    uint32_t m_crtcId = 0;
+    uint32_t m_planeId = 0;
+    std::string m_connectorName;
+    drmModeModeInfo m_mode = {};
+    DumbBuffer m_fb[3] = {};
+    bool m_displayEnabled = false;
 
     static std::atomic_int FRAMEBUFFER_COUNT;
-    static std::map<kms::Card*, kms::ResourceManager*> CARDS;
+    static std::vector<CardInfo*> CARDS;
+
+private:
+    static std::string ConnectorFullName(int fd, drmModeConnectorPtr conn);
+    static bool CreateDumbBuffer(int fd, uint32_t width, uint32_t height, uint32_t format, DumbBuffer& buf);
+    static void DestroyDumbBuffer(int fd, DumbBuffer& buf);
+    uint32_t FindPlaneForCrtc(int fd, uint32_t crtcId, uint32_t format);
+    CardInfo* m_cardInfo = nullptr;
 };
 
 #endif

@@ -278,12 +278,20 @@
                         "all"
                     ]
                 },
+                "DRMConnectors": {
+                    "title": "DRM Connectors",
+                    "description": "DRM connector status from sysfs",
+                    "cmd": "for d in /sys/class/drm/card*-*/; do echo \"=== $(basename $d) ===\"; echo \"status: $(cat $d/status 2>/dev/null)\"; echo \"enabled: $(cat $d/enabled 2>/dev/null)\"; echo \"dpms: $(cat $d/dpms 2>/dev/null)\"; modes=$(cat $d/modes 2>/dev/null); if [ -n \"$modes\" ]; then echo \"modes:\"; echo \"$modes\"; fi; echo; done",
+                    "platforms": [
+                        "all"
+                    ]
+                },
                 "kmsprint": {
                     "title": "kmsprint",
                     "description": "",
                     "cmd": "kmsprint",
                     "platforms": [
-                        "all"
+                        "Raspberry Pi"
                     ]
                 },
                 "kmsprintProps": {
@@ -291,7 +299,7 @@
                     "description": "",
                     "cmd": "kmsprint -p",
                     "platforms": [
-                        "all"
+                        "Raspberry Pi"
                     ]
                 },
                 "kmsprintList": {
@@ -299,7 +307,7 @@
                     "description": "",
                     "cmd": "kmsprint -m",
                     "platforms": [
-                        "all"
+                        "Raspberry Pi"
                     ]
                 }
             }

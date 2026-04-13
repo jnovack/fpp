@@ -161,8 +161,9 @@ LIBS_fpp_so += -lvlc
 endif
 endif
 
-ifneq ($(wildcard /usr/include/kms++/kms++.h),)
-LIBS_fpp_so += -lkms++ -lkms++util
+ifneq ($(wildcard /usr/include/xf86drm.h),)
+CFLAGS += -I/usr/include/libdrm
+LIBS_fpp_so += -ldrm
 endif
 
 
