@@ -34,13 +34,13 @@ For developer and master branch that changes often, updating the release ccaches
 be time consuming.  Instead, if ccache 4.6+ is available, there is a "secondary-storage"
 option that will allow ccache to grab artifacts from a shared ccache on http://kulplights.com/ccache
 To Enable, run:
-ccache --set-config secondary_storage='http://kulplights.com/ccache|layout=flat|read-only=true'
+ccache --set-config remote_storage='http://kulplights.com/ccache|layout=flat|read-only=true'
 
 That will provide read-only access to the Developer ccache.   For trusted developers that
 have the required authorization tokens, the ccache can be read/write to share their
 build artifacts with others:
 
-ccache --set-config secondary_storage='http://USERNAME:PASSWORD@kulplights.com/ccache-upload|layout=flat|read-only=false'
+ccache --set-config remote_storage='http://USERNAME:PASSWORD@kulplights.com/ccache-upload|layout=flat|read-only=false'
 ccache --set-config reshare=true
 
 Note: there is an /opt/fpp/SD/buildCCACHE.sh script that can be run to build the required
