@@ -7,13 +7,23 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 		git submodule init && \
 		git submodule update
 
-RF24_UNAME_M := $(shell uname -m)
-ifeq ($(RF24_UNAME_M),aarch64)
+# Flag selection via the compiler's actual target triple, NOT `uname -m`.
+# Pi4/Pi5 running 32-bit Raspberry Pi OS boots a 64-bit kernel by default,
+# so `uname -m` returns aarch64 even though the compiler is armhf. Picking
+# -march=armv8-a for an armhf gcc then fails ("selected architecture lacks
+# an FPU") because armv8-a implies the aarch64 FPU model.
+RF24_TRIPLE := $(shell $(CXX) -dumpmachine 2>/dev/null)
+ifneq ($(findstring aarch64,$(RF24_TRIPLE)),)
     RF24_CCFLAGS := -Ofast -march=armv8-a
-else ifeq ($(RF24_UNAME_M),armv7l)
+else ifneq ($(findstring arm-linux-gnueabihf,$(RF24_TRIPLE)),)
+    # armhf: armv6zk baseline keeps compatibility with every Pi ever shipped
+    # (Pi 1 / Zero). Pi2+ supports more but armhf images are one-size-fits-all.
+    RF24_CCFLAGS := -Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s
+else ifneq ($(findstring arm,$(RF24_TRIPLE)),)
+    # Generic arm (non-Debian triple) -- use armv7+neon.
     RF24_CCFLAGS := -Ofast -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a
 else
-    RF24_CCFLAGS := -Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s
+    RF24_CCFLAGS := -Ofast
 endif
 RF24_CCFLAGS += -Wno-parentheses -Wno-unused-value -Wno-misleading-indentation
 

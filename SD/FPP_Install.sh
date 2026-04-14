@@ -30,7 +30,7 @@ set -e
 #
 #############################################################################
 # NOTE: This script is used to build the SD images for FPP releases.  Its
-#       main goal is to prep these release images.  It may be used for othe
+#       main goal is to prep these release images.  It may be used for other
 #       purposes, but it is not our main priority to keep FPP working on
 #       other Linux distributions or distribution versions other than those
 #       we base our FPP releases on.  Currently, FPP images are based on the
@@ -52,8 +52,13 @@ set -e
 #############################################################################
 # Other platforms which may be functioning:
 #
-# NOTE: FPP Development is based on the latest Debian Bookworm images, so
-#       hardware which does not support Bookworm may have issues.
+# NOTE: FPP Development targets Debian 13 (Trixie) and Ubuntu 24.04. Earlier
+#       distributions are not supported. Supported hosts:
+#         - Raspberry Pi OS (Trixie, armhf/arm64)
+#         - BeagleBone (Debian 13 armhf/arm64, rcn-ee base images)
+#         - Debian 13 / Ubuntu 24.04 on x86_64 or arm64 generic hardware
+#         - Armbian built on a Debian 13 or Ubuntu 24.04 base
+#         - Fedora 40+ (best-effort; primarily dev-host support)
 #
 #############################################################################
 FPPBRANCH=${FPPBRANCH:-"master"}
@@ -61,7 +66,7 @@ FPPBRANCH=${FPPBRANCH:-"master"}
 # and shown in /etc/issue. Override via env (build-image-pi.sh passes the
 # user-supplied --os-version so the .img / .fppos filenames match what's
 # baked into the image itself).
-FPPIMAGEVER=${FPPIMAGEVER:-"2026-02"}
+FPPIMAGEVER=${FPPIMAGEVER:-"2026-04"}
 FPPCFGVER="104"
 FPPPLATFORM="UNKNOWN"
 FPPDIR=/opt/fpp
@@ -196,14 +201,22 @@ then
 	OSVER="debian_${VERSION_ID}"
     isimage=true
     desktop=false
-elif [ -e "/sys/class/leds/beaglebone:green:usr1" ]
+elif [ -f /etc/bbb.io/templates/bb-boot ] \
+        || { [ -f /boot/firmware/ID.txt ] && grep -qi "beagleboard" /boot/firmware/ID.txt 2>/dev/null; } \
+        || [ -e "/sys/class/leds/beaglebone:green:usr1" ]
 then
-    ARCH=$(uname -m)
-if [ "$ARCH" == "aarch64" ]; then
-    FPPPLATFORM="BeagleBone 64"
-else
-	FPPPLATFORM="BeagleBone Black"
-fi
+    # BeagleBoard detection, in priority order:
+    #   1. /etc/bbb.io/templates/bb-boot -- present on all modern Beagle rootfs
+    #      builds; visible inside chroot (rootfs is mounted during image builds).
+    #   2. /boot/firmware/ID.txt -- stamped by the rcn-ee installer on BB64 and
+    #      recent BBB builds; contents begin with "BeagleBoard.org ...".
+    #   3. /sys/class/leds/beaglebone:green:usr1 -- only works on booted real
+    #      hardware; kept as legacy fallback.
+    if [ "$(uname -m)" = "aarch64" ]; then
+        FPPPLATFORM="BeagleBone 64"
+    else
+        FPPPLATFORM="BeagleBone Black"
+    fi
     isimage=true
     desktop=false
 elif [ -f "/etc/armbian-release" ]
@@ -222,9 +235,6 @@ then
 elif [ "x${OSID}" = "xubuntu" ]
 then
 	FPPPLATFORM="Ubuntu"
-elif [ "x${OSID}" = "xlinuxmint" ]
-then
-	FPPPLATFORM="Mint"
 elif [ "x${OSID}" = "xfedora" ]
 then
     FPPPLATFORM="Fedora"
@@ -426,8 +436,24 @@ cd /opt 2> /dev/null || mkdir /opt
 # Set noninteractive install to skip prompt about restarting services
 export DEBIAN_FRONTEND=noninteractive
 
-case "${OSVER}" in
-	debian_12 | debian_13 | ubuntu_24.* | linuxmint_21)
+
+#############################################################################
+# install_base_packages
+# Top-level apt phase: remove unwanted stock packages, update apt, select PHP
+# version, install the full FPP dependency set, and do the one-off Pi USB-boot
+# fstab/cmdline plumbing that needs to run once-per-image.
+# Reads globals: FPPPLATFORM, OSVER, desktop, isimage, skip_apt_install, build_vlc
+# Sets globals:  ACTUAL_PHPVER, PHPVER, BOOTDIR (on Pi)
+#############################################################################
+install_base_packages() {
+    case "${OSVER}" in
+        debian_13 | ubuntu_24.*) ;;
+        *)
+            echo "ERROR: unsupported OS for install_base_packages: ${OSVER}" >&2
+            echo "Supported: Debian 13 (Trixie), Ubuntu 24.04+" >&2
+            exit 1
+            ;;
+    esac
 
         # Stop unattended-upgrades as it can hold a lock on the apt repository
         systemctl stop unattended-upgrades
@@ -438,10 +464,6 @@ case "${OSVER}" in
             unattended-upgrades packagekit iwd"
         if [ "$FPPPLATFORM" == "BeagleBone 64" -o "$FPPPLATFORM" == "BeagleBone Black" ]; then
             PACKAGE_REMOVE="$PACKAGE_REMOVE nodejs mender-client bb-code-server"
-            
-            if [ "${OSVER}" != "debian_13" ]; then
-                PACKAGE_REMOVE="$PACKAGE_REMOVE bb-node-red-installer"
-            fi
         fi
         if $desktop; then
             #don't remove anything from a desktop
@@ -501,26 +523,17 @@ case "${OSVER}" in
 		echo "FPP - Installing required packages"
 		# Install 10 packages, then clean to lower total disk space required
   
-        PHPVER=""
-        ACTUAL_PHPVER="7.4"
-        if [ "${OSVER}" == "ubuntu_22.04" -o "${OSVER}" == "linuxmint_21" ]; then
-            PHPVER="7.4"
-            echo "FPP - Forcing PHP 7.4"
-            apt install software-properties-common apt-transport-https -y
-            add-apt-repository ppa:ondrej/php -y
-            apt-get -y update
-            apt-get -y upgrade
-        fi
-        if [ "${OSVER}" == "ubuntu_22.10" ]; then
-            ACTUAL_PHPVER="8.1"
-        fi
-        if [ "${OSVER}" == "debian_12" ]; then
-            ACTUAL_PHPVER="8.2"
-            PHPVER="8.2"
-        fi
+        # PHP version selection. Each supported OS ships with a recent PHP
+        # in the stock repo -- no PPA, no backports.
         if [ "${OSVER}" == "debian_13" ]; then
             ACTUAL_PHPVER="8.4"
             PHPVER="8.4"
+        elif [[ "${OSVER}" == ubuntu_24.* ]]; then
+            ACTUAL_PHPVER="8.3"
+            PHPVER="8.3"
+        else
+            echo "ERROR: unsupported OS for PHP selection: ${OSVER}" >&2
+            exit 1
         fi
 
         #########################################
@@ -565,18 +578,13 @@ case "${OSVER}" in
         fi
         if ! $build_vlc; then
             PACKAGE_LIST="$PACKAGE_LIST vlc libvlc-dev"
+            # Debian 13 breaks vlc into several plugin sub-packages; Ubuntu
+            # 24.04 keeps them bundled in the main vlc package.
             if [ "${OSVER}" == "debian_13" ]; then
                 PACKAGE_LIST="$PACKAGE_LIST vlc-plugin-pipewire vlc-plugin-base vlc-plugin-video-output"
             fi
         fi
-        if [ "${OSVER}" == "debian_12" ]; then
-            PACKAGE_LIST="$PACKAGE_LIST python3-distutils"
-        fi
-        if [ "${OSVER}" == "debian_13" ]; then
-            PACKAGE_LIST="$PACKAGE_LIST ntpsec pipewire"
-        else
-            PACKAGE_LIST="$PACKAGE_LIST ntp ifplugd libfmt9"
-        fi
+        PACKAGE_LIST="$PACKAGE_LIST ntpsec pipewire"
         
         if $skip_apt_install; then
             echo "skipping apt install because skpt_apt_install == $skip_apt_install"
@@ -676,14 +684,8 @@ case "${OSVER}" in
                 fatlabel /dev/mmcblk0p1 boot 2>/dev/null || true
                 e2label /dev/mmcblk0p2 rootfs 2>/dev/null || true
 
-                BOOTDIR="/boot"
-                if [ "${OSVER}" == "debian_12" ]; then
-                    BOOTDIR="/boot/firmware"
-                fi
-                if [ "${OSVER}" == "debian_13" ]; then
-                    BOOTDIR="/boot/firmware"
-                fi
-
+                # Debian 12+ Pi images always mount firmware at /boot/firmware.
+                BOOTDIR="/boot/firmware"
 
                 # Update /etc/fstab to use PARTUUID for / and /boot
                 BOOTLINE=$(grep "^[^#].* /boot[a-z/]* " /etc/fstab | sed -e "s;^[^#].* /boot[a-z/]* ;LABEL=boot ${BOOTDIR} ;")
@@ -732,11 +734,9 @@ EOF
             fi
         fi
 
-		;;
-	*)
-		echo "FPP - Unknown distro"
-		;;
-esac
+}
+
+install_base_packages
 
 if [ ! -f "/usr/include/SDL2/SDL.h" ]; then
     # we don't want to "apt-get install libsdl2-dev" as that brings in wayland, a bunch
@@ -759,215 +759,222 @@ fi
  
 #######################################
 # Platform-specific config
-case "${FPPPLATFORM}" in
-	'BeagleBone Black')
+#############################################################################
+# Platform-specific setup functions.
+# Each one is invoked from the case statement below based on FPPPLATFORM.
+# They rely on globals set earlier ($isimage, $FPPUSER, $OSVER, $skip_apt_install)
+# and may set $BOOTDIR as a side effect.
+#############################################################################
 
-        # need to blacklist the gyroscope and barometer on the SanCloud enhanced or it consumes some pins
-        echo "blacklist st_pressure_spi" > /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist st_pressure_i2c" >> /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist st_pressure" >> /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist inv_mpu6050_i2c" >> /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist st_sensors_spi" >> /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist st_sensors_i2c" >> /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist inv_mpu6050" >> /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist st_sensors" >> /etc/modprobe.d/blacklist-gyro.conf
-        echo "blacklist spidev" > /etc/modprobe.d/blacklist-spidev.conf
+# apt_purge_installed <pkg> [<pkg>...]
+# Purge only packages that are actually installed. Needed under set -e since
+# apt-get purge on a missing package would otherwise abort the script.
+apt_purge_installed() {
+    local installed="" pkg
+    for pkg in "$@"; do
+        if dpkg -s "$pkg" >/dev/null 2>&1; then
+            installed="$installed $pkg"
+        fi
+    done
+    if [ -n "$installed" ]; then
+        apt-get -y purge $installed
+    fi
+}
 
-        # need to blacklist the bluetooth on BBG Gateway or it tends to crash the kernel, we don't need it
-        echo "blacklist btusb" > /etc/modprobe.d/blacklist-bluetooth.conf
-        echo "blacklist bluetooth" >> /etc/modprobe.d/blacklist-bluetooth.conf
-        echo "blacklist hci_uart" >> /etc/modprobe.d/blacklist-bluetooth.conf
-        echo "blacklist bnep" >> /etc/modprobe.d/blacklist-bluetooth.conf
+setup_platform_beaglebone_black() {
+    # Blacklist gyro/barometer on SanCloud enhanced (conflicts with cape pins).
+    cat > /etc/modprobe.d/blacklist-gyro.conf <<'EOF'
+blacklist st_pressure_spi
+blacklist st_pressure_i2c
+blacklist st_pressure
+blacklist inv_mpu6050_i2c
+blacklist st_sensors_spi
+blacklist st_sensors_i2c
+blacklist inv_mpu6050
+blacklist st_sensors
+EOF
+    echo "blacklist spidev" > /etc/modprobe.d/blacklist-spidev.conf
 
-        rm -f  /etc/modules-load.d/network.conf
+    # Blacklist bluetooth on BBG Gateway / BBGW / BBBW -- kernel instability,
+    # and we don't use it.
+    cat > /etc/modprobe.d/blacklist-bluetooth.conf <<'EOF'
+blacklist btusb
+blacklist bluetooth
+blacklist hci_uart
+blacklist bnep
+EOF
 
-        systemctl disable keyboard-setup
-        systemctl disable unattended-upgrades
-        systemctl disable resize_filesystem
-        systemctl disable console-setup
-		;;
-    'BeagleBone 64')
-        systemctl disable keyboard-setup
-        systemctl disable unattended-upgrades
-        systemctl disable mender-client
-        systemctl disable resize_filesystem
-        systemctl disable console-setup
-        systemctl disable samba-ad-dc
+    rm -f /etc/modules-load.d/network.conf
+
+    systemctl disable keyboard-setup
+    systemctl disable unattended-upgrades
+    systemctl disable resize_filesystem
+    systemctl disable console-setup
+}
+
+setup_platform_beaglebone_64() {
+    systemctl disable keyboard-setup
+    systemctl disable unattended-upgrades
+    systemctl disable mender-client
+    systemctl disable resize_filesystem
+    systemctl disable console-setup
+    systemctl disable samba-ad-dc
+
+    echo "FPP - Adding required modules to modules-load to speed up boot"
+    cat >> /etc/modules-load.d/modules.conf <<'EOF'
+snd_pcm
+snd_timer
+snd
+soundcore
+irq_pruss_intc
+pru_rproc
+cpufreq_dt
+rti_wdt
+at24
+ad7291
+pruss
+omap_mailbox
+loop
+efi_pstore
+dm_mod
+ip_tables
+EOF
+}
+
+setup_platform_raspberry_pi() {
+    echo "FPP - Updating firmware for Raspberry Pi install"
+    apt-get dist-upgrade -y
+
+    echo "FPP - Installing Pi-specific packages"
+    apt-get -y install raspi-config
+
+    if $isimage; then
+        # Debian 12+ Pi images always mount firmware at /boot/firmware.
+        BOOTDIR="/boot/firmware"
+
+        echo "FPP - Disabling stock users (pi, odroid, debian), use '${FPPUSER}' instead"
+        sed -i -e "s/^pi:.*/pi:*:16372:0:99999:7:::/"         /etc/shadow
+        sed -i -e "s/^odroid:.*/odroid:*:16372:0:99999:7:::/" /etc/shadow
+        sed -i -e "s/^debian:.*/debian:*:16372:0:99999:7:::/" /etc/shadow
+
+        echo "FPP - Tweaking ${BOOTDIR}/config.txt"
+        sed -i -e "s/hdmi_force_hotplug/#hdmi_force_hotplug/"  ${BOOTDIR}/config.txt
+        sed -i -e "s/camera_auto_detect/#camera_auto_detect/"  ${BOOTDIR}/config.txt
 
         echo "FPP - Adding required modules to modules-load to speed up boot"
-        echo "snd_pcm" >> /etc/modules-load.d/modules.conf
-        echo "snd_timer" >> /etc/modules-load.d/modules.conf
-        echo "snd" >> /etc/modules-load.d/modules.conf
-        echo "soundcore" >> /etc/modules-load.d/modules.conf
-        echo "irq_pruss_intc" >> /etc/modules-load.d/modules.conf
-        echo "pru_rproc" >> /etc/modules-load.d/modules.conf
-        echo "cpufreq_dt" >> /etc/modules-load.d/modules.conf
-        echo "rti_wdt" >> /etc/modules-load.d/modules.conf
-        echo "at24" >> /etc/modules-load.d/modules.conf
-        echo "ad7291" >> /etc/modules-load.d/modules.conf
-        echo "pruss" >> /etc/modules-load.d/modules.conf
-        echo "omap_mailbox" >> /etc/modules-load.d/modules.conf
-        echo "loop" >> /etc/modules-load.d/modules.conf
-        echo "efi_pstore" >> /etc/modules-load.d/modules.conf
-        echo "dm_mod" >> /etc/modules-load.d/modules.conf
-        echo "ip_tables" >> /etc/modules-load.d/modules.conf
-        ;;
+        cat >> /etc/modules-load.d/modules.conf <<'EOF'
+i2c_dev
+spidev
+at24
+lm75
+snd_bcm2835
+bcm2835_codec
+snd_usb_audio
+EOF
 
-	'Raspberry Pi')
-		echo "FPP - Updating firmware for Raspberry Pi install"
-        apt-get dist-upgrade -y
+        # Append FPP-specific device-tree and hardware config to config.txt
+        cat >> ${BOOTDIR}/config.txt <<'EOF'
+[all]
 
-		echo "FPP - Installing Pi-specific packages"
-		apt-get -y install raspi-config
+# Enable SPI in device tree
+dtparam=spi=on
 
-        if $isimage; then
-            BOOTDIR="/boot"
-            if [ "${OSVER}" == "debian_12" ]; then
-                BOOTDIR="/boot/firmware"
-            fi
-            if [ "${OSVER}" == "debian_13" ]; then
-                BOOTDIR="/boot/firmware"
-            fi
+# Enable PCIe for NVME storage
+dtparam=pciex1_gen=3
 
-        
-            echo "FPP - Disabling stock users (pi, odroid, debian), use the '${FPPUSER}' user instead"
-            sed -i -e "s/^pi:.*/pi:*:16372:0:99999:7:::/" /etc/shadow
-            sed -i -e "s/^odroid:.*/odroid:*:16372:0:99999:7:::/" /etc/shadow
-            sed -i -e "s/^debian:.*/debian:*:16372:0:99999:7:::/" /etc/shadow
+# Enable Cape Specific Overlays
+dtoverlay=fpp-cape-overlay
 
-            echo "FPP - Disabling the hdmi force hotplug setting"
-            sed -i -e "s/hdmi_force_hotplug/#hdmi_force_hotplug/" ${BOOTDIR}/config.txt
-                        
-            echo "FPP - Disabling Camera AutoDetect"
-            sed -i -e "s/camera_auto_detect/#camera_auto_detect/" ${BOOTDIR}/config.txt
+# Enable I2C in device tree
+dtparam=i2c_arm=on,i2c_arm_baudrate=400000
 
-            echo "FPP - Adding required modules to modules-load to speed up boot"
-            echo "i2c_dev" >> /etc/modules-load.d/modules.conf
-            echo "spidev" >> /etc/modules-load.d/modules.conf
-            echo "at24" >> /etc/modules-load.d/modules.conf
-            echo "lm75" >> /etc/modules-load.d/modules.conf
-            echo "snd_bcm2835" >> /etc/modules-load.d/modules.conf
-            echo "bcm2835_codec" >> /etc/modules-load.d/modules.conf
-            echo "snd_usb_audio" >> /etc/modules-load.d/modules.conf
+# Setting kernel scaling framebuffer method
+scaling_kernel=8
 
-            echo "[all]">> ${BOOTDIR}/config.txt            
-            echo "FPP - Enabling SPI in device tree"
-            echo >> ${BOOTDIR}/config.txt
-            echo "# Enable SPI in device tree" >> ${BOOTDIR}/config.txt
-            echo "dtparam=spi=on" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
-            echo "# Enable PCIe for NVME storage" >> ${BOOTDIR}/config.txt
-            echo "dtparam=pciex1_gen=3" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
-            echo "# Enable Cape Specific Overlays" >> ${BOOTDIR}/config.txt
-            echo "dtoverlay=fpp-cape-overlay" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
+# Enable audio
+dtparam=audio=on
 
-            echo "FPP - Updating SPI buffer size and enabling HDMI audio devices"
-            sed -i 's/$/ spidev.bufsiz=102400 snd_bcm2835.enable_headphones=1/' ${BOOTDIR}/cmdline.txt
+# Allow more current through USB
+max_usb_current=1
 
-            echo "FPP - Updating root partition device"
-            sed -i 's/root=PARTUUID=[A-Fa-f0-9-]* /root=\/dev\/mmcblk0p2 /g' ${BOOTDIR}/cmdline.txt
-            sed -i 's/PARTUUID=[A-Fa-f0-9]*-01/\/dev\/mmcblk0p1/g' /etc/fstab
-            sed -i 's/PARTUUID=[A-Fa-f0-9]*-02/\/dev\/mmcblk0p2/g' /etc/fstab
+# Setup UART clock to allow DMX output
+init_uart_clock=16000000
 
-            echo "FPP - Disabling fancy network interface names"
-            sed -i -e 's/rootwait/rootwait net.ifnames=0 /' ${BOOTDIR}/cmdline.txt
+# Swap Pi 3 and Zero W UARTs with BT
+dtoverlay=miniuart-bt
 
-            echo "# Enable I2C in device tree" >> ${BOOTDIR}/config.txt
-            echo "dtparam=i2c_arm=on,i2c_arm_baudrate=400000" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
+# Model Specific configuration
+# GPU memory set to 128 to deal with error in omxplayer with hi-def videos
+[pi5]
+gpu_mem=256
+dtparam=uart0=on
+[pi4]
+gpu_mem=256
+[pi3]
+gpu_mem=128
+[pi0]
+gpu_mem=64
+[pi02]
+gpu_mem=128
+[pi1]
+gpu_mem=64
+[pi2]
+gpu_mem=64
 
-            echo "# Setting kernel scaling framebuffer method" >> ${BOOTDIR}/config.txt
-            echo "scaling_kernel=8" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
+[all]
 
-            echo "# Enable audio" >> ${BOOTDIR}/config.txt
-            echo "dtparam=audio=on" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
+EOF
 
-            echo "# Allow more current through USB" >> ${BOOTDIR}/config.txt
-            echo "max_usb_current=1" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
+        echo "FPP - Updating SPI buffer size and enabling HDMI audio devices"
+        sed -i 's/$/ spidev.bufsiz=102400 snd_bcm2835.enable_headphones=1/' ${BOOTDIR}/cmdline.txt
 
-            echo "# Setup UART clock to allow DMX output" >> ${BOOTDIR}/config.txt
-            echo "init_uart_clock=16000000" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
+        echo "FPP - Updating root partition device"
+        sed -i 's/root=PARTUUID=[A-Fa-f0-9-]* /root=\/dev\/mmcblk0p2 /g' ${BOOTDIR}/cmdline.txt
+        sed -i 's/PARTUUID=[A-Fa-f0-9]*-01/\/dev\/mmcblk0p1/g' /etc/fstab
+        sed -i 's/PARTUUID=[A-Fa-f0-9]*-02/\/dev\/mmcblk0p2/g' /etc/fstab
 
-            echo "# Swap Pi 3 and Zero W UARTs with BT" >> ${BOOTDIR}/config.txt
-            echo "dtoverlay=miniuart-bt" >> ${BOOTDIR}/config.txt
-            echo >> ${BOOTDIR}/config.txt
+        echo "FPP - Disabling fancy network interface names"
+        sed -i -e 's/rootwait/rootwait net.ifnames=0 /' ${BOOTDIR}/cmdline.txt
 
-            echo "# Model Specific configuration" >>  ${BOOTDIR}/config.txt
-            echo "# GPU memory set to 128 to deal with error in omxplayer with hi-def videos" >> ${BOOTDIR}/config.txt
-            echo "[pi5]" >> ${BOOTDIR}/config.txt
-            echo "gpu_mem=256" >> ${BOOTDIR}/config.txt
-            echo "dtparam=uart0=on" >> ${BOOTDIR}/config.txt
-            echo "[pi4]" >> ${BOOTDIR}/config.txt
-            echo "gpu_mem=256" >> ${BOOTDIR}/config.txt
-            echo "[pi3]" >> ${BOOTDIR}/config.txt
-            echo "gpu_mem=128" >> ${BOOTDIR}/config.txt
-            echo "[pi0]" >> ${BOOTDIR}/config.txt
-            echo "gpu_mem=64" >> ${BOOTDIR}/config.txt
-            echo "[pi02]" >> ${BOOTDIR}/config.txt
-            echo "gpu_mem=128" >> ${BOOTDIR}/config.txt
-            echo "[pi1]" >> ${BOOTDIR}/config.txt
-            echo "gpu_mem=64" >> ${BOOTDIR}/config.txt
-            echo "[pi2]" >> ${BOOTDIR}/config.txt
-            echo "gpu_mem=64" >> ${BOOTDIR}/config.txt
-            echo "" >> ${BOOTDIR}/config.txt
-            echo "[all]" >> ${BOOTDIR}/config.txt
-            echo "" >> ${BOOTDIR}/config.txt
+        echo "FPP - Freeing up more space by removing unnecessary packages"
+        apt_purge_installed \
+            wolfram-engine sonic-pi minecraft-pi firmware-iwlwifi \
+            libglusterfs0 mesa-va-drivers mesa-vdpau-drivers mesa-vulkan-drivers \
+            mkvtoolnix ncurses-term poppler-data va-driver-all librados2 libcephfs2
+        apt-get -y --purge autoremove
 
-            echo "FPP - Freeing up more space by removing unnecessary packages"
-            # Package set varies across armhf/arm64 and Raspbian releases;
-            # filter to just what's actually installed to avoid aborting on
-            # "Unable to locate package" under set -e.
-            PURGE_CANDIDATES="wolfram-engine sonic-pi minecraft-pi firmware-iwlwifi libglusterfs0 mesa-va-drivers mesa-vdpau-drivers mesa-vulkan-drivers mkvtoolnix ncurses-term poppler-data va-driver-all librados2 libcephfs2"
-            PURGE_INSTALLED=""
-            for pkg in $PURGE_CANDIDATES; do
-                if dpkg -s "$pkg" >/dev/null 2>&1; then
-                    PURGE_INSTALLED="$PURGE_INSTALLED $pkg"
-                fi
-            done
-            if [ -n "$PURGE_INSTALLED" ]; then
-                apt-get -y purge $PURGE_INSTALLED
-            fi
-            apt-get -y --purge autoremove
+        echo "FPP - Clearing config of packages marked for deinstall"
+        dpkg --get-selections | grep deinstall | while read package _; do
+            apt-get -y purge $package
+        done
 
-            echo "FPP - Make things cleaner by removing configuration from unnecessary packages"
-            dpkg --get-selections | grep deinstall | while read package deinstall; do
-                apt-get -y purge $package
-            done
+        echo "FPP - Disabling Swap to save SD card"
+        systemctl disable dphys-swapfile
+        systemctl disable smartmontools
 
-            echo "FPP - Disabling Swap to save SD card"
-            systemctl disable dphys-swapfile
-            systemctl disable smartmontools
+        echo "FPP - Kernel doesn't support cgroups so remove to silence warnings on boot"
+        update-rc.d -f cgroup-bin remove
 
-            echo "FPP - Kernel doesn't support cgroups so remove to silence warnings on boot"
-            update-rc.d -f cgroup-bin remove
+        echo "FPP - Remove dhcpcd since we start DHCP interfaces on our own"
+        update-rc.d -f dhcpcd remove
 
-            echo "FPP - Remove dhcpcd since we start DHCP interfaces on our own"
-            update-rc.d -f dhcpcd remove
+        echo "FPP - Setting locale"
+        sed -i 's/^\(en_GB.UTF-8\)/# \1/;s/..\(en_US.UTF-8\)/\1/' /etc/locale.gen
+        locale-gen en_US.UTF-8
+        dpkg-reconfigure --frontend=noninteractive locales
+        export LANG=en_US.UTF-8
 
-            echo "FPP - Setting locale"
-            sed -i 's/^\(en_GB.UTF-8\)/# \1/;s/..\(en_US.UTF-8\)/\1/' /etc/locale.gen
-            locale-gen en_US.UTF-8
-            dpkg-reconfigure --frontend=noninteractive locales
-            export LANG=en_US.UTF-8
+        echo "FPP - Fix ifup/ifdown scripts for manual dns"
+        # Only present when resolvconf is installed (pre-Trixie). Newer
+        # Raspbian uses systemd-resolved / NetworkManager and has no such hooks.
+        if [ -f /etc/network/if-up.d/000resolvconf ]; then
+            sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n/;p}' /etc/network/if-up.d/000resolvconf
+        fi
+        if [ -f /etc/network/if-down.d/resolvconf ]; then
+            sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n\n/;p}' /etc/network/if-down.d/resolvconf
+        fi
 
-            echo "FPP - Fix ifup/ifdown scripts for manual dns"
-            # Only present when resolvconf is installed (pre-Trixie). Newer
-            # Raspbian uses systemd-resolved / NetworkManager and has no such
-            # hooks — skip rather than abort under set -e.
-            if [ -f /etc/network/if-up.d/000resolvconf ]; then
-                sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n/;p}' /etc/network/if-up.d/000resolvconf
-            fi
-            if [ -f /etc/network/if-down.d/resolvconf ]; then
-                sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n\n/;p}' /etc/network/if-down.d/resolvconf
-            fi
-
-            cat <<-EOF > /etc/dnsmasq.d/usb.conf
+        cat <<-EOF > /etc/dnsmasq.d/usb.conf
 interface=usb0
 interface=usb1
 port=53
@@ -988,74 +995,70 @@ dhcp-option=usb1,6
 dhcp-leasefile=/var/run/dnsmasq.leases
 EOF
 
-            sed -i -e "s/^IGNORE_RESOLVCONF.*/IGNORE_RESOLVCONF=yes/g" /etc/default/dnsmasq
-            sed -i -e "s/#IGNORE_RESOLVCONF.*/IGNORE_RESOLVCONF=yes/g" /etc/default/dnsmasq
-            echo "DNSMASQ_EXCEPT=lo" >> /etc/default/dnsmasq
+        sed -i -e "s/^IGNORE_RESOLVCONF.*/IGNORE_RESOLVCONF=yes/g" /etc/default/dnsmasq
+        sed -i -e "s/#IGNORE_RESOLVCONF.*/IGNORE_RESOLVCONF=yes/g" /etc/default/dnsmasq
+        echo "DNSMASQ_EXCEPT=lo" >> /etc/default/dnsmasq
 
-            echo "FPP - Removing extraneous blacklisted modules"
-            rm -f /etc/modprobe.d/blacklist-*8192cu.conf
-            rm -f /etc/modprobe.d/blacklist-*8xxxu.conf
-            
-            # this causes a symlink from gpiochip4 -> gpiochip0 which then prevents a gpio expander that would be
-            # gpiochip4 from actually loading and getting a dev entry
-            rm -f /usr/lib/udev/rules.d/60-gpiochip4.rules
+        echo "FPP - Removing extraneous blacklisted modules"
+        rm -f /etc/modprobe.d/blacklist-*8192cu.conf
+        rm -f /etc/modprobe.d/blacklist-*8xxxu.conf
+        # gpiochip4 symlink rule blocks gpio expanders that should sit at
+        # gpiochip4 from getting a dev entry.
+        rm -f /usr/lib/udev/rules.d/60-gpiochip4.rules
+    fi
+
+    echo "FPP - Disabling getty on onboard serial ttyAMA0"
+    systemctl disable serial-getty@ttyAMA0.service || true
+    sed -i -e "s/console=serial0,115200 //" ${BOOTDIR}/cmdline.txt
+    # autologin@.service only exists when the Pi image shipped with a
+    # pre-configured auto-login user; Trixie Lite doesn't.
+    if [ -f /etc/systemd/system/autologin@.service ]; then
+        sed -i -e "s/autologin pi/autologin ${FPPUSER}/" /etc/systemd/system/autologin@.service
+    fi
+    rm -f "/etc/systemd/system/getty@tty1.service.d/autologin.conf"
+
+    # /var/swap only exists when dphys-swapfile has been run; not on a fresh
+    # Trixie Lite base image.
+    if [ -f /var/swap ]; then
+        swapoff /var/swap || true
+        rm -f /var/swap
+    fi
+    rfkill unblock all || true
+}
+
+# Armbian-specific image-mode tweaks. Shared between FPPPLATFORM=Armbian and
+# FPPPLATFORM=Debian+ISARMBIAN=true (older Armbian releases mis-detected).
+apply_armbian_image_tweaks() {
+    apt-get remove -y network-manager
+    sed -i -e "s/overlays=/overlays=i2c0 spi-spidev /" /boot/armbianEnv.txt
+    echo "param_spidev_spi_bus=0"   >> /boot/armbianEnv.txt
+    echo "param_spidev_max_freq=25000000" >> /boot/armbianEnv.txt
+    sed -i -e "s/ENABLED=true/ENABLED=false/" /etc/default/armbian-ramlog
+}
+
+setup_platform_armbian() {
+    if $isimage; then
+        apply_armbian_image_tweaks
+    fi
+}
+
+setup_platform_debian() {
+    if $isimage; then
+        apt-get remove -y network-manager
+        if [ "${ISARMBIAN:-false}" = "true" ]; then
+            apply_armbian_image_tweaks
         fi
-        
-		echo "FPP - Disabling getty on onboard serial ttyAMA0"
-		if [ "x${OSVER}" == "xdebian_13" ] || [ "x${OSVER}" == "xdebian_12" ]; then
-			systemctl disable serial-getty@ttyAMA0.service || true
-			sed -i -e "s/console=serial0,115200 //" ${BOOTDIR}/cmdline.txt
-			# autologin@.service is only present when the Pi image shipped
-			# with a pre-configured auto-login user; Trixie Lite doesn't.
-			if [ -f /etc/systemd/system/autologin@.service ]; then
-				sed -i -e "s/autologin pi/autologin ${FPPUSER}/" /etc/systemd/system/autologin@.service
-			fi
-            rm -f "/etc/systemd/system/getty@tty1.service.d/autologin.conf";
-		fi
-        # /var/swap only exists when dphys-swapfile has been run; not on a
-        # fresh Trixie Lite base image.
-        if [ -f /var/swap ]; then
-            swapoff /var/swap || true
-            rm -f /var/swap
-        fi
-        rfkill unblock all || true
-		;;
-	#TODO
-	'Armbian')
-		echo "FPP - Armbian"
-        if $isimage; then
-            apt-get remove -y network-manager
-            sed -i -e "s/overlays=/overlays=i2c0 spi-spidev /" /boot/armbianEnv.txt
-            echo "param_spidev_spi_bus=0" >> /boot/armbianEnv.txt
-            echo "param_spidev_max_freq=25000000" >> /boot/armbianEnv.txt
-            
-            sed -i -e "s/ENABLED=true/ENABLED=false/" /etc/default/armbian-ramlog
-            
-        fi
-		;;
-	'Ubuntu')
-		echo "FPP - Ubuntu"
-		;;
-    'Mint')
-		echo "FPP - Mint"
-		;;
-	'Debian')
-		echo "FPP - Debian"
-        if $isimage; then
-            apt-get remove -y network-manager
-            
-            if [ "${ISARMBIAN:-false}" = "true" ]; then
-                sed -i -e "s/overlays=/overlays=i2c0 spi-spidev /" /boot/armbianEnv.txt
-                echo "param_spidev_spi_bus=0" >> /boot/armbianEnv.txt
-                echo "param_spidev_max_freq=25000000" >> /boot/armbianEnv.txt
-            
-                sed -i -e "s/ENABLED=true/ENABLED=false/" /etc/default/armbian-ramlog
-            fi
-        fi
-		;;
-	*)
-		echo "FPP - Unknown platform"
-		;;
+    fi
+}
+
+case "${FPPPLATFORM}" in
+    'BeagleBone Black')  setup_platform_beaglebone_black ;;
+    'BeagleBone 64')     setup_platform_beaglebone_64 ;;
+    'Raspberry Pi')      setup_platform_raspberry_pi ;;
+    'Armbian')           setup_platform_armbian ;;
+    'Debian')            setup_platform_debian ;;
+    'Ubuntu'|'Fedora')   ;;  # no platform-specific image tweaks
+    *)                   echo "FPP - Unknown platform" ;;
 esac
 
 #######################################
@@ -1171,41 +1174,45 @@ if $isimage; then
 fi
 
 #######################################
-# Add the ${FPPUSER} user and group memberships
-# Remove any pre-existing user/group occupying UID/GID 1000 (e.g. a stock
-# 'pi' or 'debian' user baked into the base image) so the fixed-UID adduser
-# below cannot silently collide.
-EXISTING_USER_1000=$(getent passwd 1000 | cut -d: -f1 || true)
-if [ -n "$EXISTING_USER_1000" ] && [ "$EXISTING_USER_1000" != "${FPPUSER}" ]; then
-    echo "FPP - Removing pre-existing UID 1000 user: ${EXISTING_USER_1000}"
-    userdel -r "${EXISTING_USER_1000}" 2>/dev/null || userdel "${EXISTING_USER_1000}" || true
-fi
-EXISTING_GROUP_1000=$(getent group 1000 | cut -d: -f1 || true)
-if [ -n "$EXISTING_GROUP_1000" ] && [ "$EXISTING_GROUP_1000" != "${FPPUSER}" ]; then
-    echo "FPP - Removing pre-existing GID 1000 group: ${EXISTING_GROUP_1000}"
-    groupdel "${EXISTING_GROUP_1000}" || true
-fi
+# Create the fpp user at UID/GID 1000 plus hardware group memberships.
+# Evicts any pre-existing user/group at UID/GID 1000 first (stock pi/debian
+# users shipped in various base images) so the fixed-UID adduser can't
+# silently collide.
+add_fpp_user() {
+    local existing_user_1000 existing_group_1000
+    existing_user_1000=$(getent passwd 1000 | cut -d: -f1 || true)
+    if [ -n "$existing_user_1000" ] && [ "$existing_user_1000" != "${FPPUSER}" ]; then
+        echo "FPP - Removing pre-existing UID 1000 user: ${existing_user_1000}"
+        userdel -r "${existing_user_1000}" 2>/dev/null || userdel "${existing_user_1000}" || true
+    fi
+    existing_group_1000=$(getent group 1000 | cut -d: -f1 || true)
+    if [ -n "$existing_group_1000" ] && [ "$existing_group_1000" != "${FPPUSER}" ]; then
+        echo "FPP - Removing pre-existing GID 1000 group: ${existing_group_1000}"
+        groupdel "${existing_group_1000}" || true
+    fi
 
-echo "FPP - Adding ${FPPUSER} user"
-addgroup --gid 1000 ${FPPUSER}
-adduser --uid 1000 --home ${FPPHOME} --shell /bin/bash --ingroup ${FPPUSER} --gecos "Falcon Player" --disabled-password ${FPPUSER}
-adduser ${FPPUSER} adm
-adduser ${FPPUSER} sudo
-if getent group gpio > /dev/null; then
-    adduser ${FPPUSER} gpio
-fi
+    echo "FPP - Adding ${FPPUSER} user"
+    addgroup --gid 1000 ${FPPUSER}
+    adduser --uid 1000 --home ${FPPHOME} --shell /bin/bash --ingroup ${FPPUSER} \
+            --gecos "Falcon Player" --disabled-password ${FPPUSER}
+    adduser ${FPPUSER} adm
+    adduser ${FPPUSER} sudo
+    # Hardware groups -- only present when the corresponding kernel drivers
+    # or packages have populated /etc/group.
+    for grp in gpio i2c spi; do
+        if getent group "$grp" > /dev/null; then
+            adduser ${FPPUSER} "$grp"
+        fi
+    done
+    adduser ${FPPUSER} video
+    adduser ${FPPUSER} audio
+    adduser ${FPPUSER} dialout
 
-if getent group i2c > /dev/null; then
-    adduser ${FPPUSER} i2c
-fi
-if getent group spi > /dev/null; then
-    adduser ${FPPUSER} spi
-fi
-adduser ${FPPUSER} video
-adduser ${FPPUSER} audio
-adduser ${FPPUSER} dialout
-# FIXME, use ${FPPUSER} here instead of hardcoding
-sed -i -e 's/^fpp:.*:/fpp:\$y\$j9T\$w6Yvb\/z1wtJh6TvI1zs8u\.\$ZEhs\/1W7JZlCrVCiVvsjarXzf\.3kY7GFHEpWIOQMPN6:20285:0:99999:7:::/' /etc/shadow
+    # Pre-seed the fpp user's password ("falcon") directly in /etc/shadow so
+    # the install is self-contained; no interactive passwd prompt.
+    sed -i -e 's/^fpp:.*:/fpp:\$y\$j9T\$w6Yvb\/z1wtJh6TvI1zs8u\.\$ZEhs\/1W7JZlCrVCiVvsjarXzf\.3kY7GFHEpWIOQMPN6:20285:0:99999:7:::/' /etc/shadow
+}
+add_fpp_user
 
 if $isimage; then
     echo "FPP - Disabling any stock 'debian' user, use the '${FPPUSER}' user instead"
@@ -1434,47 +1441,40 @@ EOF
 fi
 
 #######################################
-echo "FPP - Configuring Apache webserver"
+# Apache setup: envvars, FPP-supplied site/status configs, module enable set,
+# and a log-name tweak so our logrotate config picks up apache's error log.
+configure_apache() {
+    echo "FPP - Configuring Apache webserver"
 
-# Environment variables
-sed -i -e "s/APACHE_RUN_USER=.*/APACHE_RUN_USER=${FPPUSER}/" /etc/apache2/envvars
-sed -i -e "s/APACHE_RUN_GROUP=.*/APACHE_RUN_GROUP=${FPPUSER}/" /etc/apache2/envvars
-sed -i -e "s#APACHE_LOG_DIR=.*#APACHE_LOG_DIR=${FPPHOME}/media/logs#" /etc/apache2/envvars
-sed -i -e "s/Listen 8080.*/Listen 80/" /etc/apache2/ports.conf
+    sed -i -e "s/APACHE_RUN_USER=.*/APACHE_RUN_USER=${FPPUSER}/"   /etc/apache2/envvars
+    sed -i -e "s/APACHE_RUN_GROUP=.*/APACHE_RUN_GROUP=${FPPUSER}/" /etc/apache2/envvars
+    sed -i -e "s#APACHE_LOG_DIR=.*#APACHE_LOG_DIR=${FPPHOME}/media/logs#" /etc/apache2/envvars
+    sed -i -e "s/Listen 8080.*/Listen 80/" /etc/apache2/ports.conf
 
-#Copy FPP Defined Apache configs
-cat /opt/fpp/etc/apache2.site > /etc/apache2/sites-enabled/000-default.conf
-cat /opt/fpp/etc/apache2.status > /etc/apache2/mods-enabled/status.conf
+    cat /opt/fpp/etc/apache2.site   > /etc/apache2/sites-enabled/000-default.conf
+    cat /opt/fpp/etc/apache2.status > /etc/apache2/mods-enabled/status.conf
 
-# Enable Apache modules.
-# libapache2-mod-php${ACTUAL_PHPVER} isn't in our install list (we use
-# php-fpm), so the mod-php may not be present to disable. That's fine.
-a2dismod php${ACTUAL_PHPVER} 2>/dev/null || true
-a2dismod mpm_prefork 2>/dev/null || true
-a2enmod mpm_event
-a2enmod http2
-a2enmod cgi
-a2enmod rewrite
-a2enmod expires
-a2enmod proxy
-a2enmod proxy_http
-a2enmod proxy_http2
-a2enmod proxy_html
-a2enmod headers
-a2enmod proxy_fcgi setenvif
-a2enconf php${ACTUAL_PHPVER}-fpm
+    # libapache2-mod-php${ACTUAL_PHPVER} isn't in our install list (we use
+    # php-fpm), so the mod-php may not be present to disable. That's fine.
+    a2dismod php${ACTUAL_PHPVER} 2>/dev/null || true
+    a2dismod mpm_prefork 2>/dev/null || true
 
-# Fix name of Apache default error log so it gets rotated by our logrotate config
-sed -i -e "s/error\.log/apache2-base-error.log/" /etc/apache2/apache2.conf
+    local mod
+    for mod in mpm_event http2 cgi rewrite expires proxy proxy_http proxy_http2 \
+               proxy_html headers; do
+        a2enmod "$mod"
+    done
+    a2enmod proxy_fcgi setenvif
+    a2enconf php${ACTUAL_PHPVER}-fpm
 
-# Disable default access logs
-rm /etc/apache2/conf-enabled/other-vhosts-access-log.conf
+    # Rename default error log so our logrotate rules apply.
+    sed -i -e "s/error\.log/apache2-base-error.log/" /etc/apache2/apache2.conf
 
-case "${OSVER}" in
-	debian_13 |  debian_12 | ubuntu_22.04 | ubuntu_22.10 | linuxmint_21)
-		systemctl enable apache2.service
-		;;
-esac
+    rm /etc/apache2/conf-enabled/other-vhosts-access-log.conf
+
+    systemctl enable apache2.service
+}
+configure_apache
 
 
 #######################################
@@ -1698,8 +1698,8 @@ if $isimage; then
     chown -R fpp:fpp /home/fpp/.config
 fi
 if [ "$FPPPLATFORM" == "BeagleBone Black" ]; then
-    # Bootloader on recent bullseye images does NOT boot on Beagles, use a version we
-    # know works
+    # Stock u-boot on recent rcn-ee base images has been unreliable on some
+    # Beagles; install a known-good version.
     /opt/fpp/bin.bbb/bootloader/install.sh
 fi
 
