@@ -4,6 +4,16 @@
 // This #define must be before any #include's
 #define _FILE_OFFSET_BITS 64
 
+// PLATFORM_PI64 is primarily set by pi.mk via CFLAGS (so it also reaches
+// plugins that don't include this PCH). This block is a defensive fallback
+// that fires only if FPP itself is being compiled against this PCH without
+// the makefile flag for some reason -- keeps the two signals from drifting.
+// Detection via __aarch64__ is what the compiler actually targets, which is
+// the correct ABI signal (kernel bitness is irrelevant here).
+#if defined(PLATFORM_PI) && defined(__aarch64__) && !defined(PLATFORM_PI64)
+#define PLATFORM_PI64
+#endif
+
 // Block libhttpserver from loading: FPP now uses drogon, and fpphttp.h provides
 // source-level shims in the httpserver:: namespace for plugin compatibility.
 // Defining the guard here causes any #include <httpserver.hpp> in plugin code

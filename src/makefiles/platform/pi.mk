@@ -3,9 +3,16 @@ CFLAGS += \
 	-DPLATFORM_PI
 
 # PLATFORM_PI is set on both 32- and 64-bit Pi builds; PLATFORM_PI64 is set
-# only on aarch64 so plugins can opt into 64-bit-only paths without breaking
-# code that already checks PLATFORM_PI. Mirrors PLATFORM_BBB / PLATFORM_BB64.
-ifeq ($(shell uname -m),aarch64)
+# only when the compiler itself targets aarch64. Must be in the makefile
+# (not only in fpp-pch.h) because many plugins don't include the PCH but
+# inherit CFLAGS from here.
+#
+# IMPORTANT: detect via `$(CXX) -dumpmachine`, NOT `uname -m`. On a Pi4/Pi5
+# running 32-bit Raspberry Pi OS the default config.txt boots a 64-bit kernel
+# -- `uname -m` then returns "aarch64" even though the compiler, userspace,
+# and produced binary are all armhf. -dumpmachine reflects the compiler's
+# actual target triple, which is what we care about.
+ifneq ($(findstring aarch64,$(shell $(CXX) -dumpmachine 2>/dev/null)),)
 CFLAGS += -DPLATFORM_PI64
 endif
 
