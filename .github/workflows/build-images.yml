@@ -47,19 +47,29 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
       is_release: ${{ steps.ver.outputs.is_release }}
+      is_nightly: ${{ steps.ver.outputs.is_nightly }}
     steps:
       - name: Determine version string
         id: ver
         run: |
+          # Tag push -> release build, version from tag
           if [ "${{ github.event_name }}" = "push" ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             V="${GITHUB_REF#refs/tags/v}"
             echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "is_nightly=false" >> "$GITHUB_OUTPUT"
+          # Manual dispatch with explicit version -> one-off build
           elif [ -n "${{ github.event.inputs.version }}" ]; then
             V="${{ github.event.inputs.version }}"
             echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "is_nightly=false" >> "$GITHUB_OUTPUT"
+          # Schedule or manual dispatch without version -> nightly.
+          # Use fixed "nightly" string so artifact filenames are stable and
+          # URLs like releases/download/nightly/FPP-vnightly-Pi64.img.zip
+          # don't change night to night.
           else
-            V="nightly-$(date -u +%Y%m%d)"
+            V="nightly"
             echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "is_nightly=true" >> "$GITHUB_OUTPUT"
           fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Selected version: $V"
@@ -71,7 +81,7 @@ jobs:
       matrix:
         include:
           - platform: pi
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             script: SD/build-image-pi.sh
             extra_args: "--arch armhf"
             suffix: Pi
@@ -86,7 +96,7 @@ jobs:
             extra_args: ""
             suffix: BB64
           - platform: bbb
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             script: SD/build-image-bbb.sh
             extra_args: ""
             suffix: BBB
@@ -223,3 +233,70 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: release-files/*
           fail_on_unmatched_files: true
+
+  nightly_release:
+    # Runs on schedule + schedule-like manual dispatch. Publishes / replaces
+    # the "nightly" pre-release so URLs like
+    #   https://github.com/<owner>/<repo>/releases/download/nightly/<file>
+    # always point at last night's artifacts. Marked prerelease so GitHub's
+    # /releases/latest/download/ stays pointed at the last real versioned
+    # release -- nightly doesn't pollute the stable URL.
+    needs: [prep, build]
+    if: needs.prep.outputs.is_nightly == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (for gh CLI to know the repo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifact directory
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name '*.img.zip' -o -name '*.fppos' \) \
+            -exec cp -v {} release-files/ \;
+          ls -la release-files/
+
+      - name: Replace nightly pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BUILD_DATE="$(date -u +%Y-%m-%d)"
+          COMMIT="$(git rev-parse HEAD)"
+          SHORT="$(git rev-parse --short HEAD)"
+
+          # Nuke any existing nightly release + tag so assets are cleanly
+          # replaced (softprops overwrites same-named files but doesn't
+          # remove orphans from prior runs with different filenames).
+          if gh release view nightly >/dev/null 2>&1; then
+            echo "Deleting existing 'nightly' release..."
+            gh release delete nightly --yes --cleanup-tag
+          fi
+
+          echo "Creating fresh 'nightly' pre-release..."
+          gh release create nightly \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "FPP Nightly ($BUILD_DATE)" \
+            --notes "Automated nightly build.
+
+          **Build date:** $BUILD_DATE UTC
+          **Commit:** [\`$SHORT\`](../../commit/$COMMIT)
+
+          Stable download URLs (always point at the most recent nightly):
+          - \`releases/download/nightly/FPP-vnightly-Pi.img.zip\`
+          - \`releases/download/nightly/FPP-vnightly-Pi64.img.zip\`
+          - \`releases/download/nightly/FPP-vnightly-BB64.img.zip\`
+          - \`releases/download/nightly/FPP-vnightly-BBB.img.zip\`
+
+          > :warning: Nightly builds are unreleased development snapshots.
+          > Use tagged releases for production." \
+            release-files/*
