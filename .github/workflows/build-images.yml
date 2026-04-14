@@ -1,0 +1,220 @@
+#############################################################################
+# Build FPP SD card images for Pi, Pi64, BBB, and BB64.
+#
+# Runs:
+#   - workflow_dispatch: manual trigger with optional version string
+#   - schedule:          nightly at 04:00 UTC
+#   - push (tag v*):     release build; results are attached to a GitHub
+#                        release named from the tag
+#
+# Strategy:
+#   - Pi64 / BB64 build on GitHub's free arm64 runners (native, fast)
+#   - Pi  / BBB  build on x86_64 runners via qemu-arm-static (slow, but
+#     avoids needing self-hosted hardware)
+#
+# All four build scripts use FPP_SRC_DIR pointing at the checkout, so local
+# changes in the tree are picked up without needing to push first.
+#############################################################################
+
+name: Build Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'FPP version string (blank = nightly-YYYYMMDD)'
+        required: false
+        default: ''
+      platforms:
+        description: 'Comma-separated subset of platforms to build (blank = all)'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 4 * * *'
+  push:
+    tags:
+      - 'v*'
+
+# A manual re-run on the same ref should cancel a running build to avoid
+# wasting a 2-hour qemu job when you realize you tagged the wrong commit.
+concurrency:
+  group: build-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      is_release: ${{ steps.ver.outputs.is_release }}
+    steps:
+      - name: Determine version string
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF#refs/tags/v}"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          else
+            V="nightly-$(date -u +%Y%m%d)"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Selected version: $V"
+
+  build:
+    needs: prep
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: pi
+            runner: ubuntu-latest
+            script: SD/build-image-pi.sh
+            extra_args: "--arch armhf"
+            suffix: Pi
+          - platform: pi64
+            runner: ubuntu-24.04-arm
+            script: SD/build-image-pi.sh
+            extra_args: "--arch arm64"
+            suffix: Pi64
+          - platform: bb64
+            runner: ubuntu-24.04-arm
+            script: SD/build-image-bb64.sh
+            extra_args: ""
+            suffix: BB64
+          - platform: bbb
+            runner: ubuntu-latest
+            script: SD/build-image-bbb.sh
+            extra_args: ""
+            suffix: BBB
+    runs-on: ${{ matrix.runner }}
+    # GHA hard cap is 360 min. armhf-under-qemu builds are the long pole
+    # (~2-3 hours for Pi, expected similar for BBB).
+    timeout-minutes: 350
+
+    steps:
+      - name: Skip if platform not requested
+        id: gate
+        run: |
+          REQ="${{ github.event.inputs.platforms }}"
+          if [ -n "$REQ" ]; then
+            case ",$REQ," in
+              *",${{ matrix.platform }},"*) echo "skip=false" >> "$GITHUB_OUTPUT" ;;
+              *) echo "skip=true" >> "$GITHUB_OUTPUT" ;;
+            esac
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.skip == 'false'
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Maximize disk space
+        # Default GH runners have ~14 GB free; BBB / Pi builds easily use
+        # 12-15 GB (base image + work image + artifacts). Strip the pre-
+        # installed SDKs that nothing in this workflow uses.
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL \
+            2>/dev/null || true
+          docker system prune -af 2>/dev/null || true
+          df -h /
+
+      - name: Install build dependencies
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user-static binfmt-support \
+            parted dosfstools e2fsprogs \
+            zerofree squashfs-tools zip xz-utils \
+            wget ca-certificates rsync
+
+      - name: Register qemu-arm binfmt
+        # qemu-user-static on arm64 Ubuntu doesn't register qemu-arm because
+        # the host arch is different; on x86_64 it usually registers fine,
+        # but be defensive.
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          if [ ! -f /proc/sys/fs/binfmt_misc/qemu-arm ]; then
+            echo "Registering qemu-arm binfmt manually..."
+            sudo sh -c 'printf ":qemu-arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-arm-static:OCF" > /proc/sys/fs/binfmt_misc/register' || true
+          fi
+          ls /proc/sys/fs/binfmt_misc/qemu-arm 2>/dev/null || \
+            echo "WARNING: qemu-arm still not registered; armhf chroot will fail"
+
+      - name: Cache base image download
+        if: steps.gate.outputs.skip == 'false'
+        uses: actions/cache@v4
+        with:
+          path: build/*.img.xz
+          # Base image URL/name is baked into the platform script; cache
+          # across runs until the defaults change in the script itself.
+          key: base-image-${{ matrix.platform }}-${{ hashFiles(matrix.script) }}
+
+      - name: Build image
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          sudo ./${{ matrix.script }} \
+            --version "${{ needs.prep.outputs.version }}" \
+            --os-version "$(date -u +%Y-%m)" \
+            --use-local-src \
+            ${{ matrix.extra_args }}
+
+      - name: List output
+        if: steps.gate.outputs.skip == 'false'
+        run: ls -la output/
+
+      - name: Upload image artifacts
+        if: steps.gate.outputs.skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FPP-${{ needs.prep.outputs.version }}-${{ matrix.suffix }}
+          path: |
+            output/FPP-v*-${{ matrix.suffix }}.img.zip
+            output/${{ matrix.suffix }}-*.fppos
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    # Only run on tag push. Creates a draft release so the maintainer can
+    # add notes before publishing. Attaches all four platforms' artifacts.
+    needs: [prep, build]
+    if: needs.prep.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifact directory
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name '*.img.zip' -o -name '*.fppos' \) \
+            -exec cp -v {} release-files/ \;
+          ls -la release-files/
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: "FPP ${{ needs.prep.outputs.version }}"
+          tag_name: ${{ github.ref_name }}
+          files: release-files/*
+          fail_on_unmatched_files: true
