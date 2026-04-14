@@ -7,9 +7,19 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 		git submodule init && \
 		git submodule update
 
+RF24_UNAME_M := $(shell uname -m)
+ifeq ($(RF24_UNAME_M),aarch64)
+    RF24_CCFLAGS := -Ofast -march=armv8-a
+else ifeq ($(RF24_UNAME_M),armv7l)
+    RF24_CCFLAGS := -Ofast -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a
+else
+    RF24_CCFLAGS := -Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s
+endif
+RF24_CCFLAGS += -Wno-parentheses -Wno-unused-value -Wno-misleading-indentation
+
 ../external/RF24/librf24-bcm.so: ../external/RF24/.git $(PCH_FILE)
 	@echo "Building RF24 library"
-	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/RF24/ CCFLAGS="-Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s -Wno-parentheses -Wno-unused-value -Wno-misleading-indentation"
+	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/RF24/ CCFLAGS="$(RF24_CCFLAGS)"
 	@ln -s librf24-bcm.so.1.0 ../external/RF24/librf24-bcm.so.1
 	@ln -s librf24-bcm.so.1 ../external/RF24/librf24-bcm.so
 
@@ -37,12 +47,12 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 ../external/rpi_ws281x/libws2811.a: ../external/rpi_ws281x/.git  $(PCH_FILE)
 	@echo "Building libws2811"
 	@cd ../external/rpi_ws281x/ && \
-		gcc -c -o rpihw.o rpihw.c && \
-		gcc -c -o mailbox.o mailbox.c && \
-		gcc -c -o dma.o dma.c && \
-		gcc -c -o pcm.o pcm.c && \
-		gcc -c -o pwm.o pwm.c && \
-		gcc -c -o ws2811.o ws2811.c && \
+		gcc -fPIC -c -o rpihw.o rpihw.c && \
+		gcc -fPIC -c -o mailbox.o mailbox.c && \
+		gcc -fPIC -c -o dma.o dma.c && \
+		gcc -fPIC -c -o pcm.o pcm.c && \
+		gcc -fPIC -c -o pwm.o pwm.c && \
+		gcc -fPIC -c -o ws2811.o ws2811.c && \
 		ar rcs libws2811.a rpihw.o mailbox.o dma.o pwm.o pcm.o ws2811.o
 
 #############################################################################
@@ -54,7 +64,7 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 
 ../external/spixels/lib/libspixels.a: ../external/spixels/.git  $(PCH_FILE)
 	@echo "Building spixels library"
-	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/spixels/lib/ CXXFLAGS="-Wall -O3 -I../include -I. -Wno-mismatched-new-delete"
+	@CC="ccache gcc" CXX="ccache g++" $(MAKE) -C ../external/spixels/lib/ CXXFLAGS="-fPIC -Wall -O3 -I../include -I. -Wno-mismatched-new-delete"
 
 clean::
 	@if [ -e ../external/spixels/lib/libspixels.a ]; then $(MAKE) -C ../external/spixels/lib clean; fi

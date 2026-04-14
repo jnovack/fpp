@@ -36,6 +36,20 @@ if [ "$ORIGTYPE" != "$NEWTYPE" ]; then
     exit 1;
 fi
 
+# Architecture check: FPPPLATFORM doesn't distinguish 32-bit Pi from 64-bit
+# Pi (both are "Raspberry Pi"), so applying a Pi64 .fppos on a Pi32 system
+# (or vice versa) would brick the device. /etc/fpp/arch was added in FPP 10
+# specifically for this guard. Only enforced when both sides have the marker.
+if [ -f /etc/fpp/arch ] && [ -f /mnt/etc/fpp/arch ]; then
+    ORIGARCH=$(</etc/fpp/arch)
+    NEWARCH=$(</mnt/etc/fpp/arch)
+    if [ "$ORIGARCH" != "$NEWARCH" ]; then
+        echo "New image arch '${NEWARCH}' does not match existing '${ORIGARCH}'"
+        umount /mnt
+        exit 1;
+    fi
+fi
+
 #make sure settings are re-applied after boot
 echo "BootActions = \"settings\"" >> /home/fpp/media/settings
 

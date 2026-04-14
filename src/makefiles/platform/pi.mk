@@ -2,6 +2,13 @@ ifeq '$(ARCH)' 'Raspberry Pi'
 CFLAGS += \
 	-DPLATFORM_PI
 
+# PLATFORM_PI is set on both 32- and 64-bit Pi builds; PLATFORM_PI64 is set
+# only on aarch64 so plugins can opt into 64-bit-only paths without breaking
+# code that already checks PLATFORM_PI. Mirrors PLATFORM_BBB / PLATFORM_BB64.
+ifeq ($(shell uname -m),aarch64)
+CFLAGS += -DPLATFORM_PI64
+endif
+
 SUBMODULES += \
 	external/RF24 \
 	external/rpi-rgb-led-matrix \

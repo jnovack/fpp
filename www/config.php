@@ -232,8 +232,12 @@ if (file_exists("/etc/fpp/desktop")) {
     $settings["IsDesktop"] = true;
 }
 $settings['BeaglePlatform'] = false;
+// Is64Bit is true on any 64-bit FPP build (Pi64, BB64, future arm64 boards).
+// Use this in plugin/PHP code that needs to gate on 64-bit binary slots
+// rather than asking "am I a Pi?" / "am I a Beagle?".
+$settings['Is64Bit'] = (PHP_INT_SIZE === 8);
 if ($settings['Platform'] == "Raspberry Pi") {
-    $settings['OSImagePrefix'] = "Pi";
+    $settings['OSImagePrefix'] = $settings['Is64Bit'] ? "Pi64" : "Pi";
     $settings['LogoLink'] = "http://raspberrypi.org/";
     $settings['SubPlatform'] = trim(file_get_contents("/sys/firmware/devicetree/base/model"));
 

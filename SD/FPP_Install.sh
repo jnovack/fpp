@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 #############################################################################
 # FPP Install Script
 #
@@ -55,7 +57,11 @@
 #
 #############################################################################
 FPPBRANCH=${FPPBRANCH:-"master"}
-FPPIMAGEVER="2026-02"
+# FPPIMAGEVER is the OS image date stamp written into /etc/fpp/rfs_version
+# and shown in /etc/issue. Override via env (build-image-pi.sh passes the
+# user-supplied --os-version so the .img / .fppos filenames match what's
+# baked into the image itself).
+FPPIMAGEVER=${FPPIMAGEVER:-"2026-02"}
 FPPCFGVER="104"
 FPPPLATFORM="UNKNOWN"
 FPPDIR=/opt/fpp
@@ -94,10 +100,10 @@ fi
 # This function was copied from /opt/fpp/scripts/functions in FPP source
 # since we don't have access to the source until we clone the repo.
 checkTimeAgainstUSNO () {
-	# www.usno.navy.mil is not pingable, so check github.com instead
-	ping -q -c 1 github.com > /dev/null 2>&1
-
-	if [ $? -eq 0 ]
+	# www.usno.navy.mil is not pingable, so check github.com instead.
+	# Inline the ping into the if so set -e doesn't abort on ping failure
+	# (ICMP often unavailable in chroots / qemu-user contexts).
+	if ping -q -c 1 github.com > /dev/null 2>&1
 	then
 		echo "FPP: Checking local time against U.S. Naval Observatory"
 
@@ -176,7 +182,7 @@ if [ -f /proc/device-tree/model ]; then
     MODEL=$(tr -d '\0' < /proc/device-tree/model)
 fi
 # Attempt to detect the platform we are installing on
-if [ "x${OSID}" = "xraspbian" ]
+if [ "x${OSID}" = "xraspbian" ] || [ -f /etc/rpi-issue ]
 then
 	FPPPLATFORM="Raspberry Pi"
 	OSVER="debian_${VERSION_ID}"
@@ -218,6 +224,12 @@ else
 	FPPPLATFORM="UNKNOWN"
 fi
 
+# Build-time override: BeagleBone autodetection relies on /sys/class/leds
+# entries that don't exist in a chroot, so image-build scripts can force
+# the platform string explicitly. Honored after autodetect so it always wins.
+if [ -n "${FPPPLATFORM_OVERRIDE:-}" ]; then
+    FPPPLATFORM="${FPPPLATFORM_OVERRIDE}"
+fi
 
 while [ -n "$1" ]; do
     case $1 in
@@ -324,6 +336,7 @@ then
 	echo "FPP - Removing old /etc/fpp"
 	rm -f /etc/fpp/config_version
     rm -f /etc/fpp/platform
+    rm -f /etc/fpp/arch
     rm -f /etc/fpp/rfs_version
     rm -f /etc/fpp/desktop
 fi
@@ -333,6 +346,10 @@ fi
 echo "FPP - Creating /etc/fpp and contents"
 mkdir /etc/fpp
 echo "${FPPPLATFORM}" > /etc/fpp/platform
+# Architecture marker (e.g. armhf / arm64 / x86_64). Used by upgradeOS to
+# refuse cross-arch .fppos applies — critical because FPPPLATFORM alone
+# cannot distinguish 32-bit vs 64-bit Pi (both write "Raspberry Pi").
+echo "$(dpkg --print-architecture 2>/dev/null || uname -m)" > /etc/fpp/arch
 echo "v${FPPIMAGEVER}" > /etc/fpp/rfs_version
 echo "${FPPCFGVER}" > /etc/fpp/config_version
 if $desktop; then
@@ -644,9 +661,12 @@ case "${OSVER}" in
             
                 echo "FPP - Applying updates to allow optional boot from USB on Pi 4 (and up)"
 
-                # make sure the label on p1 is "boot" and p2 is rootfs
-                fatlabel /dev/mmcblk0p1 boot
-                e2label /dev/mmcblk0p2 rootfs
+                # make sure the label on p1 is "boot" and p2 is rootfs.
+                # These device paths don't exist in a chroot image build, and
+                # even on real hardware the labels are typically already set;
+                # tolerate failure so the install doesn't abort under set -e.
+                fatlabel /dev/mmcblk0p1 boot 2>/dev/null || true
+                e2label /dev/mmcblk0p2 rootfs 2>/dev/null || true
 
                 BOOTDIR="/boot"
                 if [ "${OSVER}" == "debian_12" ]; then
@@ -892,7 +912,19 @@ case "${FPPPLATFORM}" in
             echo "" >> ${BOOTDIR}/config.txt
 
             echo "FPP - Freeing up more space by removing unnecessary packages"
-            apt-get -y purge wolfram-engine sonic-pi minecraft-pi firmware-iwlwifi libglusterfs0 mesa-va-drivers mesa-vdpau-drivers mesa-vulkan-drivers mkvtoolnix ncurses-term poppler-data va-driver-all librados2 libcephfs2
+            # Package set varies across armhf/arm64 and Raspbian releases;
+            # filter to just what's actually installed to avoid aborting on
+            # "Unable to locate package" under set -e.
+            PURGE_CANDIDATES="wolfram-engine sonic-pi minecraft-pi firmware-iwlwifi libglusterfs0 mesa-va-drivers mesa-vdpau-drivers mesa-vulkan-drivers mkvtoolnix ncurses-term poppler-data va-driver-all librados2 libcephfs2"
+            PURGE_INSTALLED=""
+            for pkg in $PURGE_CANDIDATES; do
+                if dpkg -s "$pkg" >/dev/null 2>&1; then
+                    PURGE_INSTALLED="$PURGE_INSTALLED $pkg"
+                fi
+            done
+            if [ -n "$PURGE_INSTALLED" ]; then
+                apt-get -y purge $PURGE_INSTALLED
+            fi
             apt-get -y --purge autoremove
 
             echo "FPP - Make things cleaner by removing configuration from unnecessary packages"
@@ -917,8 +949,15 @@ case "${FPPPLATFORM}" in
             export LANG=en_US.UTF-8
 
             echo "FPP - Fix ifup/ifdown scripts for manual dns"
-            sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n/;p}' /etc/network/if-up.d/000resolvconf
-            sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n\n/;p}' /etc/network/if-down.d/resolvconf
+            # Only present when resolvconf is installed (pre-Trixie). Newer
+            # Raspbian uses systemd-resolved / NetworkManager and has no such
+            # hooks — skip rather than abort under set -e.
+            if [ -f /etc/network/if-up.d/000resolvconf ]; then
+                sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n/;p}' /etc/network/if-up.d/000resolvconf
+            fi
+            if [ -f /etc/network/if-down.d/resolvconf ]; then
+                sed -i -n 'H;${x;s/^\n//;s/esac\n/&\nif grep -qc "Generated by fpp" \/etc\/resolv.conf\; then\n\texit 0\nfi\n\n/;p}' /etc/network/if-down.d/resolvconf
+            fi
 
             cat <<-EOF > /etc/dnsmasq.d/usb.conf
 interface=usb0
@@ -956,14 +995,22 @@ EOF
         
 		echo "FPP - Disabling getty on onboard serial ttyAMA0"
 		if [ "x${OSVER}" == "xdebian_13" ] || [ "x${OSVER}" == "xdebian_12" ]; then
-			systemctl disable serial-getty@ttyAMA0.service
+			systemctl disable serial-getty@ttyAMA0.service || true
 			sed -i -e "s/console=serial0,115200 //" ${BOOTDIR}/cmdline.txt
-			sed -i -e "s/autologin pi/autologin ${FPPUSER}/" /etc/systemd/system/autologin@.service
+			# autologin@.service is only present when the Pi image shipped
+			# with a pre-configured auto-login user; Trixie Lite doesn't.
+			if [ -f /etc/systemd/system/autologin@.service ]; then
+				sed -i -e "s/autologin pi/autologin ${FPPUSER}/" /etc/systemd/system/autologin@.service
+			fi
             rm -f "/etc/systemd/system/getty@tty1.service.d/autologin.conf";
 		fi
-        swapoff /var/swap
-        rm -f /var/swap
-        rfkill unblock all
+        # /var/swap only exists when dphys-swapfile has been run; not on a
+        # fresh Trixie Lite base image.
+        if [ -f /var/swap ]; then
+            swapoff /var/swap || true
+            rm -f /var/swap
+        fi
+        rfkill unblock all || true
 		;;
 	#TODO
 	'Armbian')
@@ -989,7 +1036,7 @@ EOF
         if $isimage; then
             apt-get remove -y network-manager
             
-            if $ISARMBIAN; then
+            if [ "${ISARMBIAN:-false}" = "true" ]; then
                 sed -i -e "s/overlays=/overlays=i2c0 spi-spidev /" /boot/armbianEnv.txt
                 echo "param_spidev_spi_bus=0" >> /boot/armbianEnv.txt
                 echo "param_spidev_max_freq=25000000" >> /boot/armbianEnv.txt
@@ -1068,7 +1115,7 @@ fi
 
 #######################################
 # Upgrade the config if needed
-bash scripts/upgrade_config -notee
+bash ${FPPDIR}/scripts/upgrade_config -notee
 
 
 #######################################
@@ -1117,6 +1164,20 @@ fi
 
 #######################################
 # Add the ${FPPUSER} user and group memberships
+# Remove any pre-existing user/group occupying UID/GID 1000 (e.g. a stock
+# 'pi' or 'debian' user baked into the base image) so the fixed-UID adduser
+# below cannot silently collide.
+EXISTING_USER_1000=$(getent passwd 1000 | cut -d: -f1 || true)
+if [ -n "$EXISTING_USER_1000" ] && [ "$EXISTING_USER_1000" != "${FPPUSER}" ]; then
+    echo "FPP - Removing pre-existing UID 1000 user: ${EXISTING_USER_1000}"
+    userdel -r "${EXISTING_USER_1000}" 2>/dev/null || userdel "${EXISTING_USER_1000}" || true
+fi
+EXISTING_GROUP_1000=$(getent group 1000 | cut -d: -f1 || true)
+if [ -n "$EXISTING_GROUP_1000" ] && [ "$EXISTING_GROUP_1000" != "${FPPUSER}" ]; then
+    echo "FPP - Removing pre-existing GID 1000 group: ${EXISTING_GROUP_1000}"
+    groupdel "${EXISTING_GROUP_1000}" || true
+fi
+
 echo "FPP - Adding ${FPPUSER} user"
 addgroup --gid 1000 ${FPPUSER}
 adduser --uid 1000 --home ${FPPHOME} --shell /bin/bash --ingroup ${FPPUSER} --gecos "Falcon Player" --disabled-password ${FPPUSER}
@@ -1265,9 +1326,9 @@ if $isimage; then
     #######################################
     # Setup mail
     echo "FPP - Adding missing exim4 & ntpsec log directory"
-    mkdir /var/log/ntpsec
+    mkdir -p /var/log/ntpsec
     chown ntpsec:ntpsec /var/log/ntpsec
-    mkdir /var/log/exim4
+    mkdir -p /var/log/exim4
     chown Debian-exim /var/log/exim4
     chgrp Debian-exim /var/log/exim4
 
@@ -1307,7 +1368,7 @@ EOF
 
     # remove exim4 panic log so exim4 doesn't throw an alert about a non-zero log
     # file due to some odd error thrown during inital setup
-    rm /var/log/exim4/paniclog
+    rm -f /var/log/exim4/paniclog
     #update config and restart exim
     update-exim4.conf
 
@@ -1332,8 +1393,8 @@ EOF
     if [ "$ARCH" != "x86_64" ]; then
         echo "FPP - Configuring tmpfs filesystems"
         cp -f /opt/fpp/etc/systemd/tmp.mount /lib/systemd/system
-        systemctrl unmask tmp.mount
-        systemctrl enable tmp.mount
+        systemctl unmask tmp.mount
+        systemctl enable tmp.mount
 
         sed -i 's|tmpfs\s*/tmp\s*tmpfs.*||g' /etc/fstab
         sed -i 's|tmpfs\s*/var/tmp\s*tmpfs.*||g' /etc/fstab
@@ -1371,9 +1432,11 @@ sed -i -e "s/Listen 8080.*/Listen 80/" /etc/apache2/ports.conf
 cat /opt/fpp/etc/apache2.site > /etc/apache2/sites-enabled/000-default.conf
 cat /opt/fpp/etc/apache2.status > /etc/apache2/mods-enabled/status.conf
 
-# Enable Apache modules
-a2dismod php${ACTUAL_PHPVER}
-a2dismod mpm_prefork
+# Enable Apache modules.
+# libapache2-mod-php${ACTUAL_PHPVER} isn't in our install list (we use
+# php-fpm), so the mod-php may not be present to disable. That's fine.
+a2dismod php${ACTUAL_PHPVER} 2>/dev/null || true
+a2dismod mpm_prefork 2>/dev/null || true
 a2enmod mpm_event
 a2enmod http2
 a2enmod cgi

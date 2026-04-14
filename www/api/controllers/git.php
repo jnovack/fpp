@@ -96,7 +96,7 @@ function GitOSReleases()
                             $row["downloaded"] = in_array($name, $existingFiles);
                             $row["size"] = $file["size"];
                             array_push($releases, $row);
-                        } else if (startsWith($name, $settings['OSImagePrefix'])) {
+                        } else if (startsWith($name, $settings['OSImagePrefix'] . "-")) {
                             $row = array();
                             $row["tag"] = $r["tag_name"];
                             $row["release_name"] = $r["name"];
@@ -143,7 +143,7 @@ function GitOSReleaseSizes()
             if (isset($r["assets"]) && $settings['OSImagePrefix'] != "") {
                 foreach ($r["assets"] as $file) {
                     $name = $file["name"];
-                    if (endsWith($name, ".fppos") && startsWith($name, $settings['OSImagePrefix'])) {
+                    if (endsWith($name, ".fppos") && startsWith($name, $settings['OSImagePrefix'] . "-")) {
                         $rc = $rc . $name . "," . $file["size"] . "\n";
                     }
                 }
