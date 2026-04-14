@@ -114,6 +114,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          # fppversion.sh runs `git describe` inside the chroot against the
+          # rsynced tree; without full history and tags it fails with
+          # "fatal: No names found, cannot describe anything."
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Maximize disk space
         # Default GH runners have ~14 GB free; BBB / Pi builds easily use
