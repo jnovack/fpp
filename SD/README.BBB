@@ -1,164 +1,92 @@
+FPP BeagleBone Black Image Build
+=================================
 
-# FPP BBB Image creation notes (work in progress)
-#
-# FPP images are currently based on the following Debian am335x images:
-# https://rcn-ee.net/rootfs/debian-armhf-13-base-v6.18/2026-02-04/
+The BBB image builder produces flashable .img.zip files for am335x
+BeagleBone hardware (BBB, BBGW, BBBW, etc.) using the rcn-ee Debian armhf
+base image plus FPP's custom-patched kernel.
 
-# Burn the above image onto an SD card and insert into a running Linux machine
-# We need to make changes to the filesystems and layout prior to booting
-# on a BBB device
+See SD/README.md for host requirements (qemu binfmt setup, build packages)
+and the full common-flag reference.
 
-# Need to resize the root to be at least 6G
-# Using gparted on Linux/gui is easiest option.
-# In general, if using the above image, it will default to about 3G which is
-# not enough
-    fdisk /dev/sdc
-    p
-    (Note the original start block of partition 3, you will need this later)
-    d
-    3
-    n
-    p
-    3
-    (Replace 1130496 with the original start block of partition 3 noted earlier)
-    1130496
-    (FIXME, downsize this value once install is tested)
-    +6000M
-    N
-    p
-    w
-    
+Quick start
+-----------
 
-FSCK and resize the root partition (again, use your device name.
+    sudo ./SD/build-image-bbb.sh --version 10.0-dev --use-local-src
 
-    e2fsck -f /dev/sdc3
-    resize2fs /dev/sdc3
+Output:
+    output/FPP-v10.0-dev-BBB.img.zip
+    output/BBB-10.0-dev_2026-04.fppos
 
+Default base image
+------------------
 
+    https://rcn-ee.net/rootfs/debian-armhf-13-base-v6.18/2026-04-08/am335x-debian-13.4-base-v6.18-armhf-2026-04-08-4gb.img.xz
 
-# First, mount the rootfs on a Linux machine.   We need to disable the growfs on
-# first boot:
-mkdir -p /mnt/tmp
-mount /dev/sdc3 /mnt/tmp
-mount /dev/sdc1 /mnt/tmp/boot/firmware
-cd /mnt/tmp
-rm -f ./etc/bbb.io/growpart
-wget -4 -O ./etc/systemd/network/50-default.network https://raw.githubusercontent.com/FalconChristmas/fpp/master/etc/systemd/network/50-default.network
-rm ./etc/systemd/network/eth0* ./etc/systemd/network/mlan* ./etc/systemd/network/wlan*
-cd /mnt/tmp/boot/firmware
-echo  "user_name=fpp" >> sysconf.txt
-echo  "user_password=falcon" >> sysconf.txt
-cd ~
-umount /mnt/tmp/boot/firmware
-umount /mnt/tmp
+When upstream rev's, override:
 
+    --base-image-date 2026-MM-DD
+    --base-image-debver 13.X
+    --base-image-kernel v6.18
+    --base-image-size 4gb
+    --base-image-name <full-filename>
+    --base-image-url  <full-url>
 
-# Insert into PB2 and power up
-sudo bash
-apt-get update
-apt-get upgrade
-localectl set-locale LANG="en_US.UTF-8"
+BBB-specific flags
+------------------
 
+  --fpp-kernel-ver VER         FPP-patched kernel version. Default: 6.18.8-fpp18_1.
+                               Pulled from FalconChristmas/fpp-linux-kernel.
 
-# Free up some space by removing stuff we know won't be needed
-apt-get remove --autoremove --purge bb-code-server libstd-rust-dev rustc docker.io containerd nginx nginx-full nginx-common bb-u-boot-am57xx-evm firmware-nvidia-graphics firmware-intel-graphics
-rm -rf /opt/source/dtb-5* /opt/source/dtb-6.1.x* /opt/source/dtb-6.6.x* /opt/source/dtb-6.12.x /opt/source/dtb-6.16.x /opt/source/dtb-6.17.x   /opt/source/spi* /opt/source/py*
+  --fpp-kernel-url URL         Full override of the kernel .deb URL.
 
-# The "default" driver for the standard USB->Gigabit device we use has some reporting issues and
-# always report half duplex mode and sometimes only 100MB connection (despite actualy gigabit connection
-# as verified by unifi and speed tests) and other issues which can cause warnings to pop up (for
-# colorlights that need gigabit).  Setup to use the specific module for it.
-cat > /etc/udev/rules.d/99-asix.rules << EOF
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0b95", ATTR{idProduct}=="1790", ATTR{bConfigurationValue}!="1", ATTR{bConfigurationValue}="1"
-EOF
+  --skip-kernel-update         Don't install the FPP-patched kernel. Image
+                               will boot the rcn-ee stock kernel. NOT
+                               suitable for release; FPP needs the patched
+                               kernel for PRU/cape support.
 
+What the script does
+--------------------
 
+1. Downloads (and caches) the rcn-ee am335x base image AND the FPP-patched
+   kernel .deb from FalconChristmas/fpp-linux-kernel. The kernel is fetched
+   on the host (TLS in qemu-arm chroots is unreliable).
+2. Loop-mounts the base, grows partition 3 (BB layout) to fill, resize2fs.
+3. Pre-boot tweaks (same as BB64 plus a bluetooth blacklist for BBGW/BBBW):
+     - Disable growpart, install FPP network config, write sysconf.txt
+     - Drop ASIX udev rule
+     - Drop /etc/modprobe.d/blacklist-bluetooth.conf
+4. Stages the FPP kernel .deb at /root/ inside the rootfs.
+5. Bind-mounts dev/proc/sys, fresh tmpfs at /run, then chroots and:
+     - apt-get update + upgrade
+     - apt-get remove rcn-ee bloat (code-server, rust, docker, nginx,
+       unused u-boots, vendor firmware blobs)
+     - rm -rf /opt/source/dtb-*  (old DTB packages)
+     - dpkg -i the FPP kernel; identify and remove old kernel modules via
+       /lib/modules snapshot (uname -r is wrong under qemu)
+     - SD/FPP_Install.sh --img --yes --branch ${FPPBRANCH}
+       with FPPPLATFORM_OVERRIDE="BeagleBone Black"
+     - Re-purge any old kernel headers FPP_Install.sh may have re-pulled
+     - Cleanup
+6. Touches /boot/fpp_expand_rootfs (note: /boot/, NOT /boot/firmware/ --
+   different from Pi/BB64).
+7. Drops the chroot binds, mksquashfs, zerofree, zip, move to output/.
 
-#update kernel to version needed for FPP
-cd /root
-export BASE_NEW_KERNEL_VERSION=6.18.8-fpp18
-export NEW_KERNEL_VERSION=6.18.8-fpp18_1
-wget -4 https://github.com/FalconChristmas/fpp-linux-kernel/raw/master/debs/linux-image-${NEW_KERNEL_VERSION}_armhf.deb
-# wget -4 https://github.com/FalconChristmas/fpp-linux-kernel/raw/master/debs/linux-headers-${NEW_KERNEL_VERSION}_armhf.deb
-dpkg -i *.deb
-rm -f *.deb
-apt-get remove -y --purge --autoremove linux-image-$(uname -r) linux-headers-$(uname -r) bbb.io-kernel-tasks
+Notes
+-----
 
+- The build is SLOW. armhf-under-qemu on an arm64 host: ~1.5-2 hr; on an
+  x86_64 host: ~2-3 hr. Use --skip-fppos --skip-kernel-update for fast
+  iteration (won't produce a release-quality image but exercises the path).
+- FPPPLATFORM_OVERRIDE belt-and-suspenders: detection now also checks
+  /etc/bbb.io/templates/bb-boot and /boot/firmware/ID.txt.
+- The custom kernel install runs BEFORE FPP_Install.sh so kernel failures
+  fail fast (~minutes vs hours after the FPP compile).
 
-# delete old kernels and modules in /boot and /lib/modules
-# and in /boot/dtbs and any initrd's
-rm -rf /lib/modules/$(uname -r)
-rm -rf /boot/dtbs/$(uname -r)
-rm -rf /boot/initrd.img*
+eMMC AutoFlash
+--------------
 
-
-# blacklist  bluetooth (needed if making image on BBGG or BBBW)
-echo "blacklist bluetooth" > /etc/modprobe.d/blacklist-bluetooth.conf
-echo "blacklist hci_uart" >> /etc/modprobe.d/blacklist-bluetooth.conf
-echo "blacklist bnep" >> /etc/modprobe.d/blacklist-bluetooth.conf
-
-
-
-#reboot to pick up new kernel
-reboot
-
-
-
-cd /root
-wget -4 -O ./FPP_Install.sh  http://raw.githubusercontent.com/FalconChristmas/fpp/master/SD/FPP_Install.sh
-chmod 700 ./FPP_Install.sh
-export FPPBRANCH=master
-./FPP_Install.sh --img
-
-# Reboot and make sure everything looks ok
-
-
-
-
-# Before shutting down, run:
-journalctl --flush --rotate --vacuum-time=1s
-sync
-
-
-
-
-
-
-# Put the SD card back in a Linux system and run the following (substitute
-# the proper device name for your SD card in place of '/dev/sdc'):
-VERSION=10.0
-OSVERSION=2026-02
-DEVICE=/dev/sdc
-mount "${DEVICE}3" /mnt
-rm -f /mnt/home/fpp/.bash_history
-rm -f /mnt/home/fpp/media/settings
-rm -rf /mnt/home/fpp/media/config/backups/*
-rm -f /mnt/home/fpp/media/config/*
-rm -f /mnt/home/fpp/media/logs/*
-rm -rf /mnt/home/fpp/media/tmp/*
-rm -rf /mnt/home/fpp/media/crashes/*
-rm -rf /mnt/home/fpp/media/upload/*
-rm -f /mnt/var/log/*
-rm -f /mnt/etc/ssh/*key*
-rm -f /mnt/root/.bash_history
-echo "uninitialized" > /mnt/etc/machine-id
-touch /mnt/boot/fpp_expand_rootfs
-umount /mnt
-
-zerofree -v "${DEVICE}3"
-dd if=${DEVICE} of=FPP-v${VERSION}-BBB.img bs=1M count=7000
-
-
-# To create the squashfs image needed for OS updates
-# On a separate Linux box:  (this will take a LOOOONG time)
-# mksquashfs is multithreaded so its recommended to use a multicore
-# box for this and not an actual BBB
-# apt-get install squashfs-tools
-mount ${DEVICE}3 /mnt
-mount ${DEVICE}1 /mnt/boot/firmware
-mksquashfs /mnt BBB-${VERSION}_${OSVERSION}.fppos -b 512K -comp xz
-cd /mnt/root
-tar -czf ~/ccache-BBB-2026.x-v${VERSION}.tar.gz .ccache
-cd ~
-umount /mnt/boot/firmware
-umount /mnt
+The flashable .img.zip can be flashed to either an SD card or directly to
+eMMC via the BBB-AutoFlash.sh / BBB-FlashMMC.sh mechanism documented
+separately in those scripts. Image build itself doesn't wire that in --
+you'd burn the .img to a microSD, set the AutoFlash hook, and let the
+device flash itself on first boot.

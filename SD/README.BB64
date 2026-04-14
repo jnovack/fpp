@@ -1,114 +1,72 @@
-# FPP BB64 Image creation notes (work in progress)
-#
-# FPP images are currently based on the following Debian pocketbeagle2 images:
-# https://rcn-ee.net/rootfs/debian-arm64-13-iot-v6.18-k3/2026-01-28/
+FPP BB64 / PocketBeagle 2 Image Build
+======================================
 
-# Burn the above image onto an SD card and insert into a running Linux machine
-# We need to make changes to the filesystems and layout prior to booting
-# on a BB64 device
+The BB64 image builder produces flashable .img.zip files for the
+PocketBeagle 2 (and other arm64 BeagleBone variants based on the rcn-ee
+Debian arm64 IoT image).
 
-# Need to resize the root to be at least 5G
-# Using gparted on Linux/gui is easiest option.
-# In general, if using the above image, it will default to about 6G which is fine
-# and this step can be skipped
+See SD/README.md for host requirements (qemu binfmt setup, build packages)
+and the full common-flag reference.
 
+Quick start
+-----------
 
-# First, mount the rootfs on a Linux machine.   We need to disable the growfs on
-# first boot:
-mkdir -p /mnt/tmp
-mount /dev/sdc3 /mnt/tmp
-mount /dev/sdc1 /mnt/tmp/boot/firmware
-cd /mnt/tmp
-rm -f ./etc/bbb.io/growpart
-wget -4 -O ./etc/systemd/network/50-default.network https://raw.githubusercontent.com/FalconChristmas/fpp/master/etc/systemd/network/50-default.network
-rm ./etc/systemd/network/eth0* ./etc/systemd/network/mlan* ./etc/systemd/network/wlan*
-cd /mnt/tmp/boot/firmware
-echo  "user_name=fpp" >> sysconf.txt
-echo  "user_password=falcon" >> sysconf.txt
-cd ~
-umount /mnt/tmp/boot/firmware
-umount /mnt/tmp
+    sudo ./SD/build-image-bb64.sh --version 10.0-dev --use-local-src
 
+Output:
+    output/FPP-v10.0-dev-BB64.img.zip
+    output/BB64-10.0-dev_2026-04.fppos
 
-# Insert into PB2 and power up
-sudo bash
-apt-get update
-apt-get upgrade
+Default base image
+------------------
 
-# Free up some space by removing stuff we know won't be needed
-apt-get remove --autoremove --purge bb-node-red-installer bb-code-server ti-zephyr-firmware bb-u-boot-beagleboneai64 bb-u-boot-beagleplay bb-u-boot-beagley-ai bb-u-boot-beagleplay-mainline libstd-rust-dev rustc docker.io containerd nginx
-apt-get remove --autoremove firmware-nvidia-graphics firmware-intel-graphics
-rm -rf /opt/source/dtb-5* /opt/source/dtb-6.1-* /opt/source/dtb-6.6-* /opt/source/dtb-6.12-*  /opt/source/spi*
+The script's defaults compose this URL:
 
+    https://rcn-ee.net/rootfs/debian-arm64-13-iot-v6.18-k3/2026-04-03/pocketbeagle2-debian-13.4-iot-v6.18-k3-arm64-2026-04-03-8gb.img.xz
 
-# The "default" driver for the standard USB->Gigabit device we use has some reporting issues and
-# always report half duplex mode and sometimes only 100MB connection (despite actualy gigabit connection
-# as verified by unifi and speed tests) and other issues which can cause warnings to pop up (for
-# colorlights that need gigabit).  Setup to use the specific module for it.
-cat > /etc/udev/rules.d/99-asix.rules << EOF
-ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0b95", ATTR{idProduct}=="1790", ATTR{bConfigurationValue}!="1", ATTR{bConfigurationValue}="1"
-EOF
+When upstream rev's the date or filename, override:
 
-#remove some unneeded things to clear up space
-rm -rf /opt/bb-code-server
-rm -rf /opt/vsx-examples
+    --base-image-date 2026-MM-DD
+    --base-image-debver 13.X
+    --base-image-kernel v6.18-kN
+    --base-image-size 8gb
+    --base-image-name <full-filename>     # if naming changes
+    --base-image-url  <full-url>          # full override
 
-reboot
+The base image already ships a 6.18 kernel, so there is no kernel-update
+step (unlike the Pi build).
 
+What the script does
+--------------------
 
-cd /root
-wget -4 -O ./FPP_Install.sh  http://raw.githubusercontent.com/FalconChristmas/fpp/master/SD/FPP_Install.sh
-chmod 700 ./FPP_Install.sh
-export FPPBRANCH=master
-./FPP_Install.sh --img
+1. Downloads (and caches) the rcn-ee pocketbeagle2 base image.
+2. Loop-mounts it, grows partition 3 (BB layout: p1=boot, p2=unused,
+   p3=rootfs) to fill the target image size, and resize2fs's the rootfs.
+3. Pre-boot tweaks:
+     - Disable rcn-ee's first-boot growpart (FPP manages its own resize)
+     - Drop FPP's etc/systemd/network/50-default.network
+     - Remove stock eth0/mlan/wlan network configs
+     - Append user_name=fpp / user_password=falcon to sysconf.txt
+     - Drop the ASIX USB-Gigabit udev rule
+4. Bind-mounts dev/proc/sys, fresh tmpfs at /run, then chroots and:
+     - apt-get update + upgrade
+     - apt-get remove the rcn-ee bloat (node-red, code-server, unused
+       u-boot variants, rust, docker, nginx, vendor firmware blobs)
+     - rm -rf /opt/source/dtb-* /opt/bb-code-server /opt/vsx-examples
+     - SD/FPP_Install.sh --img --yes --branch ${FPPBRANCH}
+       with FPPPLATFORM_OVERRIDE="BeagleBone 64"
+     - Cleanup (apt clean, logs, keys, machine-id reset)
+5. Touches /boot/firmware/fpp_expand_rootfs.
+6. Drops the chroot binds, mksquashfs's the .fppos, zerofree, zip, move
+   to output/.
 
-# Reboot and make sure everything looks ok
+Notes
+-----
 
-# Before shutting down, run:
-journalctl --flush --rotate --vacuum-time=1s
-sync
-
-
-
-    DEVICE=/dev/sdc
-    VERSION=10.0
-    OSVERSION=2026-01
-    BLOCKS=7800
-    mount "${DEVICE}3" /mnt
-    rm -f /mnt/home/fpp/.bash_history
-    rm -f /mnt/home/fpp/media/settings
-    rm -rf /mnt/home/fpp/media/config/backups/*
-    rm -f /mnt/home/fpp/media/config/*
-    rm -f /mnt/home/fpp/media/logs/*
-    rm -rf /mnt/home/fpp/media/tmp/*
-    rm -rf /mnt/home/fpp/media/crashes/*
-    rm -rf /mnt/home/fpp/media/upload/*
-    rm -f /mnt/var/log/*
-    rm -f /mnt/etc/ssh/*key*
-    rm -f /mnt/root/.bash_history
-    echo "uninitialized" > /mnt/etc/machine-id
-    umount /mnt
-    mount "${DEVICE}1" /mnt
-    touch /mnt/fpp_expand_rootfs
-    umount /mnt
-
-    zerofree -v "${DEVICE}3"
-    dd if=${DEVICE} of=FPP-v${VERSION}-BB64.img bs=1M count=${BLOCKS}
-    zip -9 FPP-v$VERSION-BB64.img.zip FPP-v${VERSION}-BB64.img
-
-This will create a file called FPP-${VERSION}-BB64.img.zip that can be distributed
-for testing/release.
-
-
-# To create the squashfs image needed for OS updates
-# On a separate Linux box:  (this will take a LOOOONG time)
-mount ${DEVICE}3 /mnt
-mount ${DEVICE}1 /mnt/boot/firmware
-mksquashfs /mnt BB64-${VERSION}_${OSVERSION}.fppos -b 512K -comp xz
-cd /mnt/root
-tar -czf ~/ccache-BB64-2026.x-v${VERSION}.tar.gz .ccache
-cd ~
-umount /mnt/boot/firmware
-umount /mnt
-
-
+- IMG_SIZE_MB defaults to 8400. The base image is ~8 GB; truncating below
+  that would corrupt the partition table, so the script aborts with a
+  clear error if --img-size-mb is too small.
+- FPPPLATFORM_OVERRIDE is passed in because BeagleBone autodetection
+  historically used /sys/class/leds/beaglebone:* which doesn't exist in a
+  chroot. Modern detection now also checks /etc/bbb.io/templates/bb-boot
+  and /boot/firmware/ID.txt, so the override is belt-and-suspenders.

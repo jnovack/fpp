@@ -78,11 +78,33 @@ OSVER="UNKNOWN"
 # need the adduser/addgroup/ldconfig/a2enmod/etc... commands
 PATH=$PATH:/usr/sbin:/sbin
 
-# Under docker (or any environment where systemd isn't PID 1), every
-# `systemctl` call returns non-zero and trips `set -e`. Neutralize systemctl
-# in that case so the install script can still prep the filesystem.
+# Under docker / chroot (systemd isn't PID 1), runtime systemctl commands
+# (start/stop/restart/reload/is-active/daemon-reload/...) fail because there
+# is no running systemd to talk to. But unit-symlink operations (enable,
+# disable, mask, unmask, preset, set-default) work perfectly well -- they
+# just manipulate /etc/systemd/system/*.wants/ symlinks, which is exactly
+# what we need during image builds.
+#
+# A blanket "neutralize all systemctl" override silently drops every
+# `systemctl enable fppd.service` in the script and produces an image where
+# none of FPP's services are registered with systemd. That's how broken Pi
+# images shipped before this fix.
+#
+# Selective wrapper: pass through unit-management commands (with --no-reload
+# so they don't try to talk to a running daemon); no-op everything else.
 if [ ! -d /run/systemd/system ]; then
-    systemctl() { echo "skipping systemctl $*"; return 0; }
+    _real_systemctl="$(command -v systemctl)"
+    systemctl() {
+        case "$1" in
+            enable|disable|mask|unmask|preset|preset-all|reenable|set-default|add-wants|add-requires)
+                "$_real_systemctl" --no-reload "$@"
+                ;;
+            *)
+                echo "skipping systemctl $*"
+                return 0
+                ;;
+        esac
+    }
     export -f systemctl
 fi
 
@@ -616,6 +638,13 @@ install_base_packages() {
 			systemctl disable console-kit-daemon.service
 			systemctl disable cloud9.socket
             systemctl disable beagle-flasher-init-shutdown.service
+
+            # Mask systemd-firstboot so it doesn't prompt for a username on
+            # first boot. We've already created the fpp user; the prompt is
+            # noise (and confuses non-headless users on Pi where the prompt
+            # appears on the HDMI console). Mask, not disable: -firstboot is
+            # gated by a marker file too, but masking guarantees no run.
+            systemctl mask systemd-firstboot.service || true
 		fi
 
         if $isimage; then
@@ -1409,9 +1438,12 @@ You can access the UI by typing "http://fpp.local/" into a web browser.[0m
 EOF
 
     #######################################
-    # Config fstab to mount some filesystems as tmpfs
+    # Config fstab to mount some filesystems as tmpfs.
+    # Skip on x86_64 (desktop installs typically have ample swap) and on
+    # Raspberry Pi (Raspbian ships its own /tmp / /var/tmp handling that we
+    # don't want to fight with).
     ARCH=$(uname -m)
-    if [ "$ARCH" != "x86_64" ]; then
+    if [ "$ARCH" != "x86_64" ] && [ "$FPPPLATFORM" != "Raspberry Pi" ]; then
         echo "FPP - Configuring tmpfs filesystems"
         cp -f /opt/fpp/etc/systemd/tmp.mount /lib/systemd/system
         systemctl unmask tmp.mount

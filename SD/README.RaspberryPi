@@ -1,159 +1,67 @@
-=============================================================================
-Instructions for creating a new FPP SD image package for the Raspberry Pi
-=============================================================================
+FPP Raspberry Pi Image Build
+=============================
 
-Install the latest Raspbian Trixe Lite image to the SD card.  The last
-version tested 2025-12-04-raspios-trixie-armhf-lite.img
-Resize the root partition to 6GB using fdisk (substitute the proper device
-for your SD card).
+The Raspberry Pi image builder produces flashable .img.zip files for both
+32-bit (armhf / "Pi") and 64-bit (arm64 / "Pi64") Raspbian Trixie Lite.
 
-    fdisk /dev/sdc
-    p
-	(Note the original start block of partition 2, you will need this later)
-    d
-    2
-    n
-    p
-    2
-	(Replace 1064960 with the original start block of partition 2 noted earlier)
-    1064960
-	(FIXME, downsize this value once install is tested)
-    +7100M
-    N
-    p
-    w
+See SD/README.md for host requirements (qemu binfmt setup, build packages)
+and the full common-flag reference.
 
-FSCK and resize the root partition (again, use your device name.
+Quick start
+-----------
 
-    e2fsck -f /dev/sdc2
-    resize2fs /dev/sdc2
+64-bit (Pi3/4/5/Zero 2 -- recommended for new builds):
 
-Disable the auto partition resize script on the SD and enable the SSH server while
-we have the partition mounted:
+    sudo ./SD/build-image-pi.sh --arch arm64 --version 10.0-dev --use-local-src
 
-	# Make a temp mount location
-	mkdir -p /mnt/tmp
-	# Mount the boot partition
-	mount /dev/sdc1 /mnt/tmp
-	# Backup the cmdline.txt file
-	cp /mnt/tmp/cmdline.txt /mnt/tmp/cmdline.org
-	# Disable the auto-resize of the root partition
-    sed -i -e "s# resize##" /mnt/tmp/cmdline.txt
- 
-	# Enable ssh by default
-	touch /mnt/tmp/ssh
-    # Add fpp user
-    echo 'fpp:$y$j9T$CIOM3ox8ZbSTECBR.95/0.$2EtpvwnCAMnPfB0d.uzzl7SbZXiRQw80yrG4DbK8Ux0:20473' > /mnt/tmp/userconf
-	# Unmount the file system
-	umount /mnt/tmp
-    # make sure the labels are set
-    dosfslabel /dev/sdc1 boot
-    e2label /dev/sdc2 rootfs
-	# Sync the changes so it's safe to remove the SD card
-	sync
+32-bit (compatible with every Pi model including Pi 1 / Zero):
 
-Remove the SD card and boot it up in a Pi4 (preferred) or 3B+ (not Pi5).
+    sudo ./SD/build-image-pi.sh --arch armhf --version 10.0-dev --use-local-src
 
+Output:
+    output/FPP-v10.0-dev-Pi64.img.zip    (or -Pi.img.zip for armhf)
+    output/Pi64-10.0-dev_2026-04.fppos   (or Pi-... for armhf)
 
-Do a system upgrade to make sure everything is at the latest versions
-    apt-get update
-    apt-get upgrade
-    apt-get clean
-    localectl set-locale LANG="en_US.UTF-8"
+Pi-specific flags
+-----------------
 
+  --arch {armhf|arm64}         Target architecture. Default: armhf.
+                               armhf -> FPP-vX-Pi.img.zip
+                               arm64 -> FPP-vX-Pi64.img.zip
 
+  --skip-kernel-update         Skip rpi-update of the kernel. The base image's
+                               stock kernel will be used. Useful for fast
+                               iteration; do NOT use for release builds --
+                               FPP10 requires kernel 6.18+.
 
-On the Pi, run the FPP installer:
-    cd /root
-    export FPPBRANCH=master
-	wget -O ./FPP_Install.sh https://raw.githubusercontent.com/FalconChristmas/fpp/master/SD/FPP_Install.sh
-	chmod 700 ./FPP_Install.sh
-	./FPP_Install.sh --img
+What the script does
+--------------------
 
-This will install FPP and perform all required changes to the root filesystem
-and add the FPP user, install required packages, etc.
+1. Downloads (and caches) the latest Raspbian Trixie Lite base image for the
+   chosen architecture from downloads.raspberrypi.com.
+2. Loop-mounts it, grows partition 2 to fill the target image size, and
+   resize2fs's the rootfs.
+3. Disables Raspbian's first-boot mechanism in cmdline.txt (FPP creates the
+   fpp user itself; first-boot would prompt the user instead).
+4. Pre-stages a fresh rpi-update from upstream (the in-chroot self-update
+   over qemu-arm hits TLS issues), then resolves the firmware branch ->
+   commit SHA on the host.
+5. Bind-mounts dev/proc/sys, fresh tmpfs at /run, copies qemu-user-static
+   into the image, then chroots and runs:
+     - apt-get update + upgrade
+     - rpi-update <SHA> with PRUNE_MODULES=1 WANT_PI5=1 SKIP_BACKUP=1
+       SKIP_BOOTLOADER=1 SKIP_VCLIBS=1 SKIP_SDK=1
+     - SD/FPP_Install.sh --img --yes --branch ${FPPBRANCH}
+     - Old kernel cleanup (modules + headers + 16K-page kernel image)
+     - apt clean, log/key/machine-id reset, etc.
+6. Touches /boot/firmware/fpp_expand_rootfs (FPP first-boot expand marker).
+7. Drops the chroot bind mounts, mksquashfs's the rootfs into a .fppos.
+8. zerofree's the rootfs, detaches the loop, zips the .img, moves to output/.
 
+Manual workflow (legacy)
+------------------------
 
-# Need to update the kernel AFTER the above as the package installs in the above may trigger kernel "updates"
-
-# For FPP10/Debian 13, we'd like to move to kernel 6.18+
-# If the kernel version is NOT already 6.18.x (depends on the image used), then you need to update:
-PRUNE_MODULES=1 WANT_PI5=1 rpi-update next
-KV=$(uname -r)
-KV=${KV::-3}
-rm -f /boot/*-${KV}*
-rm -rf /lib/modules/${KV}*
-rm -rf /usr/lib/linux-image-${KV}*
-# remove the 16K page kernel as some of the libraries are incompatible with it
-rm -rf /boot/firmware/kernel_2712.img
-rm -rf /lib/modules/*-16k*
-
-
-apt-get remove -y --purge --autoremove linux-headers-rpi-v7 linux-headers-rpi-v6
-apt-get remove -y --purge --autoremove linux-headers-${KV}-v8 linux-headers-${KV}-v7 linux-headers-${KV}-v6
-rm -rf /usr/src/linux-*
-
-
-
-Reboot again to pick up the latest kernel that may have been installed with the dist-upgrade
-
-
-
-Once the Pi reboots, login as the new fpp user and check to make sure everything
-is up and running and working properly
-
-# Trim the fs
-sudo journalctl --flush --rotate --vacuum-time=1s
-
-# Shutdown the Pi
-sudo shutdown -h now
-
-Put the SD card back in a Linux system and run the following (substitute
-the proper device name for your SD card in place of '/dev/sdg'):
-
-	NOTE: The 7900 on the "BLOCK=" line below must be at least the new size of the
-	      second partition created at the top of this document using fdisk.
-    NOTE: the linux system needs to have zerofree and squashfs-tools installed
-       apt-get install zerofree squashfs-tools
-
-    DEVICE=/dev/sdc
-    VERSION=10.0
-    OSVERSION=2026-01
-    BLOCKS=7900
-    mount "${DEVICE}2" /mnt
-    rm -rf /mnt/usr/src/linux-headers-*
-    rm -rf /mnt/home/pi
-    rm -f /mnt/home/fpp/.bash_history
-    rm -f /mnt/home/fpp/media/settings
-    rm -rf /mnt/home/fpp/media/config/backups/*
-    rm -f /mnt/home/fpp/media/config/*
-    rm -f /mnt/home/fpp/media/logs/*
-    rm -f /mnt/home/fpp/media/tmp/*
-    rm -f /mnt/var/log/*
-    rm -f /mnt/var/swap
-    rm -f /mnt/etc/ssh/*key*
-    rm -f /mnt/root/.bash_history
-    echo "uninitialized" > /mnt/etc/machine-id
-    umount /mnt
-    mount "${DEVICE}1" /mnt
-    touch /mnt/fpp_expand_rootfs
-    umount /mnt
-
-    zerofree -v "${DEVICE}2"
-	dd if=${DEVICE} of=FPP-v${VERSION}-Pi.img bs=1M count=${BLOCKS}
-	zip -9 FPP-v$VERSION-Pi.img.zip FPP-v${VERSION}-Pi.img
-
-This will create a file called FPP-${VERSION}-Pi.img.zip that can be distributed
-for testing/release.
-
-
-# To create the squashfs image needed for OS updates
-# On a separate Linux box:  (this will take a LOOOONG time)
-mount ${DEVICE}2 /mnt
-mount ${DEVICE}1 /mnt/boot/firmware
-mksquashfs /mnt Pi-${VERSION}_${OSVERSION}.fppos -b 512K -comp xz
-cd /mnt/root
-tar -czf ~/ccache-Pi-2026.x-v${VERSION}.tar.gz .ccache
-cd ~
-umount /mnt/boot/firmware
-umount /mnt
+The hand-driven workflow that this script automates is preserved in git
+history: see commits prior to the introduction of build-image-pi.sh, or
+inspect the build-image-pi.sh script itself -- each phase comment quotes
+the original README step it replaces.

@@ -1,61 +1,100 @@
-FPP on Debian has been tested on various SBC's and other devices running the
-"Bookworm" based Debian images.  (It no longer works it with Bullseye).
+Installing FPP on existing Debian / Ubuntu / x86_64
+====================================================
 
-In general, using the "smallest" Debian image available is best.  If there is a "cli"
-or "minimal" image, they work best.  "server" images are usually OK.  Desktop images
-contain a lot of extra packages.  While they will work, if you don't plan on having a
-desktop environment on it, they will waste a lot of space.
-  
-Note: this will get a BASIC FPP player running on the device.   Things like e1.31
-output, sound, etc.. will likely work.   Any hats/capes for pixels/panels, video,
-etc... will likely not work. HDMI output MAY work, but may also require updates
-to "env" files in /boot to properly configure.  Search forums/google for instructions
-for your particular device.
+This document covers installing FPP on top of an already-running Debian or
+Ubuntu system (NUC, x86 server, generic SBC, etc.) -- as opposed to building
+a complete SD card image, which is what the SD/build-image-*.sh scripts do.
+For image builds see SD/README.md.
 
+Supported releases
+------------------
 
-Note: Certain parts of installing FPP (ex: building VLC) will utilize all cores of
-the SBC to near 100% for an extended period of time.   If the CPU does not have
-heat sinks/fans, it may shutdown in the middle of installing due to thermal limits.
-If this happens, you need to restart from a fresh image.  We'd suggest adding
-heat sinks or fans to keep thermals under control, but lowering the CPU frequency
-can also be a big help.   Before running FPP_Install.sh, run a command like:
+- Debian 13 (Trixie)
+- Ubuntu 24.04 LTS
+- Armbian built on either of the above (see also SD/README.Armbian)
 
-cpufreq-set -u 800000
+Older releases (Debian 12 / Bookworm, Bookworm-based Armbian, Ubuntu 22.04,
+LinuxMint 21) are no longer supported. Earlier than that has been broken
+for a long time. Use the smallest available Debian image (Debian's "netinst"
+or rcn-ee's "minimal" / "iot" variants); desktop images install fine but
+waste a lot of disk.
 
-to lock the CPU to 800Mhz or lower.
+Two install modes
+-----------------
 
+FPP_Install.sh has two modes that differ significantly in how invasive they
+are. Pick based on what the device is for.
 
+`--img` mode (image / dedicated-device install)
+  - Renames the host to "FPP", takes over networking via systemd-networkd
+  - Disables a long list of Debian services (gdm, dhcp-helper, hostapd, etc.)
+  - Removes packages FPP doesn't need (nginx, network-manager, fake-hwclock)
+  - Disables stock pi/debian/odroid users; creates the fpp user at UID 1000
+  - Enables firstboot rootfs expand on the next boot
+  - Suitable for: dedicated FPP players (the device exists to run FPP).
 
-=============================================================================
+Default mode (no `--img`, "side install" / desktop)
+  - Installs all packages and FPP itself, but leaves your hostname,
+    networking, user accounts, and existing services alone.
+  - Adds an `fpp` user but doesn't reshape root or disable other users.
+  - Suitable for: NUCs / desktops where FPP is one of several things the
+    machine does, dev workstations, Docker containers.
 
+Quick install
+-------------
 
-Insert into the SBC and boot.
+```bash
+# Make sure the system is up to date first.
+sudo apt-get update
+sudo apt-get -y upgrade
+sudo reboot   # if a kernel/glibc upgrade landed
 
-
-Commands to run after boot:
-Login via ssh as root (check you image on how to login as root, many will require
-logging in via a default user/password and then "sudo bash")
-
-#######################
-# After reboot
-# check root filesystem size (should be at least ~3.4GB)
-df -k
-# update packages
-apt-get -y update
-apt-get -y upgrade
-
-shutdown -r now
-
-
-# After reboot, re-loginas root and run:
-wget --no-check-certificate -O ./FPP_Install.sh https://raw.githubusercontent.com/FalconChristmas/fpp/master/SD/FPP_Install.sh
+# Run the installer.
+wget -O ./FPP_Install.sh https://raw.githubusercontent.com/FalconChristmas/fpp/master/SD/FPP_Install.sh
 chmod 700 ./FPP_Install.sh
 
-#if you intend for FPP to take over the entire device including networking, run:
-./FPP_Install.sh --img
-#otherwise, run:
-./FPP_Install.sh
-# Without the --img flag, FPP will not control things like networking, video, etc... which is more suitable
-# if the device will be used in docker or other containers or as a desktop environment with FPP running in the background
+# Dedicated FPP player:
+sudo ./FPP_Install.sh --img
 
+# Side-install on a desktop / Docker / multi-purpose machine:
+sudo ./FPP_Install.sh
+```
 
+Useful flags
+------------
+
+  --yes / -y            Non-interactive; skip the "do you wish to proceed" prompt.
+                        Equivalent to setting FPP_INSTALL_YES=1.
+
+  --branch BRANCH       Install a non-master branch of FPP source.
+
+  --skip-clone          Don't `git clone` to /opt/fpp. Use when /opt/fpp is
+                        already populated (Docker images that pre-stage source,
+                        or local-source CI flows).
+
+  --skip-vlc            Don't build VLC from source.
+
+  --skip-apt-install    Don't run `apt-get install $PACKAGE_LIST`. Use when the
+                        Dockerfile / build script has already pre-installed
+                        the dependency set.
+
+  --build-vlc           Force VLC to be built from source rather than apt'd.
+
+Thermal note (low-power SBCs)
+-----------------------------
+
+The compile (especially VLC if you opt into building it) pegs all CPU cores
+near 100% for a long time. Headless SBCs without a heatsink/fan can hit
+thermal-shutdown in the middle of the install -- recovery means starting
+over from a fresh image. If you're hitting thermals, lock the CPU lower
+before starting:
+
+    cpufreq-set -u 800000   # lock to 800 MHz max
+
+Container installs
+------------------
+
+For Docker / OCI images, see Docker/Dockerfile in the repo root. The
+installer is invoked with `--skip-apt-install --skip-vlc` because the
+Dockerfile pre-installs the dependency set as separate layers (so the
+expensive parts cache properly across builds).
