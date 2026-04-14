@@ -345,13 +345,6 @@
 				"WifiRegulatoryDomain"
 			]
 		},
-		"wifiDriversGroup": {
-			"description": "WIFI Drivers/Domain",
-			"settings": [
-				"wifiDrivers",
-				"WifiRegulatoryDomain"
-			]
-		},
 		"advNetworkSettingsGroup": {
 			"description": "Advanced Interface Settings",
 			"level": 1,
@@ -550,21 +543,6 @@
 				"Uruguay": "UY",
 				"Venezuela": "VE",
 				"Vietnam": "VN"
-			}
-		},
-		"wifiDrivers": {
-			"name": "wifiDrivers",
-			"description": "WIFI Drivers",
-			"tip": "Which drivers to use for WIFI Adapters.  Some RealTek chipsets have drivers in Linux kernel as well as externally built.  In general, the external adapters work better, but may not support all chipsets.",
-			"gatherStats": true,
-			"level": 0,
-			"restart": 0,
-			"reboot": 1,
-			"default": "External",
-			"type": "select",
-			"options": {
-				"External": "External",
-				"Linux Kernel": "Kernel"
 			}
 		},
 		"AutoEnableOutputs": {

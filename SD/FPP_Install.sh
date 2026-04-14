@@ -1257,9 +1257,6 @@ if $isimage; then
 
     echo "FPP - Cleaning up /root/.cpanm to save space on the SD image"
     rm -rf /root/.cpanm
-    
-    echo "FPP - Enabling legacy WiFi drivers"
-    sed -i -e "s@^ExecStart.*@ExecStart=/sbin/wpa_supplicant -c/etc/wpa_supplicant/wpa_supplicant-%I.conf -Dnl80211,wext -i%I@" "/lib/systemd/system/wpa_supplicant@.service"
 fi
 
 

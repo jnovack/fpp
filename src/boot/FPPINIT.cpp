@@ -1531,21 +1531,6 @@ static void detectNetworkModules() {
         // PutFileContents("/home/fpp/media/config/fpp-network-modules.conf", content);
     }
 }
-static void checkPi5Wifi() {
-#ifdef PLATFORM_PI
-    if (isPi5()) {
-        // Pi5 does not have external wifi adapters, make sure we have them disabled
-        if (FileExists("/etc/modprobe.d/blacklist-native-wifi.conf")) {
-            unlink("/etc/modprobe.d/blacklist-native-wifi.conf");
-        }
-        std::string v;
-        getRawSetting("wifiDrivers", v);
-        if (v != "Kernel") {
-            setRawSetting("wifiDrivers", "Kernel");
-        }
-    }
-#endif
-}
 void removeDummyInterface() {
     exec("ip link delete dummy0 > /dev/null 2>&1");
 }
@@ -1992,7 +1977,6 @@ int main(int argc, char* argv[]) {
         bool needReboot = checkUnpartitionedSpace();
         checkSSHKeys();
         handleBootPartition();
-        checkPi5Wifi();
         checkHostName();
         checkFSTAB();
         setupApache();

@@ -2148,11 +2148,7 @@
                             </h3>
                             <div class="container-fluid settingsTable settingsGroupTable">
                                 <?php
-                                if (file_exists("/etc/modprobe.d/wifi-disable-power-management.conf")) {
-                                    PrintSettingGroup("wifiDriversGroup");
-                                } else {
-                                    PrintSettingGroup("wifiDomainGroup");
-                                }
+                                PrintSettingGroup("wifiDomainGroup");
                                 ?>
                             </div>
                         </div>

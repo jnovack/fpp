@@ -203,27 +203,6 @@ function SetForceHDMIResolution($value, $postfix)
     }
 }
 
-function SetWifiDrivers($value)
-{
-    global $settings;
-    exec("sudo rm -f /etc/modules-load.d/fpp-network.conf", $output, $return_val);
-    exec("sudo rm -f /etc/modprobe.d/50-8188eu.conf", $output, $return_val);
-    if ($value == "Kernel") {
-        exec("sudo rm -f /etc/modprobe.d/blacklist-native-wifi.conf", $output, $return_val);
-        exec("sudo rm -f /etc/modprobe.d/rtl8723bu-blacklist.conf", $output, $return_val);
-        if (file_exists("/etc/fpp/wifi/blacklist-external-wifi.conf")) {
-            exec("sudo cp /etc/fpp/wifi/blacklist-external-wifi.conf /etc/modprobe.d", $output, $return_val);
-        }
-    } else {
-        exec("sudo rm -f /etc/modprobe.d/blacklist-external-wifi.conf", $output, $return_val);
-        exec("sudo rm -f /etc/modprobe.d/blacklist-8192cu.conf", $output, $return_val);
-        if (file_exists("/etc/fpp/wifi/blacklist-native-wifi.conf")) {
-            exec("sudo cp /etc/fpp/wifi/blacklist-native-wifi.conf /etc/modprobe.d", $output, $return_val);
-        } else if (file_exists("/etc/modprobe.d/wifi-disable-power-management.conf")) {
-            exec("sudo cp " . $settings["fppDir"] . "/etc/blacklist-native-wifi.conf /etc/modprobe.d", $output, $return_val);
-        }
-    }
-}
 function SetInstalledCape($value)
 {
     global $settings;
@@ -395,9 +374,6 @@ function ApplySetting($setting, $value)
             break;
         case 'ForceHDMIResolutionPort2':
             SetForceHDMIResolution($value, "2");
-            break;
-        case 'wifiDrivers':
-            SetWifiDrivers($value);
             break;
         case 'InstalledCape':
             SetInstalledCape($value);

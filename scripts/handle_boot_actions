@@ -19,8 +19,6 @@ function HandleSettings()
         ApplySetting("ForceHDMIResolution", $settings["ForceHDMIResolution"]);
     if (array_key_exists("ForceHDMIResolutionPort2", $settings))
         ApplySetting("ForceHDMIResolutionPort2", $settings["ForceHDMIResolutionPort2"]);
-    if (array_key_exists("wifiDrivers", $settings))
-        ApplySetting("wifiDrivers", $settings["wifiDrivers"]);
     if (array_key_exists("GPIOFan", $settings))
         ApplySetting("GPIOFan", $settings["GPIOFan"]);
     if (array_key_exists("Kiosk", $settings))
