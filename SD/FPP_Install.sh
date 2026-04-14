@@ -73,6 +73,14 @@ OSVER="UNKNOWN"
 # need the adduser/addgroup/ldconfig/a2enmod/etc... commands
 PATH=$PATH:/usr/sbin:/sbin
 
+# Under docker (or any environment where systemd isn't PID 1), every
+# `systemctl` call returns non-zero and trips `set -e`. Neutralize systemctl
+# in that case so the install script can still prep the filesystem.
+if [ ! -d /run/systemd/system ]; then
+    systemctl() { echo "skipping systemctl $*"; return 0; }
+    export -f systemctl
+fi
+
 # CPU Count
 CPUS=$(grep "^processor" /proc/cpuinfo | wc -l)
 if [[ ${CPUS} -gt 1 ]]; then
@@ -1252,10 +1260,16 @@ chown fpp:fpp ${FPPHOME}/media/logs
 #######################################
 # Configure log rotation
 echo "FPP - Configuring log rotation"
-cp /opt/fpp/etc/logrotate.d/* /etc/logrotate.d/
-sed -i -e "s/#compress/compress/" /etc/logrotate.conf
-sed -i -e "s/rotate .*/rotate 2/" /etc/logrotate.conf
-sed -i -e "s/weekly/daily/" /etc/logrotate.d/rsyslog
+if [ -d /etc/logrotate.d ]; then
+    cp /opt/fpp/etc/logrotate.d/* /etc/logrotate.d/
+fi
+if [ -f /etc/logrotate.conf ]; then
+    sed -i -e "s/#compress/compress/" /etc/logrotate.conf
+    sed -i -e "s/rotate .*/rotate 2/" /etc/logrotate.conf
+fi
+if [ -f /etc/logrotate.d/rsyslog ]; then
+    sed -i -e "s/weekly/daily/" /etc/logrotate.d/rsyslog
+fi
 
 #######################################
 # Disable duplicate logging to save on disk space 
