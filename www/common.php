@@ -2355,86 +2355,58 @@ function network_wifi_strength_obj()
         }
         array_push($rc, $obj);
     } else {
-        $lines = file("/proc/net/wireless");
-        #
-        # Expected format
-        #
-        # face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22
-        # wlan0: 0000   41.  -69.  -256        0      0      0   2042      0        0
-        #
-        # NOTE: If level is negative, then it is db.  If positive then it is quality %
-        # https://www.intuitibits.com/2016/03/23/dbm-to-percent-conversion/ used for manual quality mapping
-        #
-        foreach ($lines as $cnt => $line) {
-            if ($cnt > 1) {
-                $parts = preg_split("/\s+/", trim($line));
-                $obj = new \stdClass();
-                $obj->interface = rtrim($parts[0], ":");
-                $obj->link = intval($parts[2]);
-                $obj->level = intval($parts[3]);
-                $obj->unit = "dBm";
-                $obj->noise = intval($parts[4]);
-                $obj->desc = '';
-
-                $output = exec("iw dev " . $obj->interface . " link 2>/dev/null | grep signal | awk '{print \$2}'");
-
-                if ($output != '') {
-                    $pparts = preg_split('/\//', trim($output));
-                    $pct = intval($pparts[0]);
-                    $max = 100;
-                    if (count($pparts) > 1) {
-                        $max = intval($pparts[1]);
-                    }
-                    if (($pct > 0) && ($max > 0)) {
-                        if ($max != 100) {
-                            $pct = intval($pct * 100.0 / $max);
-                        }
-                        $obj->pct = $pct;
-
-                        if ($obj->level >= 0) {
-                            $obj->unit = "pct";
-                            $obj->level = $pct;
-                        }
-
-                        if ($obj->pct >= 79) {
-                            $obj->desc = "excellent";
-                        } elseif ($obj->pct > 66) {
-                            $obj->desc = "good";
-                        } elseif ($obj->pct > 48) {
-                            $obj->desc = "fair";
-                        } else {
-                            $obj->desc = "weak";
-                        }
-                    }
-                }
-
-                if ($obj->desc == '') {
-                    if ($obj->level >= 0) {
-                        $obj->unit = "pct";
-                        if ($obj->level >= 79) {
-                            $obj->desc = "excellent";
-                        } elseif ($obj->level > 66) {
-                            $obj->desc = "good";
-                        } elseif ($obj->level > 48) {
-                            $obj->desc = "fair";
-                        } else {
-                            $obj->desc = "weak";
-                        }
-                    } else {
-                        if ($obj->level > -50) {
-                            $obj->desc = "excellent";
-                        } elseif ($obj->level > -60) {
-                            $obj->desc = "good";
-                        } elseif ($obj->level > -70) {
-                            $obj->desc = "fair";
-                        } else {
-                            $obj->desc = "weak";
-                        }
-                    }
-                }
-
-                array_push($rc, $obj);
+        // Enumerate wireless interfaces via iw (nl80211). The old path
+        // read /proc/net/wireless, which on modern kernels routes through
+        // the WEXT handlers and produces a "uses wireless extensions
+        // which will stop working for Wi-Fi 7 hardware" dmesg warning on
+        // every status page load.
+        $iw_dev_out = [];
+        exec("iw dev 2>/dev/null", $iw_dev_out);
+        $interfaces = [];
+        foreach ($iw_dev_out as $line) {
+            if (preg_match('/^\s*Interface\s+(\S+)/', $line, $m)) {
+                $interfaces[] = $m[1];
             }
+        }
+
+        foreach ($interfaces as $iface) {
+            $obj = new \stdClass();
+            $obj->interface = $iface;
+            $obj->link = 0;
+            $obj->level = 0;
+            $obj->unit = "dBm";
+            $obj->noise = 0;
+            $obj->desc = '';
+
+            $link_out = [];
+            exec("iw dev " . escapeshellarg($iface) . " link 2>/dev/null", $link_out);
+            $joined = implode("\n", $link_out);
+
+            if ($joined === '' || strpos($joined, 'Not connected') !== false) {
+                $obj->desc = 'weak';
+                array_push($rc, $obj);
+                continue;
+            }
+
+            if (preg_match('/signal:\s*(-?\d+)/', $joined, $m)) {
+                $obj->level = intval($m[1]);
+                // Convert dBm to percent: 2*(dBm+100) clamped to 0-100
+                $pct = max(0, min(100, intval(2 * ($obj->level + 100))));
+                $obj->pct = $pct;
+                $obj->link = $pct;
+            }
+
+            if ($obj->level > -50) {
+                $obj->desc = "excellent";
+            } elseif ($obj->level > -60) {
+                $obj->desc = "good";
+            } elseif ($obj->level > -70) {
+                $obj->desc = "fair";
+            } else {
+                $obj->desc = "weak";
+            }
+
+            array_push($rc, $obj);
         }
     }
     return $rc;
@@ -2451,7 +2423,10 @@ function network_list_interfaces_array()
         $parts = preg_split("/\s+/", trim($output));
         return $parts;
     }
-    $interfaces = explode("\n", trim(shell_exec("/sbin/ifconfig -a | cut -f1 | cut -f1 -d' ' | grep -v ^$ | grep -v lo | grep -v eth0:0 | grep -v usb | grep -v SoftAp | grep -v 'can.' | grep -v tether ")));
+    // Enumerate via sysfs rather than ifconfig: ifconfig on wireless
+    // interfaces calls SIOCGIWNAME (WEXT), producing a dmesg deprecation
+    // warning on every call.
+    $interfaces = explode("\n", trim(shell_exec("ls /sys/class/net 2>/dev/null | grep -v '^lo$' | grep -v '^usb' | grep -v SoftAp | grep -v '^can' | grep -v '^tether'")));
     return $interfaces;
 }
 

@@ -32,7 +32,7 @@ function network_wifi_scan()
         return json(array("status" => "Invalid Interface", "networks" => array()));
     }
 
-    exec("sudo /sbin/ifconfig $interface up", $output);
+    exec("sudo /sbin/ip link set $interface up", $output);
     $output = array();
     $cmd = "sudo /sbin/iw dev $interface scan";
     exec($cmd, $output);
@@ -276,13 +276,19 @@ function network_get_interface()
         }
     }
 
-    exec("/sbin/ifconfig $interface", $output);
+    // Use `ip` (netlink) rather than ifconfig to avoid WEXT calls on
+    // wireless interfaces.
+    exec("/sbin/ip -o -4 addr show dev $interface 2>/dev/null", $output);
     foreach ($output as $line) {
-        if (preg_match('/inet /', $line)) {
-            $result['CurrentAddress'] = preg_replace('/.*inet ([0-9\.]+) .*/', '$1', $line);
-            $result['CurrentNetmask'] = preg_replace('/.*netmask ([0-9\.]+).*/', '$1', $line);
+        if (preg_match('/\binet (\d+\.\d+\.\d+\.\d+)\/(\d+)/', $line, $m)) {
+            $result['CurrentAddress'] = $m[1];
+            $result['CurrentNetmask'] = long2ip(~((1 << (32 - $m[2])) - 1));
         }
-        if (preg_match('/flags=/', $line)) {
+    }
+    unset($output);
+    exec("/sbin/ip -o link show dev $interface 2>/dev/null", $output);
+    foreach ($output as $line) {
+        if (preg_match('/<[^>]*UP[^>]*>/', $line)) {
             $result['status'] = 'OK';
         }
     }

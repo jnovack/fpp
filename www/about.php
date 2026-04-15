@@ -617,7 +617,9 @@ $freeSpace = disk_free_space($uploadDirectory);
                                         $remotes = getKnownFPPSystems();
 
                                         if ($settings["Platform"] != "MacOS") {
-                                            $IPs = explode("\n", trim(shell_exec("/sbin/ifconfig -a | cut -f1 | cut -f1 -d' ' | grep -v ^$ | grep -v lo | grep -v eth0:0 | grep -v usb | grep -v SoftAp | grep -v 'can.' | sed -e 's/://g' | while read iface ; do /sbin/ifconfig \$iface | grep 'inet ' | awk '{print \$2}'; done")));
+                                            // Use `ip` (netlink) rather than ifconfig to avoid the
+                                            // WEXT deprecation warning on wireless interfaces.
+                                            $IPs = explode("\n", trim(shell_exec("ip -4 -o addr show scope global 2>/dev/null | awk '{print \$4}' | cut -d/ -f1 | grep -v '^$'")));
                                         } else {
                                             $IPs = explode("\n", trim(shell_exec("/sbin/ifconfig -a | grep 'inet ' | awk '{print \$2}'")));
                                         }
