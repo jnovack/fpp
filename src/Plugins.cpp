@@ -535,14 +535,14 @@ FPPPlugins::Plugin* PluginManager::loadSHLIBPlugin(const std::string& shlibName)
         return nullptr;
     }
 
-    FPPPlugin* (*fptr)();
+    FPPPlugins::Plugin* (*fptr)();
     *(void**)(&fptr) = dlsym(handle, "createPlugin");
     if (fptr == nullptr) {
         LogErr(VB_PLUGIN, "Failed to find  createPlugin() function in shlib %s\n", shlibName.c_str());
         dlclose(handle);
         return nullptr;
     }
-    FPPPlugin* p = fptr();
+    FPPPlugins::Plugin* p = fptr();
     if (p == nullptr) {
         LogErr(VB_PLUGIN, "Failed to create plugin from shlib %s\n", shlibName.c_str());
         dlclose(handle);
