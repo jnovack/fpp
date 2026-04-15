@@ -439,6 +439,18 @@ export LC_ALL=en_US.UTF-8
 cd /root
 /root/FPP_Install.sh --img --yes --branch ${FPPBRANCH} ${INSTALLER_EXTRA_ARGS}
 
+# FPP_Install.sh replaces /etc/resolv.conf with a symlink to
+# /run/systemd/resolve/resolv.conf near its end. In our chroot, /run is a
+# fresh tmpfs and systemd-resolved never ran -- the symlink dangles and
+# DNS breaks for anything after this point (including rpi-update below).
+# Restore a working resolv.conf for the remainder of the chroot build;
+# step 6 blanks it out before the image is finalized.
+rm -f /etc/resolv.conf
+cat > /etc/resolv.conf <<'RESOLV_EOF'
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+RESOLV_EOF
+
 #############################################################################
 # Kernel update via rpi-update (FPP10 / Debian 13 wants 6.18+).
 # Done AS THE VERY LAST STEP of the chroot install, after FPP_Install.sh

@@ -590,7 +590,7 @@ install_base_packages() {
                       vorbis-tools libgraphicsmagick++1-dev graphicsmagick-libmagick-dev-compat libdrogon-dev \
                       gettext apt-utils x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain clang-format \
                       libmosquitto-dev mosquitto-clients mosquitto libzstd-dev lzma zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev \
-                      fonts-freefont-ttf flex bison pkg-config libasound2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
+                      fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
                       pipewire-alsa pipewire-jack pipewire-audio-client-libraries libpipewire-0.3-dev pulseaudio-utils linuxptp gstreamer1.0-tools \
                       gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire \
                       gstreamer1.0-libav libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev wireplumber pipewire-bin pipewire \
@@ -779,25 +779,7 @@ EOF
 
 install_base_packages
 
-if [ ! -f "/usr/include/SDL2/SDL.h" ]; then
-    # we don't want to "apt-get install libsdl2-dev" as that brings in wayland, a bunch
-    # of X libraries, mesa, some OpenGL libs, etc... A bunch of things we DON'T need
-    # Thus, we'll grab the .deb file, modify it to remove those deps, and install
-    echo "FPP - Installing SDL2"
-    cd /tmp
-    apt-get download libsdl2-dev
-    mkdir deb
-    dpkg-deb -R ./libsdl2*.deb  deb
-    sed -i -e "s/Version\(.*\)+\(.*\)/Version\1~fpp/g" deb/DEBIAN/control
-    sed -i -e "s/Depends: \(.*\)/Depends: libsdl2-2.0-0, libasound2-dev, libdbus-1-dev, libsndio-dev/g" deb/DEBIAN/control
-    dpkg-deb -b deb ./libsdl2-dev.deb
-    apt -y install ./libsdl2-dev.deb
-    apt-mark hold libsdl2-dev
-    apt-get clean
-    rm -rf deb
-    rm ./libsdl2-dev*
-fi
- 
+
 #######################################
 # Platform-specific config
 #############################################################################

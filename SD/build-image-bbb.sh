@@ -412,6 +412,18 @@ rm -rf /opt/source/dtb-5* /opt/source/dtb-6.1.x* /opt/source/dtb-6.6.x* /opt/sou
 cd /root
 /root/FPP_Install.sh --img --yes --branch ${FPPBRANCH} ${INSTALLER_EXTRA_ARGS}
 
+# FPP_Install.sh replaces /etc/resolv.conf with a symlink to
+# /run/systemd/resolve/resolv.conf near its end. In our chroot /run is a
+# fresh tmpfs and systemd-resolved never ran -- the symlink dangles and
+# DNS breaks for anything that comes after. Restore working DNS for the
+# apt-get operations in the kernel step below; step 6 blanks this out
+# before the image is finalized.
+rm -f /etc/resolv.conf
+cat > /etc/resolv.conf <<'RESOLV_EOF'
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+RESOLV_EOF
+
 #############################################################################
 # Install FPP-patched kernel.
 # Done AS THE VERY LAST STEP of the chroot install, after FPP_Install.sh
