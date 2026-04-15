@@ -361,7 +361,14 @@ fi
 # Also resolve the firmware branch -> commit SHA on the host: rpi-update's
 # get_long_hash() makes a github API call that fails under qemu-arm even
 # when bulk firmware downloads (different code path) succeed.
-RPI_FW_BRANCH="next"
+# Which rpi-firmware branch to pull kernel+firmware from.
+#   master    = latest (currently 6.18.22, bumped 2026-04-13)
+#   stable    = LTS-style (currently 6.12.75)
+#   next      = historically the "latest" branch, marked DORMANT 2026-03-18
+#   oldstable = 6.1, ancient
+# We want master for FPP 10 (needs 6.18+). If master ever regresses or a
+# specific-SHA pin is desired, override via env var.
+RPI_FW_BRANCH="${RPI_FW_BRANCH:-master}"
 RPI_FW_SHA=""
 if [ "$SKIP_KERNEL_UPDATE" != "1" ]; then
     echo "      Pre-staging fresh rpi-update into chroot..."
