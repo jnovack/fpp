@@ -7,6 +7,14 @@ BINDIR=$(cd $(dirname $0) && pwd)
 
 teeOutput
 
+# Ensure git's "dubious ownership" guard doesn't trip when running git as
+# root via sudo against /opt/fpp (owned by fpp:fpp). FPP_Install.sh sets
+# this system-wide already, but be defensive in case an old install is
+# missing it -- otherwise the very first git call below fails before we
+# get a chance to recover.
+$SUDO git config --system --add safe.directory /opt/fpp 2>/dev/null || true
+$SUDO git config --system --add safe.directory '*' 2>/dev/null || true
+
 SOURCEIP=$(getSetting UpgradeSource)
 if [ "x${SOURCEIP}" == "x" ]; then
     SOURCEIP=github.com

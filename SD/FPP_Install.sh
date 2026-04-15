@@ -1125,7 +1125,12 @@ if $clone_fpp; then
     git config pull.rebase true
 fi
 git config --global pull.rebase true
-git config --global --add safe.directory /opt/fpp
+# Use --system so /etc/gitconfig is updated -- the setting then applies to
+# every user regardless of HOME. Without this, `sudo git ...` (which keeps
+# HOME=/home/fpp) reads /home/fpp/.gitconfig where the safe.directory
+# was never set, and git aborts with "dubious ownership".
+git config --system --add safe.directory /opt/fpp
+git config --system --add safe.directory '*'
 
 # Add newfeatures remote for testing new features
 cd /opt/fpp
@@ -1698,19 +1703,33 @@ if [ "$FPPPLATFORM" == "Raspberry Pi" -o "$FPPPLATFORM" == "BeagleBone Black" -o
         echo "DAEMON_CONF=\"/etc/hostapd/hostapd.conf\"" >> /etc/default/hostapd
     fi
         
-    systemctl disable zramswap
-    echo "ALGO=zstd" >> /etc/default/zramswap
-    echo "PRIORITY=100" >> /etc/default/zramswap
-    if [ "$FPPPLATFORM" == "BeagleBone 64" ]; then
-        echo "SIZE=125" >> /etc/default/zramswap
-        echo "vm.swappiness=100" >> /etc/sysctl.d/10-swap.conf
-        echo "vm.vfs_cache_pressure=100" >> /etc/sysctl.d/10-swap.conf
-        echo "vm.dirty_background_ratio=1" >> /etc/sysctl.d/10-swap.conf
-        echo "vm.dirty_ratio=50" >> /etc/sysctl.d/10-swap.conf
-    else
-        echo "SIZE=75" >> /etc/default/zramswap
+    # Swap configuration:
+    #   - Raspberry Pi OS ships its own rpi-swap mechanism (/etc/rpi/swap.conf
+    #     + systemd-zram-setup@zram0.service + dev-zram0.swap + rpi-zram-writeback)
+    #     that handles zram setup automatically. Don't write zram-tools config
+    #     on Pi -- it's read by a service we'd be disabling, and would just be
+    #     dead clutter.
+    #   - On BeagleBone (BBB / BB64) we still drive zram via zram-tools because
+    #     rcn-ee Debian doesn't ship the rpi-swap mechanism.
+    if [ "$FPPPLATFORM" == "Raspberry Pi" ]; then
+        # Just sysctl tuning; rpi-swap handles the actual zram device.
         echo "vm.swappiness=1" >> /etc/sysctl.d/10-swap.conf
         echo "vm.vfs_cache_pressure=50" >> /etc/sysctl.d/10-swap.conf
+    else
+        systemctl disable zramswap
+        echo "ALGO=zstd" >> /etc/default/zramswap
+        echo "PRIORITY=100" >> /etc/default/zramswap
+        if [ "$FPPPLATFORM" == "BeagleBone 64" ]; then
+            echo "SIZE=125" >> /etc/default/zramswap
+            echo "vm.swappiness=100" >> /etc/sysctl.d/10-swap.conf
+            echo "vm.vfs_cache_pressure=100" >> /etc/sysctl.d/10-swap.conf
+            echo "vm.dirty_background_ratio=1" >> /etc/sysctl.d/10-swap.conf
+            echo "vm.dirty_ratio=50" >> /etc/sysctl.d/10-swap.conf
+        else
+            echo "SIZE=75" >> /etc/default/zramswap
+            echo "vm.swappiness=1" >> /etc/sysctl.d/10-swap.conf
+            echo "vm.vfs_cache_pressure=50" >> /etc/sysctl.d/10-swap.conf
+        fi
     fi
     
     if $isimage; then

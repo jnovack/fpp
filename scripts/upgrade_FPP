@@ -19,6 +19,12 @@ echo "$0 Upgrading FPP version to $1"
 echo "Stopping fppd"
 ${SUDO} ${FPPDIR}/scripts/fppd_stop
 
+# Same safe.directory hardening as git_pull -- /opt/fpp is owned by fpp:fpp,
+# so root running git via sudo (which keeps HOME=/home/fpp) trips the
+# "dubious ownership" guard unless /etc/gitconfig says otherwise.
+$SUDO git config --system --add safe.directory /opt/fpp 2>/dev/null || true
+$SUDO git config --system --add safe.directory '*' 2>/dev/null || true
+
 echo "Cleaning up any compiled binaries"
 cleanCompiledBinaries
 

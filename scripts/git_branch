@@ -16,6 +16,12 @@ REMOTE=${2:-origin}
 
 teeOutput
 
+# Same safe.directory hardening as git_pull -- /opt/fpp is owned by fpp:fpp,
+# so root running git via sudo (which keeps HOME=/home/fpp) trips the
+# "dubious ownership" guard unless /etc/gitconfig says otherwise.
+$SUDO git config --system --add safe.directory /opt/fpp 2>/dev/null || true
+$SUDO git config --system --add safe.directory '*' 2>/dev/null || true
+
 echo "$0 running to switch branches to $1 from remote $REMOTE"
 
 CNT=`cd ${FPPDIR} && git show-ref | grep "refs/remotes/$REMOTE" | grep -i $1 | wc -l`

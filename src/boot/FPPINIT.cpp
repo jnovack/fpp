@@ -1252,6 +1252,22 @@ static void handleTimeSyncWait() {
             break;
         }
 
+        // Exit early if NTP has already synchronized: the clock may still
+        // be catching up via slow adjtimex(), but NTPSynchronized=yes means
+        // the system knows the right time and the ctime comparison becomes
+        // irrelevant. Without this short-circuit, a Pi 5 with no RTC
+        // battery sits here for ~5 minutes every cold boot.
+        if (count % 10 == 0) {
+            std::string ntpSynced = execAndReturn(
+                "/usr/bin/timedatectl show -p NTPSynchronized --value 2>/dev/null");
+            TrimWhiteSpace(ntpSynced);
+            if (ntpSynced == "yes") {
+                printf("FPP - NTP synchronized after %d seconds, time wait done\n",
+                       count / 10);
+                break;
+            }
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         currentTime = time(nullptr);
         diffSecs = difftime(fileTime, currentTime);

@@ -480,6 +480,15 @@ if [ "${SKIP_KERNEL_UPDATE}" != "1" ]; then
     # We pre-staged a fresh copy from the host into /usr/bin/rpi-update
     # before entering the chroot, so disable the in-chroot self-update.
     export UPDATE_SELF=0
+    # rpi-update defaults BOOT_PATH=/boot with no auto-detection. On modern
+    # Raspbian (Debian 12+) the FAT boot partition is mounted at
+    # /boot/firmware instead. Without this override, rpi-update writes the
+    # kernel images and firmware to /boot inside the rootfs where the
+    # bootloader never sees them, and the Pi keeps booting whatever stock
+    # kernel apt previously dropped into /boot/firmware/kernel8.img.
+    # rpi-update requires BOTH BOOT_PATH and ROOT_PATH set (or neither).
+    export BOOT_PATH=/boot/firmware
+    export ROOT_PATH=/
 
     # Snapshot pre-existing kernels so we can identify them as 'old' afterwards
     OLD_KERNELS=\$(ls -1 /lib/modules/ 2>/dev/null || true)

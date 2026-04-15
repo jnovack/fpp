@@ -531,7 +531,13 @@ $freeSpace = disk_free_space($uploadDirectory);
                                         <tr>
                                             <td>FPP OS Build:</td>
                                             <td id='osVersion'>
-                                                <? echo $os_build; ?>
+                                                <? echo $os_build; ?><?
+                                                // Append a (64bit)/(32bit) tag based on the
+                                                // running PHP binary's word size. Same axis as
+                                                // $settings['Is64Bit']; we use PHP_INT_SIZE here
+                                                // directly to keep about.php self-contained.
+                                                echo (PHP_INT_SIZE === 8) ? ' (64bit)' : ' (32bit)';
+                                                ?>
                                             </td>
                                         </tr>
                                     <? } ?>
