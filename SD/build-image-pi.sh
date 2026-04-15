@@ -338,10 +338,6 @@ if [ "$USE_LOCAL_SRC" = "1" ]; then
         --exclude='**/*.o' \
         --exclude='**/*.so' \
         --exclude='**/*.dylib' \
-        --exclude='**/*.img' \
-        --exclude='**/*.img.xz' \
-        --exclude='**/*.img.zip' \
-        --exclude='**/*.fppos' \
         --exclude='src/fppd' \
         --exclude='src/fpp' \
         --exclude='src/fppmm' \
@@ -424,13 +420,17 @@ locale-gen en_US.UTF-8 || true
 update-locale LANG=en_US.UTF-8 || true
 export LC_ALL=en_US.UTF-8
 
+cd /root
+/root/FPP_Install.sh --img --yes --branch ${FPPBRANCH} ${INSTALLER_EXTRA_ARGS}
+
 #############################################################################
 # Kernel update via rpi-update (FPP10 / Debian 13 wants 6.18+).
-# Done BEFORE FPP_Install.sh so the network-fragile rpi-update step fails
-# fast (~minutes) rather than after a multi-hour FPP compile. Original
-# README ordering puts this AFTER the installer (rationale: installer's
-# apt installs may pull in older linux-image packages that overwrite us);
-# we re-run apt-get remove on those old headers below to be safe.
+# Done AS THE VERY LAST STEP of the chroot install, after FPP_Install.sh
+# has finished all of its apt activity. Earlier ordering (before the
+# installer) meant FPP_Install.sh's apt-get install was silently reinstating
+# a 6.12 kernel via package dependencies, shipping images with the wrong
+# kernel. Running rpi-update last guarantees nothing in the image build
+# can undo it.
 # Uses /lib/modules inspection instead of \`uname -r\` (which under qemu
 # returns the host kernel, not what's installed in the chroot).
 #############################################################################
@@ -497,17 +497,6 @@ if [ "${SKIP_KERNEL_UPDATE}" != "1" ]; then
         "linux-headers-\${NEW_KV_BASE}-v6" \\
         "linux-headers-\${NEW_KV_BASE}-v7" \\
         "linux-headers-\${NEW_KV_BASE}-v8" 2>/dev/null || true
-    rm -rf /usr/src/linux-*
-fi
-
-cd /root
-/root/FPP_Install.sh --img --yes --branch ${FPPBRANCH} ${INSTALLER_EXTRA_ARGS}
-
-# Re-run header purge in case FPP_Install.sh's apt activity pulled the old
-# kernel headers back in.
-if [ "${SKIP_KERNEL_UPDATE}" != "1" ] && [ -n "\${NEW_KV:-}" ]; then
-    apt-get remove -y --purge --autoremove \\
-        linux-headers-rpi-v6 linux-headers-rpi-v7 linux-headers-rpi-v8 2>/dev/null || true
     rm -rf /usr/src/linux-*
 fi
 

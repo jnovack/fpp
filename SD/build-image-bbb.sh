@@ -352,10 +352,6 @@ if [ "$USE_LOCAL_SRC" = "1" ]; then
         --exclude='**/*.o' \
         --exclude='**/*.so' \
         --exclude='**/*.dylib' \
-        --exclude='**/*.img' \
-        --exclude='**/*.img.xz' \
-        --exclude='**/*.img.zip' \
-        --exclude='**/*.fppos' \
         --exclude='src/fppd' \
         --exclude='src/fpp' \
         --exclude='src/fppmm' \
@@ -409,9 +405,16 @@ fi
 
 rm -rf /opt/source/dtb-5* /opt/source/dtb-6.1.x* /opt/source/dtb-6.6.x* /opt/source/dtb-6.12.x /opt/source/dtb-6.16.x /opt/source/dtb-6.17.x /opt/source/spi* /opt/source/py*
 
+cd /root
+/root/FPP_Install.sh --img --yes --branch ${FPPBRANCH} ${INSTALLER_EXTRA_ARGS}
+
 #############################################################################
 # Install FPP-patched kernel.
-# Done BEFORE FPP_Install.sh so failures fail fast (~minutes vs hours).
+# Done AS THE VERY LAST STEP of the chroot install, after FPP_Install.sh
+# has finished all of its apt activity. Earlier ordering (before the
+# installer) let FPP_Install.sh's apt-get install silently reinstate a
+# stock kernel via package dependencies (bbb.io-kernel-tasks et al),
+# shipping images with the wrong kernel.
 # uname -r returns the host kernel under qemu, so we identify the OLD
 # kernel by snapshotting /lib/modules instead.
 #############################################################################
@@ -444,9 +447,6 @@ if [ "${SKIP_KERNEL_UPDATE}" != "1" ] && [ -f "/root/${FPP_KERNEL_DEB}" ]; then
     done
     rm -rf /boot/initrd.img*
 fi
-
-cd /root
-/root/FPP_Install.sh --img --yes --branch ${FPPBRANCH} ${INSTALLER_EXTRA_ARGS}
 
 # Finalization (mirrors SD/README.BBB post-install cleanup)
 apt-get clean
