@@ -92,11 +92,23 @@ PATH=$PATH:/usr/sbin:/sbin
 #
 # Selective wrapper: pass through unit-management commands (with --no-reload
 # so they don't try to talk to a running daemon); no-op everything else.
+#
+# disable / unmask are "remove from active state" -- idempotent by intent;
+# many of FPP's calls target units that may or may not exist depending on
+# platform (BB units don't exist on Pi, gdm/lightdm don't exist on Lite
+# images). Failures from these are noise we want to swallow so set -e
+# doesn't kill the install on the first absent unit.
+#
+# enable / mask / preset / etc. are "add to active state" -- failures from
+# these mean we got something we wanted wrong; surface them.
 if [ ! -d /run/systemd/system ]; then
     _real_systemctl="$(command -v systemctl)"
     systemctl() {
         case "$1" in
-            enable|disable|mask|unmask|preset|preset-all|reenable|set-default|add-wants|add-requires)
+            disable|unmask)
+                "$_real_systemctl" --no-reload --no-warn "$@" 2>/dev/null || true
+                ;;
+            enable|mask|preset|preset-all|reenable|set-default|add-wants|add-requires)
                 "$_real_systemctl" --no-reload "$@"
                 ;;
             *)
@@ -633,27 +645,27 @@ install_base_packages() {
 		if [ -f /bin/systemctl ]
 		then
 			echo "FPP - Disabling unneeded/unwanted services"
-			systemctl disable bonescript.socket
-			systemctl disable bonescript-autorun.service
-			systemctl disable console-kit-daemon.service
-			systemctl disable cloud9.socket
-            systemctl disable beagle-flasher-init-shutdown.service
+			# beagle-flasher: present on current rcn-ee BB images and would
+			# otherwise re-flash the eMMC on shutdown. Disable it so FPP
+			# images don't surprise users by overwriting their installation.
+			systemctl disable beagle-flasher-init-shutdown.service
 
-            # Mask systemd-firstboot so it doesn't prompt for a username on
-            # first boot. We've already created the fpp user; the prompt is
-            # noise (and confuses non-headless users on Pi where the prompt
-            # appears on the HDMI console). Mask, not disable: -firstboot is
-            # gated by a marker file too, but masking guarantees no run.
-            systemctl mask systemd-firstboot.service || true
+			# Mask systemd-firstboot so it doesn't prompt for a username on
+			# first boot. We've already created the fpp user; the prompt is
+			# noise (and confuses non-headless users on Pi where the prompt
+			# appears on the HDMI console). Mask, not disable: -firstboot is
+			# gated by a marker file too, but masking guarantees no run.
+			systemctl mask systemd-firstboot.service || true
 		fi
 
         if $isimage; then
             echo "FPP - Disabling GUI"
-            systemctl disable gdm
+            # gdm3 (current GNOME), lightdm (Pi OS Desktop / Mint), and the
+            # generic display-manager alias cover the desktop-DM cases we
+            # might encounter when --img is run on a desktop install. The
+            # legacy gdm/wdm/xdm names are gone from supported releases.
             systemctl disable gdm3
             systemctl disable lightdm
-            systemctl disable wdm
-            systemctl disable xdm
             systemctl disable display-manager.service
             
             echo "FPP - Disabling dhcp-helper and hostapd from automatically starting"
@@ -887,8 +899,13 @@ setup_platform_raspberry_pi() {
         sed -i -e "s/^debian:.*/debian:*:16372:0:99999:7:::/" /etc/shadow
 
         echo "FPP - Tweaking ${BOOTDIR}/config.txt"
-        sed -i -e "s/hdmi_force_hotplug/#hdmi_force_hotplug/"  ${BOOTDIR}/config.txt
+        # Camera auto-detect off (we don't use it; saves a bit of boot time).
         sed -i -e "s/camera_auto_detect/#camera_auto_detect/"  ${BOOTDIR}/config.txt
+        # NOTE: leave hdmi_force_hotplug alone. With the 6.18 vc4 KMS driver,
+        # disabling it lets the GPU drop the HDMI signal entirely when the
+        # kernel's hot-plug detection misses (which it does often enough on
+        # a fresh boot), leaving the monitor in powersave with no console
+        # visible. Old FPP images used to comment this out -- don't.
 
         echo "FPP - Adding required modules to modules-load to speed up boot"
         cat >> /etc/modules-load.d/modules.conf <<'EOF'
@@ -1045,6 +1062,23 @@ EOF
         sed -i -e "s/autologin pi/autologin ${FPPUSER}/" /etc/systemd/system/autologin@.service
     fi
     rm -f "/etc/systemd/system/getty@tty1.service.d/autologin.conf"
+
+    # Mask Raspberry Pi OS's userconfig.service (from the userconf-pi
+    # package -- yes the unit is "userconfig" with a g, while the package
+    # and on-disk script are "userconf-pi" / "userconf-service". Naming
+    # is a mess.) It runs unconditionally on first boot, and when
+    # /boot/firmware/userconf.txt is absent (which it is -- FPP creates
+    # the fpp user itself) it pops a whiptail "Please enter new username"
+    # dialog on tty8 and switches the active VT there. End result: a
+    # blank HDMI screen on first boot waiting for a username we already
+    # have. Mask so it never runs.
+    systemctl mask userconfig.service 2>/dev/null || true
+    rm -f /etc/systemd/system/getty@tty8.service.d/userconfsetup.conf
+    # SSH banner installed by userconf-pi telling the user "no valid user
+    # has been set up" -- they have, we did it. Raspberry Pi OS removes
+    # this file after first-boot user setup completes; since we mask the
+    # service, that cleanup never runs, so do it ourselves.
+    rm -f /etc/ssh/sshd_config.d/rename_user.conf
 
     # /var/swap only exists when dphys-swapfile has been run; not on a fresh
     # Trixie Lite base image.
