@@ -1,86 +1,73 @@
 #!/usr/bin/bash
+#
+# Scan for available wireless networks on each wifi device.
+#
+# Uses nl80211 via `iw` rather than the deprecated wireless extensions
+# (iwlist / ifconfig). WEXT triggers a kernel warning on modern kernels
+# and stops working entirely on Wi-Fi 7 hardware.
 
-#look for wifi device names on system
 iw dev | awk '$1=="Interface"{print $2}' > /tmp/wifi_devices
 
-cat /tmp/wifi_devices | while read wifi_device || [[ -n $wifi_device ]];
-do
-UPORDOWN=$(cat /sys/class/net/$wifi_device/operstate)
-ifconfig $wifi_device up
-iwlist $wifi_device scanning > /tmp/wifiscan #save scan results to a temp file
-scan_ok=$(grep "$wifi_device" /tmp/wifiscan) #check if the scanning was ok
-if [ "$UPORDOWN" == "down" ]; then #if wifi device is down, skip it
-    ifconfig $wifi_device down
-fi
-if [ -z "$scan_ok" ]; then #if scan was not ok, finish the script
-    echo -n "
-WIFI scanning failed.
+while read -r wifi_device || [[ -n $wifi_device ]]; do
+    [ -z "$wifi_device" ] && continue
 
-"
-    continue
-fi
+    UPORDOWN=$(cat "/sys/class/net/$wifi_device/operstate" 2>/dev/null || echo down)
+    ip link set "$wifi_device" up 2>/dev/null
 
-connected_address=$(iw dev "$wifi_device" link 2>/dev/null | sed -n 's/.*Connected to \([0-9a-f:]\{17\}\).*/\1/p')
+    if ! iw dev "$wifi_device" scan > /tmp/wifiscan 2>/dev/null; then
+        printf "\nWIFI scanning failed.\n\n"
+        [ "$UPORDOWN" = "down" ] && ip link set "$wifi_device" down 2>/dev/null
+        continue
+    fi
 
-if [ -f /tmp/ssids ]; then
-    rm /tmp/ssids
-fi
-n_results=$(grep -c "ESSID:" /tmp/wifiscan) #save number of scanned cell
-i=1
-while [ "$i" -le "$n_results" ]; do
-        if [ $i -lt 10 ]; then
-                cell=$(echo "Cell 0$i - Address:")
-        else
-                cell=$(echo "Cell $i - Address:")
-        fi
-        j=`expr $i + 1`
-        if [ $j -lt 10 ]; then
-                nextcell=$(echo "Cell 0$j - Address:")
-        else
-                nextcell=$(echo "Cell $j - Address:")
-        fi
-        awk -v v1="$cell" '$0 ~ v1 {p=1}p' /tmp/wifiscan | awk -v v2="$nextcell" '$0 ~ v2 {exit}1' > /tmp/onecell #store only one cell info in a temp file
+    [ "$UPORDOWN" = "down" ] && ip link set "$wifi_device" down 2>/dev/null
 
-        ##################################################
+    : > /tmp/ssids
 
-        oneaddress=$(grep " Address:" /tmp/onecell | awk '{print $5}')
-        onessid=$(grep "ESSID:" /tmp/onecell | awk '{ sub(/^[ \t]+/, ""); print }' | awk '{gsub("ESSID:", "");print}')
-#       onechannel=$(grep " Channel:" /tmp/onecell | awk '{ sub(/^[ \t]+/, ""); print }' | awk '{gsub("Channel:", "");print}')
-        onefrequency=$(grep " Frequency:" /tmp/onecell | awk '{ sub(/^[ \t]+/, ""); print }' | awk '{gsub("Frequency:", "");print}')
-        oneencryption=$(grep "Encryption key:" /tmp/onecell | awk '{ sub(/^[ \t]+/, ""); print }' | awk '{gsub("Encryption key:on", "(secure)");print}' | awk '{gsub("Encryption key:off", "(open)  ");print}')
-        onepower=$(grep "Quality=" /tmp/onecell | awk '{ sub(/^[ \t]+/, ""); print }' | awk '{gsub("Quality=", "");print}' | awk -F ' Signal' '{print $1}')
-        if [[ ${onepower} == *"/70"* ]] ; then
-        onepower=$(echo $onepower | awk -F '/70' '{print $1}')
-        onepower=$(awk -v v3=$onepower 'BEGIN{ print v3 * 10 / 7}')
-        fi
-        if [[ ${onepower} == *"/100"* ]] ; then
-        onepower=$(echo $onepower | awk -F '/100' '{print $1}')
-        fi
-        onepower=${onepower%.*}
-        onepower="(Signal strength: $onepower%)"
-                if [ "$connected_address" == "$oneaddress" ]; then
-                currentcon=" - Connected"
-                else
-                currentcon=""
-                fi
-        if [ -n "$oneaddress" ]; then
-                echo "$onessid  $onefrequency $oneaddress $oneencryption $onepower $currentcon" >> /tmp/ssids
-        else
-                echo "$onessid  $onefrequency $oneencryption $onepower $currentcon" >> /tmp/ssids
-        fi
-        i=`expr $i + 1`
-done
-rm /tmp/onecell
-awk '{printf("%5d : %s\n", NR,$0)}' /tmp/ssids > /tmp/sec_ssids #add numbers at beginning of line
-grep ESSID /tmp/wifiscan | awk '{ sub(/^[ \t]+/, ""); print }' | awk '{printf("%5d : %s\n", NR,$0)}' | awk '{gsub("ESSID:", "");print}' > /tmp/ssids #generate file with only numbers and names
-printf "Wifi Device: $wifi_device\n"
-echo -n "Available WIFI Access Points:
-"
-cat /tmp/sec_ssids #show ssids list
-printf "\n"
+    # Parse `iw scan` output into the same per-network line shape the old
+    # iwlist-based script produced. Each network starts with a "BSS <mac>"
+    # line; "-- associated" on that line flags the currently-connected AP.
+    # Signal is dBm; convert to a rough percent via 2*(dBm+100) clamped 0-100.
+    awk '
+        function emit() {
+            if (bss == "") return
+            if (signal_dbm == "") pct = 0
+            else {
+                pct = int(2 * (signal_dbm + 100))
+                if (pct < 0) pct = 0
+                if (pct > 100) pct = 100
+            }
+            enc = secure ? "(secure)" : "(open)  "
+            con = associated ? " - Connected" : ""
+            freq_disp = (freq != "") ? sprintf("%.3f GHz", freq/1000) : ""
+            printf("%s  %s %s %s (Signal strength: %d%%)%s\n",
+                   ssid, freq_disp, bss, enc, pct, con)
+        }
+        /^BSS / {
+            emit()
+            bss=""; ssid=""; freq=""; signal_dbm=""; secure=0; associated=0
+            if (match($0, /[0-9a-fA-F:]{17}/)) {
+                bss = toupper(substr($0, RSTART, RLENGTH))
+            }
+            if ($0 ~ /associated/) associated = 1
+        }
+        /^\tfreq:/       { freq = $2 }
+        /^\tsignal:/     { signal_dbm = $2 + 0 }
+        /^\tSSID:/       { sub(/^\tSSID: ?/, ""); ssid = $0 }
+        /^\tRSN:/        { secure = 1 }
+        /^\tWPA:/        { secure = 1 }
+        /capability:.*Privacy/ { secure = 1 }
+        END { emit() }
+    ' /tmp/wifiscan >> /tmp/ssids
 
-rm /tmp/ssids
-rm /tmp/sec_ssids
-rm /tmp/wifiscan
-done
-rm /tmp/wifi_devices
+    awk '{printf("%5d : %s\n", NR, $0)}' /tmp/ssids > /tmp/sec_ssids
+
+    printf "Wifi Device: %s\n" "$wifi_device"
+    printf "Available WIFI Access Points:\n"
+    cat /tmp/sec_ssids
+    printf "\n"
+
+    rm -f /tmp/ssids /tmp/sec_ssids /tmp/wifiscan
+done < /tmp/wifi_devices
+
+rm -f /tmp/wifi_devices

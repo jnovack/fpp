@@ -15,6 +15,7 @@
 *-workspace
 SD/*.xz
 build/
+output/
 capes/drivers/bb64/pinctrl
 lib/librgbmatrix.so
 node_modules
