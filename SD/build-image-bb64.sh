@@ -45,6 +45,7 @@ WORK_DIR="${WORK_DIR:-$(pwd)/build}"
 OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/output}"
 KEEP_WORK="${KEEP_WORK:-0}"
 SKIP_FPPOS="${SKIP_FPPOS:-0}"
+SKIP_ZIP="${SKIP_ZIP:-0}"
 USE_LOCAL_SRC="${USE_LOCAL_SRC:-0}"
 FPP_SRC_DIR="${FPP_SRC_DIR:-$(readlink -f "$(dirname "$(readlink -f "$0")")/..")}"
 
@@ -67,6 +68,8 @@ Options:
   --work-dir DIR           Scratch dir (default: ./build)
   --output-dir DIR         Artifact dir (default: ./output)
   --skip-fppos             Do not produce .fppos squashfs
+  --skip-zip               Do not zip the raw .img (faster iteration when
+                           flashing the raw image directly to an SD card)
   --use-local-src          Seed /opt/fpp from local FPP working tree
   --fpp-src-dir DIR        Path to local FPP checkout
   --keep-work              Keep working directory on success
@@ -87,6 +90,7 @@ while [ $# -gt 0 ]; do
         --work-dir)          WORK_DIR="$2"; shift 2 ;;
         --output-dir)        OUTPUT_DIR="$2"; shift 2 ;;
         --skip-fppos)        SKIP_FPPOS=1; shift ;;
+        --skip-zip)          SKIP_ZIP=1; shift ;;
         --use-local-src)     USE_LOCAL_SRC=1; shift ;;
         --fpp-src-dir)       FPP_SRC_DIR="$(readlink -f "$2")"; shift 2 ;;
         --keep-work)         KEEP_WORK=1; shift ;;
@@ -452,16 +456,20 @@ LOOPDEV=""
 
 OUT_IMG="FPP-v${VERSION}-${PLATFORM_SUFFIX}.img"
 mv -f "$WORK_IMG" "$OUTPUT_DIR/$OUT_IMG"
-( cd "$OUTPUT_DIR" && rm -f "${OUT_IMG}.zip" && zip -9 "${OUT_IMG}.zip" "$OUT_IMG" )
+if [ "$SKIP_ZIP" != "1" ]; then
+    ( cd "$OUTPUT_DIR" && rm -f "${OUT_IMG}.zip" && zip -9 "${OUT_IMG}.zip" "$OUT_IMG" )
+fi
 
 cat <<EOF
 
 ============================================================
 Build complete.
 
-  Flashable image : $OUTPUT_DIR/${OUT_IMG}.zip
-  Raw image       : $OUTPUT_DIR/${OUT_IMG}
 EOF
+if [ "$SKIP_ZIP" != "1" ]; then
+    echo "  Flashable image : $OUTPUT_DIR/${OUT_IMG}.zip"
+fi
+echo "  Raw image       : $OUTPUT_DIR/${OUT_IMG}"
 if [ -n "$FPPOS" ]; then
     echo "  OS update image : $FPPOS"
 fi

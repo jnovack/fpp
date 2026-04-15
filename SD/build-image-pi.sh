@@ -36,6 +36,7 @@ WORK_DIR="${WORK_DIR:-$(pwd)/build}"
 OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/output}"
 KEEP_WORK="${KEEP_WORK:-0}"                  # 1 => leave WORK_DIR populated
 SKIP_FPPOS="${SKIP_FPPOS:-0}"                # 1 => skip squashfs generation
+SKIP_ZIP="${SKIP_ZIP:-0}"                    # 1 => leave raw .img only, no zip
 USE_LOCAL_SRC="${USE_LOCAL_SRC:-0}"          # 1 => seed /opt/fpp from local tree
 FPP_SRC_DIR="${FPP_SRC_DIR:-$(readlink -f "$(dirname "$(readlink -f "$0")")/..")}"
 SKIP_KERNEL_UPDATE="${SKIP_KERNEL_UPDATE:-0}"    # 1 => skip rpi-update next
@@ -62,6 +63,9 @@ Options:
                            shipped with — fine for installer-flow testing,
                            NOT a release-quality image)
   --skip-fppos             Do not produce .fppos squashfs
+  --skip-zip               Do not zip the raw .img (faster iteration when
+                           you're flashing the raw image directly to an SD
+                           card for local testing)
   --use-local-src          Seed /opt/fpp in the image from the local FPP
                            working tree (FPP_SRC_DIR) instead of cloning from
                            github. Lets you iterate on source changes without
@@ -91,6 +95,7 @@ while [ $# -gt 0 ]; do
         --output-dir)        OUTPUT_DIR="$2"; shift 2 ;;
         --skip-kernel-update) SKIP_KERNEL_UPDATE=1; shift ;;
         --skip-fppos)        SKIP_FPPOS=1; shift ;;
+        --skip-zip)          SKIP_ZIP=1; shift ;;
         --use-local-src)     USE_LOCAL_SRC=1; shift ;;
         --fpp-src-dir)       FPP_SRC_DIR="$(readlink -f "$2")"; shift 2 ;;
         --keep-work)         KEEP_WORK=1; shift ;;
@@ -367,12 +372,23 @@ if [ "$SKIP_KERNEL_UPDATE" != "1" ]; then
         echo "      (warning: failed to fetch fresh rpi-update; chroot will install via apt)"
     else
         chmod +x "$ROOT_MNT/usr/bin/rpi-update.fresh"
-        # Patch get_long_hash to short-circuit on a full 40-char SHA. The
-        # original implementation hits the github API for every invocation,
-        # which fails under qemu-arm. We pass a host-resolved SHA, so the
-        # API roundtrip is unnecessary.
+        # Patch 1: get_long_hash -- short-circuit on a full 40-char SHA.
+        # The upstream implementation hits the github API on every call,
+        # which fails under qemu-arm TLS. We pass a host-resolved SHA,
+        # so the API roundtrip is unnecessary.
         sed -i \
           's|^function get_long_hash {|function get_long_hash {\n\tif [[ "$1" =~ ^[0-9a-f]{40}$ ]]; then echo "$1"; return; fi|' \
+          "$ROOT_MNT/usr/bin/rpi-update.fresh"
+        # Patch 2: download_rev -- skip the `curl --head` tarball-exists
+        # pre-check. It sometimes fails in the chroot even when the real
+        # tarball download that follows works fine. We already validated
+        # the SHA on the host; if the actual download fails, rpi-update
+        # will still error out there.
+        sed -i \
+          's|^function download_rev {|function download_rev {\n\tif [[ "${FW_REV}" =~ ^[0-9a-f]{40}$ ]]; then SKIP_CHECK=1; fi|' \
+          "$ROOT_MNT/usr/bin/rpi-update.fresh"
+        sed -i \
+          's|if ! eval curl -fs ${CURL_OPTIONS} --output /dev/null --head "${FW_TARBALL_URI}"; then|if [[ "${SKIP_CHECK:-0}" != "1" ]] \&\& ! eval curl -fs ${CURL_OPTIONS} --output /dev/null --head "${FW_TARBALL_URI}"; then|' \
           "$ROOT_MNT/usr/bin/rpi-update.fresh"
         mv -f "$ROOT_MNT/usr/bin/rpi-update.fresh" "$ROOT_MNT/usr/bin/rpi-update"
     fi
@@ -576,16 +592,20 @@ LOOPDEV=""
 
 OUT_IMG="FPP-v${VERSION}-${PLATFORM_SUFFIX}.img"
 mv -f "$WORK_IMG" "$OUTPUT_DIR/$OUT_IMG"
-( cd "$OUTPUT_DIR" && rm -f "${OUT_IMG}.zip" && zip -9 "${OUT_IMG}.zip" "$OUT_IMG" )
+if [ "$SKIP_ZIP" != "1" ]; then
+    ( cd "$OUTPUT_DIR" && rm -f "${OUT_IMG}.zip" && zip -9 "${OUT_IMG}.zip" "$OUT_IMG" )
+fi
 
 cat <<EOF
 
 ============================================================
 Build complete.
 
-  Flashable image : $OUTPUT_DIR/${OUT_IMG}.zip
-  Raw image       : $OUTPUT_DIR/${OUT_IMG}
 EOF
+if [ "$SKIP_ZIP" != "1" ]; then
+    echo "  Flashable image : $OUTPUT_DIR/${OUT_IMG}.zip"
+fi
+echo "  Raw image       : $OUTPUT_DIR/${OUT_IMG}"
 if [ -n "$FPPOS" ]; then
     echo "  OS update image : $FPPOS"
 fi

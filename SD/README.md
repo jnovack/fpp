@@ -74,7 +74,8 @@ Output lands in `output/`:
 | `--work-dir DIR` | `./build` | Scratch area (decompressed base images, work image). Caches the base image between runs. |
 | `--output-dir DIR` | `./output` | Where the final `.img.zip` and `.fppos` land. |
 | `--skip-fppos` | off | Skip the squashfs generation. Saves 10–30 min per iteration when you only care about the `.img`. |
-| `--skip-kernel-update` | off (Pi only) | Skip `rpi-update`. Faster iteration, but image will boot whatever kernel the base image shipped with. |
+| `--skip-zip` | off | Skip the final `zip -9` of the raw `.img`. Saves a few minutes when you're flashing the raw image directly to an SD card for local testing. |
+| `--skip-kernel-update` | off (Pi / BBB) | Skip the kernel update step (`rpi-update` on Pi, FPP-patched kernel `.deb` on BBB). Faster iteration, but image will boot whatever kernel the base image shipped with — do NOT use for release builds. |
 | `--keep-work` | off | Don't delete the work image on success (useful for inspecting the output before zipping). |
 | `-h`, `--help` | — | Show full per-script help. |
 
@@ -92,13 +93,14 @@ When debugging the installer flow itself:
 # Edit SD/FPP_Install.sh in your editor, then:
 sudo ./SD/build-image-pi.sh \
     --arch arm64 --version 10.0-dev \
-    --use-local-src --skip-fppos --skip-kernel-update --keep-work
+    --use-local-src --skip-fppos --skip-zip --skip-kernel-update --keep-work
 ```
 
-The four flags together get you the fastest possible re-run:
+The flags together get you the fastest possible re-run:
 - `--use-local-src` — no git push needed
 - `--skip-fppos` — skips the slow xz squashfs
-- `--skip-kernel-update` — skips the kernel download (Pi only)
+- `--skip-zip` — skips zipping the raw `.img` (flash the `.img` directly)
+- `--skip-kernel-update` — skips the kernel download / install (Pi / BBB)
 - `--keep-work` — leave the work `.img` in place for inspection
 
 ## Performance notes
