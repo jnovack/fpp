@@ -1045,6 +1045,11 @@ EOF
         sed -i -e "s/autologin pi/autologin ${FPPUSER}/" /etc/systemd/system/autologin@.service
     fi
     rm -f "/etc/systemd/system/getty@tty1.service.d/autologin.conf"
+    # Trixie Lite doesn't enable getty@tty1 by default and
+    # systemd-getty-generator doesn't auto-fire it for the Pi's HDMI
+    # console, so a freshly-booted Pi plugged into a monitor shows nothing.
+    # Enable it explicitly so a login prompt appears.
+    systemctl enable getty@tty1.service
 
     # Mask Raspberry Pi OS's userconfig.service (from the userconf-pi
     # package -- yes the unit is "userconfig" with a g, while the package
