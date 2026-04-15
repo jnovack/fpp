@@ -1342,6 +1342,13 @@ ccache --set-config=temporary_dir=/tmp
 ccache --set-config=sloppiness=pch_defines,time_macros
 ccache --set-config=hard_link=true
 ccache --set-config=pch_external_checksum=true
+# compiler_check=content fingerprints the compiler binary's contents instead
+# of its mtime. mtime trivially changes (apt reinstall, fs touch, etc.) and
+# would invalidate every cached entry from the image build even though the
+# compiler is the same version. Slight per-lookup overhead (hash a ~30MB
+# binary, cached per ccache process) for massive cache-hit improvement
+# across image-build -> first-upgrade.
+ccache --set-config=compiler_check=content
 mkdir -p /home/fpp/.config/ccache
 cp /root/.ccache/ccache.conf /home/fpp/.config/ccache
 chown -R fpp:fpp /home/fpp/.config

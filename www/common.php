@@ -2632,7 +2632,8 @@ function GetSystemInfoJsonInternal($simple = false, $network = true)
         $result['OSVersion'] = $result['OSRelease'];
     } else {
         if (file_exists('/etc/fpp/rfs_version')) {
-            $result['OSVersion'] = trim(file_get_contents('/etc/fpp/rfs_version'));
+            $result['OSVersion'] = trim(file_get_contents('/etc/fpp/rfs_version'))
+                . ((PHP_INT_SIZE === 8) ? ' (64bit)' : ' (32bit)');
         }
 
         $os_release = "Unknown";

@@ -106,11 +106,15 @@ populateCCACHE() {
     fi
 
     # set the CCache sizes/flags that we need to be able to successfully compile
-    sudo ccache -M 400M
+    sudo ccache -M 500M
     sudo ccache --set-config=temporary_dir=/tmp
     sudo ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime,include_file_ctime,locale,modules
     sudo ccache --set-config=pch_external_checksum=true
     sudo ccache --set-config=hard_link=true
+    # See FPP_Install.sh for rationale -- mtime-based compiler check
+    # invalidates the entire image-build cache after any harmless touch
+    # of /usr/bin/g++.
+    sudo ccache --set-config=compiler_check=content
 }
 
 
