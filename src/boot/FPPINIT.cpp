@@ -13,6 +13,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <algorithm>
 #include <array>
 #include <dirent.h>
 #include <pwd.h>
@@ -1558,8 +1559,14 @@ static void setupAudio() {
     std::string aplay = execAndReturn("/usr/bin/aplay -l 2>&1");
     std::vector<std::string> lines = split(aplay, '\n');
     std::map<std::string, std::string> cards;
+    std::map<std::string, std::string> cardLines; // full aplay line per "card N"
     std::map<std::string, bool> hdmiStatus;
     bool hasNonHDMI = false;
+    auto lineHasHDMI = [](const std::string& l) {
+        std::string lc = l;
+        std::transform(lc.begin(), lc.end(), lc.begin(), ::tolower);
+        return lc.find("hdmi") != std::string::npos;
+    };
     for (auto& l : lines) {
         if (l.starts_with("card ")) {
             std::string k = l.substr(0, 6);
@@ -1567,10 +1574,12 @@ static void setupAudio() {
             int idx = v.find(' ');
             v = v.substr(0, idx);
             cards[k] = v;
-            hasNonHDMI |= !l.contains("vc4hdmi");
+            cardLines[k] = l;
+            hasNonHDMI |= !lineHasHDMI(l);
         }
     }
     int hdmiIdx = 0;
+    bool anyHDMIConnected = false;
     for (int x = 0; x < 4; x++) {
         std::string cstr = "/sys/class/drm/card" + std::to_string(x) + "-HDMI-A-1/status";
         if (FileExists(cstr)) {
@@ -1578,7 +1587,9 @@ static void setupAudio() {
                 std::string cstr = "/sys/class/drm/card" + std::to_string(x) + "-HDMI-A-" + std::to_string(p) + "/status";
                 std::string c = GetFileContents(cstr);
                 std::string k = "vc4hdmi" + std::to_string(hdmiIdx);
-                hdmiStatus[k] = c.contains("connected") && !c.contains("disconnected");
+                bool conn = c.contains("connected") && !c.contains("disconnected");
+                hdmiStatus[k] = conn;
+                anyHDMIConnected |= conn;
                 hdmiIdx++;
             }
         }
@@ -1592,12 +1603,34 @@ static void setupAudio() {
     bool found = false;
     int count = 0;
 
-    if (cards[cstr].starts_with("vc4hdmi") && !hdmiStatus[cards[cstr]]) {
-        // nothing connected to the HDMI port so it's definitely not going to work
-        // flip to the dummy output
-        if (!cards.empty() && !cards["card 0"].starts_with("vc4hdmi")) {
-            printf("FPP - Could not find audio device %d, attempting device 0.\n", card);
-            card = 0;
+    // Treat the selected card as unusable if it's any HDMI card (vc4hdmi OR
+    // legacy bcm2835 HDMI) with no display connected. Playing to an
+    // unconnected HDMI audio device panics the kernel on some Pis.
+    auto cardIsDeadHDMI = [&](const std::string& k) {
+        if (!lineHasHDMI(cardLines[k])) return false;
+        if (cards[k].starts_with("vc4hdmi")) {
+            return !hdmiStatus[cards[k]];
+        }
+        // legacy bcm2835 HDMI shares the physical port; if any HDMI is
+        // connected, assume this device may work, otherwise treat as dead.
+        return !anyHDMIConnected;
+    };
+
+    if (cardIsDeadHDMI(cstr)) {
+        // Walk cards in index order and pick the first non-HDMI, or HDMI with
+        // display connected. Falls through to the snd-dummy case otherwise.
+        int fallback = -1;
+        for (const auto& [k, _] : cards) {
+            if (!cardIsDeadHDMI(k)) {
+                fallback = std::stoi(k.substr(5));
+                break;
+            }
+        }
+        if (fallback >= 0 && fallback != card) {
+            printf("FPP - Audio device %d has no HDMI connected, switching to card %d (%s)\n",
+                   card, fallback, cards["card " + std::to_string(fallback)].c_str());
+            card = fallback;
+            setRawSetting("AudioOutput", std::to_string(card));
         } else {
             card = cards.size();
             found = true;
@@ -1619,6 +1652,16 @@ static void setupAudio() {
         setRawSetting("AudioOutput", "0");
     } else {
         printf("FPP - Waited for %d seconds for audio device\n", (count / 5));
+        // Point ALSA's default at the chosen card so root-context playback
+        // (e.g. flite from fppinit) doesn't land on a dead HDMI device.
+        std::string arc = GetFileContents("/opt/fpp/etc/asoundrc.plain");
+        std::string cardLine = "card " + std::to_string(card);
+        size_t pos = 0;
+        while ((pos = arc.find("card 0", pos)) != std::string::npos) {
+            arc.replace(pos, 6, cardLine);
+            pos += cardLine.size();
+        }
+        PutFileContents("/root/.asoundrc", arc);
     }
     int v = getRawSettingInt("volume", -1);
     if (v == -1) {

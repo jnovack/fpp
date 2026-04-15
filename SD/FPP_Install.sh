@@ -907,8 +907,9 @@ EOF
 # Enable SPI in device tree
 dtparam=spi=on
 
-# Enable PCIe for NVME storage
-dtparam=pciex1_gen=3
+# Enable PCIe for NVME storage (Gen2 is the Pi 5's certified speed; Gen3
+# is an overclock that some NVMe HATs/drives fail to train reliably at)
+dtparam=pciex1_gen=2
 
 # Enable Cape Specific Overlays
 dtoverlay=fpp-cape-overlay
@@ -1339,16 +1340,21 @@ echo "FPP - Configuring ccache"
 mkdir -p /root/.ccache
 ccache -M 500M
 ccache --set-config=temporary_dir=/tmp
-ccache --set-config=sloppiness=pch_defines,time_macros
+# locale sloppiness keeps LANG/LC_ALL out of the cache key. Without it,
+# manifest keys shipped from the image-build chroot (LANG typically "C")
+# don't match Pi-runtime upgrades (LANG "en_US.UTF-8"), busting every hit.
+ccache --set-config=sloppiness=pch_defines,time_macros,locale
 ccache --set-config=hard_link=true
 ccache --set-config=pch_external_checksum=true
-# compiler_check=content fingerprints the compiler binary's contents instead
-# of its mtime. mtime trivially changes (apt reinstall, fs touch, etc.) and
-# would invalidate every cached entry from the image build even though the
-# compiler is the same version. Slight per-lookup overhead (hash a ~30MB
-# binary, cached per ccache process) for massive cache-hit improvement
-# across image-build -> first-upgrade.
-ccache --set-config=compiler_check=content
+# Fingerprint the compiler by its version + target triple rather than by
+# hashing its binary contents. The chroot-built cache ships in the image,
+# and the Pi's /usr/bin/g++ can end up with different bytes than what was
+# hashed in the chroot (post-install triggers, qemu-user quirks, or any
+# dpkg-reconfigure path can rewrite the file), invalidating the entire
+# shipped cache on first upgrade. -dumpversion + -dumpmachine is stable
+# across any such rewrite but still changes when the user actually upgrades
+# the compiler.
+ccache --set-config=compiler_check='%compiler% -dumpversion; %compiler% -dumpmachine'
 mkdir -p /home/fpp/.config/ccache
 cp /root/.ccache/ccache.conf /home/fpp/.config/ccache
 chown -R fpp:fpp /home/fpp/.config
@@ -1722,6 +1728,10 @@ if [ "$FPPPLATFORM" == "Raspberry Pi" -o "$FPPPLATFORM" == "BeagleBone Black" -o
         # Just sysctl tuning; rpi-swap handles the actual zram device.
         echo "vm.swappiness=1" >> /etc/sysctl.d/10-swap.conf
         echo "vm.vfs_cache_pressure=50" >> /etc/sysctl.d/10-swap.conf
+        # RPi OS ships zram-tools enabled by default. Disable it so it
+        # doesn't race with rpi-swap's systemd-zram-setup@zram0 over
+        # /dev/zram0 at boot (both try to claim the device).
+        systemctl disable zramswap 2>/dev/null || true
     else
         systemctl disable zramswap
         echo "ALGO=zstd" >> /etc/default/zramswap

@@ -111,10 +111,12 @@ populateCCACHE() {
     sudo ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime,include_file_ctime,locale,modules
     sudo ccache --set-config=pch_external_checksum=true
     sudo ccache --set-config=hard_link=true
-    # See FPP_Install.sh for rationale -- mtime-based compiler check
-    # invalidates the entire image-build cache after any harmless touch
-    # of /usr/bin/g++.
-    sudo ccache --set-config=compiler_check=content
+    # Must match FPP_Install.sh. compiler_check=content hashes the g++
+    # binary bytes, which can differ between the chroot that populated the
+    # shipped cache and the Pi running this upgrade -- that invalidates the
+    # entire shipped cache. -dumpversion + -dumpmachine is stable across
+    # binary rewrites but still changes on a real compiler upgrade.
+    sudo ccache --set-config=compiler_check='%compiler% -dumpversion; %compiler% -dumpmachine'
 }
 
 
