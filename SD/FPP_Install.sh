@@ -954,8 +954,17 @@ gpu_mem=64
 
 EOF
 
-        echo "FPP - Updating SPI buffer size and enabling HDMI audio devices"
-        sed -i 's/$/ spidev.bufsiz=102400 snd_bcm2835.enable_headphones=1/' ${BOOTDIR}/cmdline.txt
+        # snd_bcm2835 is loaded by Pi firmware via dtparam=audio=on before
+        # userspace modprobe runs, so /etc/modprobe.d options don't apply.
+        # Kernel-command-line params do. enable_hdmi=0 drops the legacy
+        # HDMI audio device (vc4hdmi provides HDMI audio natively), so:
+        #   - "bcm2835 Headphones" becomes card 0 (restores FPP 9 layout)
+        #   - no duplicate HDMI ALSA entries
+        #   - aplay never hits the bcm2835 HDMI path, which on some
+        #     Pi4/Pi5 + monitor combinations re-trains the HDMI link and
+        #     briefly blanks the display.
+        echo "FPP - Updating SPI buffer size and audio device selection"
+        sed -i 's/$/ spidev.bufsiz=102400 snd_bcm2835.enable_headphones=1 snd_bcm2835.enable_hdmi=0/' ${BOOTDIR}/cmdline.txt
 
         echo "FPP - Updating root partition device"
         sed -i 's/root=PARTUUID=[A-Fa-f0-9-]* /root=\/dev\/mmcblk0p2 /g' ${BOOTDIR}/cmdline.txt
