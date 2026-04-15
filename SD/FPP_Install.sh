@@ -1317,55 +1317,55 @@ echo >> ${FPPHOME}/.bashrc
 mkdir ${FPPHOME}/media/logs
 chown fpp:fpp ${FPPHOME}/media/logs
 
-#######################################
-# Configure log rotation
-echo "FPP - Configuring log rotation"
-if [ -d /etc/logrotate.d ]; then
-    cp /opt/fpp/etc/logrotate.d/* /etc/logrotate.d/
-fi
-if [ -f /etc/logrotate.conf ]; then
-    sed -i -e "s/#compress/compress/" /etc/logrotate.conf
-    sed -i -e "s/rotate .*/rotate 2/" /etc/logrotate.conf
-fi
-if [ -f /etc/logrotate.d/rsyslog ]; then
-    sed -i -e "s/weekly/daily/" /etc/logrotate.d/rsyslog
-fi
+configure_logging() {
+    echo "FPP - Configuring log rotation"
+    if [ -d /etc/logrotate.d ]; then
+        cp /opt/fpp/etc/logrotate.d/* /etc/logrotate.d/
+    fi
+    if [ -f /etc/logrotate.conf ]; then
+        sed -i -e "s/#compress/compress/" /etc/logrotate.conf
+        sed -i -e "s/rotate .*/rotate 2/" /etc/logrotate.conf
+    fi
+    if [ -f /etc/logrotate.d/rsyslog ]; then
+        sed -i -e "s/weekly/daily/" /etc/logrotate.d/rsyslog
+    fi
 
-#######################################
-# Disable duplicate logging to save on disk space 
-sed -i '/auth,authpriv\.\*/s/^/# /' /etc/rsyslog.conf
-sed -i '/cron\.\*/s/^/# /' /etc/rsyslog.conf
-sed -i '/kern\.\*/s/^/# /' /etc/rsyslog.conf
-sed -i '/mail\.\*/s/^/# /' /etc/rsyslog.conf
-sed -i '/user\.\*/s/^/# /' /etc/rsyslog.conf
+    # Disable duplicate logging to save on disk space
+    local facility
+    for facility in 'auth,authpriv\.\*' 'cron\.\*' 'kern\.\*' 'mail\.\*' 'user\.\*'; do
+        sed -i "/${facility}/s/^/# /" /etc/rsyslog.conf
+    done
+}
 
-#######################################
-# Configure ccache
-echo "FPP - Configuring ccache"
-mkdir -p /root/.ccache
-ccache -M 500M
-ccache --set-config=temporary_dir=/tmp
-# locale sloppiness keeps LANG/LC_ALL out of the cache key. Without it,
-# manifest keys shipped from the image-build chroot (LANG typically "C")
-# don't match Pi-runtime upgrades (LANG "en_US.UTF-8"), busting every hit.
-ccache --set-config=sloppiness=pch_defines,time_macros,locale
-ccache --set-config=hard_link=true
-ccache --set-config=pch_external_checksum=true
-# Fingerprint the compiler by its version + target triple rather than by
-# hashing its binary contents. The chroot-built cache ships in the image,
-# and the Pi's /usr/bin/g++ can end up with different bytes than what was
-# hashed in the chroot (post-install triggers, qemu-user quirks, or any
-# dpkg-reconfigure path can rewrite the file), invalidating the entire
-# shipped cache on first upgrade. -dumpversion + -dumpmachine is stable
-# across any such rewrite but still changes when the user actually upgrades
-# the compiler.
-ccache --set-config=compiler_check='%compiler% -dumpversion; %compiler% -dumpmachine'
-mkdir -p /home/fpp/.config/ccache
-cp /root/.ccache/ccache.conf /home/fpp/.config/ccache
-chown -R fpp:fpp /home/fpp/.config
+configure_ccache() {
+    echo "FPP - Configuring ccache"
+    mkdir -p /root/.ccache
+    ccache -M 500M
+    ccache --set-config=temporary_dir=/tmp
+    # locale sloppiness keeps LANG/LC_ALL out of the cache key. Without it,
+    # manifest keys shipped from the image-build chroot (LANG typically "C")
+    # don't match Pi-runtime upgrades (LANG "en_US.UTF-8"), busting every hit.
+    ccache --set-config=sloppiness=pch_defines,time_macros,locale
+    ccache --set-config=hard_link=true
+    ccache --set-config=pch_external_checksum=true
+    # Fingerprint the compiler by its version + target triple rather than by
+    # hashing its binary contents. The chroot-built cache ships in the image,
+    # and the Pi's /usr/bin/g++ can end up with different bytes than what was
+    # hashed in the chroot (post-install triggers, qemu-user quirks, or any
+    # dpkg-reconfigure path can rewrite the file), invalidating the entire
+    # shipped cache on first upgrade. -dumpversion + -dumpmachine is stable
+    # across any such rewrite but still changes when the user actually upgrades
+    # the compiler.
+    ccache --set-config=compiler_check='%compiler% -dumpversion; %compiler% -dumpmachine'
+    mkdir -p /home/fpp/.config/ccache
+    cp /root/.ccache/ccache.conf /home/fpp/.config/ccache
+    chown -R fpp:fpp /home/fpp/.config
+}
 
-if $isimage; then
-    #######################################
+configure_logging
+configure_ccache
+
+configure_samba_ftp() {
     echo "FPP - Configuring FTP server"
     sed -i -e "s/.*anonymous_enable.*/anonymous_enable=NO/" /etc/vsftpd.conf
     sed -i -e "s/.*local_enable.*/local_enable=YES/" /etc/vsftpd.conf
@@ -1399,18 +1399,9 @@ EOF
 
     systemctl disable smbd
     systemctl disable nmbd
+}
 
-fi
-
-#######################################
-# Fix sudoers to not require password
-echo "FPP - Giving ${FPPUSER} user sudo"
-echo "${FPPUSER} ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-
-if $isimage; then
-    #######################################
-    # Setup mail
+finalize_image_pre_build() {
     echo "FPP - Adding missing exim4 & ntpsec log directory"
     mkdir -p /var/log/ntpsec
     chown ntpsec:ntpsec /var/log/ntpsec
@@ -1506,6 +1497,19 @@ EOF
 
     # need to keep extra memory to process network packets
     echo "vm.min_free_kbytes=16384" >> /etc/sysctl.conf
+}
+
+if $isimage; then
+    configure_samba_ftp
+fi
+
+#######################################
+# Fix sudoers to not require password
+echo "FPP - Giving ${FPPUSER} user sudo"
+echo "${FPPUSER} ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+if $isimage; then
+    finalize_image_pre_build
 fi
 
 #######################################
@@ -1545,33 +1549,48 @@ configure_apache() {
 configure_apache
 
 
-#######################################
-echo "FPP - Configuring NTP Daemon"
+configure_ntp() {
+    echo "FPP - Configuring NTP Daemon"
+    # Clear all existing servers/pools and set the falconplayer pool
+    sed -i '/^server.*/d' /etc/ntpsec/ntp.conf
+    sed -i '/^pool.*/d' /etc/ntpsec/ntp.conf
+    sed -i '$s/$/\npool falconplayer.pool.ntp.org iburst minpoll 8 maxpoll 12 prefer/' /etc/ntpsec/ntp.conf
+}
+configure_ntp
 
-# Clear all existing servers and pools and set default pool to be falconplayer NTP Pool
-sed -i '/^server.*/d' /etc/ntpsec/ntp.conf 
-sed -i '/^pool.*/d' /etc/ntpsec/ntp.conf 
-sed -i '$s/$/\npool falconplayer.pool.ntp.org iburst minpoll 8 maxpoll 12 prefer/' /etc/ntpsec/ntp.conf
 
-
-if [ "x${FPPPLATFORM}" = "xBeagleBone 64" ]; then
-    #Set colored prompt
+finalize_platform_beaglebone_64() {
     sed -i -e "s/#force_color_prompt=yes/force_color_prompt=yes/" /home/fpp/.bashrc
+
     # remove the udev rules that create the SoftAp interface on the bbbw and bbggw
     rm -f /etc/udev/rules.d/*SoftAp*
-    
+
     echo 'GOVERNOR="schedutil"' > /etc/default/cpufrequtils
-    
     echo "USB_UMTPRD_DISABLED=yes" >> /etc/default/bb-boot
-fi
-if [ "x${FPPPLATFORM}" = "xBeagleBone Black" ]; then
-    #######################################
+
+    cd /opt/fpp/capes/drivers/pinctrl
+    make -j ${CPUS}
+    make install
+    make clean
+
+    cd /opt/fpp/capes/drivers/bb64
+    make -j ${CPUS}
+    make install
+    make clean
+
+    cp /boot/firmware/extlinux/extlinux.conf /boot/firmware/extlinux/extlinux.conf.orig
+    cp extlinux/extlinux.conf /boot/firmware/extlinux/extlinux.conf
+    cd ~
+
+    systemctl disable console-setup.service
+}
+finalize_platform_beaglebone_black() {
     systemctl disable dev-hugepages.mount
-    
+
     # CPU frequency scaling is disabled in our kernel, no need for the service to run
     systemctl disable cpufrequtils
     systemctl disable loadcpufreq.service
-    
+
     # sysconf requires a vfat partition which the BBB images currently don't have
     systemctl disable bbbio-set-sysconf
     echo "USB_UMTPRD_DISABLED=yes" >> /etc/default/bb-boot
@@ -1581,7 +1600,7 @@ if [ "x${FPPPLATFORM}" = "xBeagleBone Black" ]; then
         cd /opt/source
         git clone https://github.com/beagleboard/bb.org-overlays
     fi
-    
+
     cd /opt/fpp/capes/drivers/bbb
     make -j ${CPUS}
     make install
@@ -1592,10 +1611,9 @@ if [ "x${FPPPLATFORM}" = "xBeagleBone Black" ]; then
     make install
     make clean
 
-    #Set colored prompt
     sed -i -e "s/#force_color_prompt=yes/force_color_prompt=yes/" /home/fpp/.bashrc
-    
-    #adjust a bunch of settings in /boot/uEnv.txt
+
+    # adjust a bunch of settings in /boot/uEnv.txt
     sed -i -e "s+^#enable_uboot_overlays=\(.*\)+enable_uboot_overlays=1+g"  /boot/uEnv.txt
     sed -i -e "s+^#disable_uboot_overlay_video=\(.*\)+disable_uboot_overlay_video=1+g"  /boot/uEnv.txt
     sed -i -e "s+#uboot_overlay_addr0=\(.*\)+uboot_overlay_addr0=/lib/firmware/fpp-base-overlay.dtb+g"  /boot/uEnv.txt
@@ -1608,87 +1626,49 @@ if [ "x${FPPPLATFORM}" = "xBeagleBone Black" ]; then
 
     # remove the udev rules that create the SoftAp interface on the bbbw and bbggw
     rm -f /etc/udev/rules.d/*SoftAp*
-    
-    #cleanout some DRI files that are not needed at all on Beagle hardware
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/r?00*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/rad*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/nouveau*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/rockchip*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/st*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/ili*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/imx*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/exy*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/etn*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/hx*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/kirin*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/rcar*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/mediatek*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/tegra*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/komeda*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/v3d*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/vc4*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/virtio*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/zink*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/lima*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/panfrost*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/armada*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/mi0283qt*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/pl111*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/msm*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/mcde*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/meson*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/ingenic*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/mali*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/mxs*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/rep*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/sun*
-    rm -rf /usr/lib/arm-linux-gnueabihf/dri/vmw*
-fi
-if [ "x${FPPPLATFORM}" = "xBeagleBone 64" ]; then    
-    cd /opt/fpp/capes/drivers/pinctrl
-    make -j ${CPUS}
-    make install
-    make clean
 
-    cd /opt/fpp/capes/drivers/bb64
-    make -j ${CPUS}
-    make install
-    make clean
-    cp /boot/firmware/extlinux/extlinux.conf /boot/firmware/extlinux/extlinux.conf.orig
-    cp extlinux/extlinux.conf /boot/firmware/extlinux/extlinux.conf
-    cd ~
-        
-    #Set colored prompt
-    sed -i -e "s/#force_color_prompt=yes/force_color_prompt=yes/" /home/fpp/.bashrc
-    
-    systemctl disable console-setup.service
-fi
+    # clean out some DRI files that are not needed at all on Beagle hardware
+    local dri=/usr/lib/arm-linux-gnueabihf/dri
+    rm -rf ${dri}/r?00* ${dri}/rad* ${dri}/nouveau* ${dri}/rockchip* ${dri}/st* \
+           ${dri}/ili* ${dri}/imx* ${dri}/exy* ${dri}/etn* ${dri}/hx* \
+           ${dri}/kirin* ${dri}/rcar* ${dri}/mediatek* ${dri}/tegra* ${dri}/komeda* \
+           ${dri}/v3d* ${dri}/vc4* ${dri}/virtio* ${dri}/zink* ${dri}/lima* \
+           ${dri}/panfrost* ${dri}/armada* ${dri}/mi0283qt* ${dri}/pl111* ${dri}/msm* \
+           ${dri}/mcde* ${dri}/meson* ${dri}/ingenic* ${dri}/mali* ${dri}/mxs* \
+           ${dri}/rep* ${dri}/sun* ${dri}/vmw*
+}
 
-if $isimage; then
-    rm -rf /usr/share/doc/*
-    apt-get clean
-fi
+# Runs AFTER the main make, so the new u-boot overwrites whatever the build
+# may have touched. Stock u-boot on recent rcn-ee base images has been
+# unreliable on some Beagles; install a known-good version.
+finalize_platform_beaglebone_black_post_build() {
+    /opt/fpp/bin.bbb/bootloader/install.sh
+}
+case "${FPPPLATFORM}" in
+    "BeagleBone Black") finalize_platform_beaglebone_black ;;
+    "BeagleBone 64")    finalize_platform_beaglebone_64 ;;
+esac
 
+install_fpp_services() {
+    echo "FPP - Configuring FPP startup"
+    cp /opt/fpp/etc/systemd/*.service /lib/systemd/system/
+    if $isimage; then
+        mkdir -p /etc/networkd-dispatcher/initialized.d
+        cp -a /opt/fpp/etc/networkd-dispatcher/* /etc/networkd-dispatcher
+    fi
 
-#######################################
-echo "FPP - Configuring FPP startup"
-cp /opt/fpp/etc/systemd/*.service /lib/systemd/system/
-if $isimage; then
-    mkdir -p /etc/networkd-dispatcher/initialized.d
-    cp -a /opt/fpp/etc/networkd-dispatcher/* /etc/networkd-dispatcher
-fi
+    systemctl disable mosquitto
+    systemctl daemon-reload
 
-systemctl disable mosquitto
-systemctl daemon-reload
-systemctl enable fppinit.service
-systemctl enable fpprtc.service
-systemctl enable fppoled.service
-systemctl enable fppd.service
-systemctl enable fpp_postnetwork.service
-systemctl enable fpp-install-kiosk.service
-systemctl enable fpp-reboot.service
+    local svc
+    for svc in fppinit fpprtc fppoled fppd fpp_postnetwork \
+               fpp-install-kiosk fpp-reboot; do
+        systemctl enable ${svc}.service
+    done
+}
 
-if $isimage; then
+# Image-only tweaks that happen after FPP services are installed/enabled.
+finalize_image_services() {
     cp /opt/fpp/etc/update-RTC /etc/cron.daily
 
     # Make sure the journal is large enough to store the full boot logs
@@ -1696,10 +1676,21 @@ if $isimage; then
     if [ -f /etc/systemd/journald.conf ]; then
         sed -i -e "s/^.*SystemMaxUse.*/SystemMaxUse=96M/g" /etc/systemd/journald.conf
     fi
-    
+
     rm -f /etc/systemd/network/*eth*
     rm -f /etc/systemd/network/*wlan*
     cp /opt/fpp/etc/systemd/network/* /etc/systemd/network
+}
+
+if $isimage; then
+    rm -rf /usr/share/doc/*
+    apt-get clean
+fi
+
+install_fpp_services
+
+if $isimage; then
+    finalize_image_services
 fi
 
 
@@ -1708,8 +1699,7 @@ cd /opt/fpp/src/
 make clean ; make -j ${CPUS} optimized
 
 
-######################################
-if [ "$FPPPLATFORM" == "Raspberry Pi" -o "$FPPPLATFORM" == "BeagleBone Black" -o "$FPPPLATFORM" == "BeagleBone 64" ]; then
+configure_hostapd() {
     # replace entry already there
     sed -i 's/^DAEMON_CONF.*/DAEMON_CONF="\/etc\/hostapd\/hostapd.conf"/g' /etc/default/hostapd
     if ! grep -q etc/hostapd/hostapd.conf "/etc/default/hostapd"; then
@@ -1720,15 +1710,17 @@ if [ "$FPPPLATFORM" == "Raspberry Pi" -o "$FPPPLATFORM" == "BeagleBone Black" -o
         # default line not there, just append to end of file
         echo "DAEMON_CONF=\"/etc/hostapd/hostapd.conf\"" >> /etc/default/hostapd
     fi
-        
-    # Swap configuration:
-    #   - Raspberry Pi OS ships its own rpi-swap mechanism (/etc/rpi/swap.conf
-    #     + systemd-zram-setup@zram0.service + dev-zram0.swap + rpi-zram-writeback)
-    #     that handles zram setup automatically. Don't write zram-tools config
-    #     on Pi -- it's read by a service we'd be disabling, and would just be
-    #     dead clutter.
-    #   - On BeagleBone (BBB / BB64) we still drive zram via zram-tools because
-    #     rcn-ee Debian doesn't ship the rpi-swap mechanism.
+}
+
+# Swap configuration:
+#   - Raspberry Pi OS ships its own rpi-swap mechanism (/etc/rpi/swap.conf
+#     + systemd-zram-setup@zram0.service + dev-zram0.swap + rpi-zram-writeback)
+#     that handles zram setup automatically. Don't write zram-tools config
+#     on Pi -- it's read by a service we'd be disabling, and would just be
+#     dead clutter.
+#   - On BeagleBone (BBB / BB64) we still drive zram via zram-tools because
+#     rcn-ee Debian doesn't ship the rpi-swap mechanism.
+configure_swap() {
     if [ "$FPPPLATFORM" == "Raspberry Pi" ]; then
         # Just sysctl tuning; rpi-swap handles the actual zram device.
         echo "vm.swappiness=1" >> /etc/sysctl.d/10-swap.conf
@@ -1753,14 +1745,9 @@ if [ "$FPPPLATFORM" == "Raspberry Pi" -o "$FPPPLATFORM" == "BeagleBone Black" -o
             echo "vm.vfs_cache_pressure=50" >> /etc/sysctl.d/10-swap.conf
         fi
     fi
-    
-    if $isimage; then
-        # make sure the existing users are completely removed
-        rm -rf /home/pi
-        rm -rf /home/debian
-    fi
-fi
-if $isimage; then
+}
+
+finalize_image_post_build() {
     systemctl disable dnsmasq
     systemctl unmask hostapd
     systemctl disable hostapd
@@ -1773,48 +1760,74 @@ if $isimage; then
     systemctl disable winbind
     systemctl mask winbind
     sed -i -e "s/winbind//" /etc/nsswitch.conf
-    
-    # Setup the fpp user so all the pipewire daemons don't startup when user fpp logs in
+
+    # Stop all the pipewire daemons starting up when user fpp logs in.
+    # Note: target is /dev/null (the systemd convention for masking a unit).
+    # The old code had a typo ("/dev/mull") which just left dangling symlinks;
+    # fortunately those also prevented the units from loading, so the
+    # intended effect was preserved by accident.
     mkdir -p /home/fpp/.config/systemd/user
-    ln -s /dev/mull  /home/fpp/.config/systemd/user/pipewire.socket
-    ln -s /dev/mull  /home/fpp/.config/systemd/user/pipewire.service
-    ln -s /dev/mull  /home/fpp/.config/systemd/user/pipewire-pulse.service
-    ln -s /dev/mull  /home/fpp/.config/systemd/user/pipewire-pulse.socket
-    ln -s /dev/mull  /home/fpp/.config/systemd/user/wireplumber.service
+    local svc
+    for svc in pipewire.socket pipewire.service pipewire-pulse.service \
+               pipewire-pulse.socket wireplumber.service; do
+        ln -sf /dev/null /home/fpp/.config/systemd/user/$svc
+    done
     chown -R fpp:fpp /home/fpp/.config
+
+    # Remove stock distro users; FPP has its own.
+    rm -rf /home/pi
+    rm -rf /home/debian
+}
+
+######################################
+case "${FPPPLATFORM}" in
+    "Raspberry Pi"|"BeagleBone Black"|"BeagleBone 64")
+        configure_hostapd
+        configure_swap
+        ;;
+esac
+
+if $isimage; then
+    finalize_image_post_build
 fi
-if [ "$FPPPLATFORM" == "BeagleBone Black" ]; then
-    # Stock u-boot on recent rcn-ee base images has been unreliable on some
-    # Beagles; install a known-good version.
-    /opt/fpp/bin.bbb/bootloader/install.sh
+if [ "${FPPPLATFORM}" = "BeagleBone Black" ]; then
+    finalize_platform_beaglebone_black_post_build
 fi
 
-# generate apache csp file
-mkdir -p /home/fpp/media/config/
-/opt/fpp/scripts/ManageApacheContentPolicy.sh regenerate
+generate_apache_csp() {
+    mkdir -p /home/fpp/media/config/
+    /opt/fpp/scripts/ManageApacheContentPolicy.sh regenerate
+}
 
-ENDTIME=$(date)
+print_install_complete() {
+    local endtime
+    endtime=$(date)
+    cat <<-EOF
+=========================================================
+FPP Install Complete.
+Started : ${STARTTIME}
+Finished: ${endtime}
+=========================================================
+You can reboot the system by changing to the '${FPPUSER} user with the
+password 'falcon' and running the shutdown command.
 
-echo "========================================================="
-echo "FPP Install Complete."
-echo "Started : ${STARTTIME}"
-echo "Finished: ${ENDTIME}"
-echo "========================================================="
-echo "You can reboot the system by changing to the '${FPPUSER} user with the"
-echo "password 'falcon' and running the shutdown command."
-echo ""
-echo "su - ${FPPUSER}"
-echo "sudo shutdown -r now"
-echo ""
-echo "NOTE: If you are prepping this as an image for release,"
-echo "remove the SSH keys before shutting down so they will be"
-echo "rebuilt during the next boot."
-echo ""
-echo "su - ${FPPUSER}"
-echo "sudo rm -rf /etc/ssh/ssh_host*key*"
-echo "sudo shutdown -r now"
-echo "========================================================="
-echo ""
+su - ${FPPUSER}
+sudo shutdown -r now
+
+NOTE: If you are prepping this as an image for release,
+remove the SSH keys before shutting down so they will be
+rebuilt during the next boot.
+
+su - ${FPPUSER}
+sudo rm -rf /etc/ssh/ssh_host*key*
+sudo shutdown -r now
+=========================================================
+
+EOF
+}
+
+generate_apache_csp
+print_install_complete
 
 cp /root/FPP_Install.* ${FPPHOME}/
 chown fpp:fpp ${FPPHOME}/FPP_Install.*
