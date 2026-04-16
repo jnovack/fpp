@@ -1165,6 +1165,19 @@ fi
 
 
 #######################################
+# Scrub any embedded credentials from the git config. GitHub's
+# actions/checkout writes a short-lived runner token into
+# [http "https://github.com/"] extraheader; if that tree is rsynced
+# into the image it ships a credential that (a) expires and breaks
+# the user's first Upgrade, and (b) should never have been published.
+# Safe to run even when no such header exists.
+if [ -d /opt/fpp/.git ]; then
+    git -C /opt/fpp config --local --remove-section http."https://github.com/" 2>/dev/null || true
+    git -C /opt/fpp submodule foreach --quiet --recursive \
+        'git config --local --remove-section http."https://github.com/" 2>/dev/null || true' || true
+fi
+
+#######################################
 # Switch to desired code branch
 echo "FPP - Switching git clone to ${FPPBRANCH} branch"
 cd /opt/fpp

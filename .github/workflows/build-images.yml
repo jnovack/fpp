@@ -129,6 +129,11 @@ jobs:
           # "fatal: No names found, cannot describe anything."
           fetch-depth: 0
           fetch-tags: true
+          # Don't leave the short-lived runner token in .git/config --
+          # the tree gets baked into the shipped image and the token
+          # would (a) expire, breaking the user's first Upgrade, and
+          # (b) ship a credential we should never be publishing.
+          persist-credentials: false
 
       - name: Maximize disk space
         # Default GH runners have ~14 GB free; BBB / Pi builds easily use
