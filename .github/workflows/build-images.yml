@@ -291,17 +291,17 @@ jobs:
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "FPP Nightly ($BUILD_DATE)" \
-            --notes "Automated nightly build.
+            --notes "Automated nightly build (unreleased development snapshot).
 
           **Build date:** $BUILD_DATE UTC
           **Commit:** [\`$SHORT\`](../../commit/$COMMIT)
 
-          Satic download URLs (always point at the most recent nightly):
+          Static download URLs (always point at the most recent nightly):
           - \`releases/download/nightly/FPP-vnightly-Pi.img.zip\`
           - \`releases/download/nightly/FPP-vnightly-Pi64.img.zip\`
           - \`releases/download/nightly/FPP-vnightly-BB64.img.zip\`
           - \`releases/download/nightly/FPP-vnightly-BBB.img.zip\`
 
           > :warning: Nightly builds are unreleased development snapshots.
-          > Use tagged releases for production. https://github.com/FalconChristmas/fpp/releases/latest" \
+          > Latest production release can be found at https://github.com/FalconChristmas/fpp/releases/latest" \
             release-files/*
