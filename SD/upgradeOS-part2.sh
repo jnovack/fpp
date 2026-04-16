@@ -6,32 +6,49 @@
 cd /
 
 echo "Running rsync to update boot file system:"
-if [ "${FPPPLATFORM}" = "Raspberry Pi" ]
-then
-    ROOTDEV=$(findmnt -T /mnt | tail -n 1 | awk '{print $2}');
-    BOOTMOUNT=$(mount | grep /boot | awk '{print $3}')
-    BOOTMOUNTDEV=$(findmnt -T /mnt/boot | tail -n 1 | awk '{print $2}')
-    # Upgrading to a Raspbian 12 or newer system which mounts /boot/firmware instead of /boot
-    if [ "${BOOTMOUNT}" = "/mnt/boot" ]; then
-        echo "Need to remount /mnt/boot to /mnt/boot/firmware"
-        umount /mnt/boot
-        mkdir -p /mnt/boot/firmware
-        mount ${BOOTMOUNTDEV} /mnt/boot/firmware
-    fi
+case "${FPPPLATFORM}" in
+    "Raspberry Pi"|"BeagleBone 64")
+        # Both Trixie-era Pi and BB64 use /boot/firmware as the FAT boot
+        # mount. The old system being upgraded may still be on the older
+        # /boot layout, so detect and remount if needed.
+        ROOTDEV=$(findmnt -T /mnt | tail -n 1 | awk '{print $2}')
+        # Use findmnt to avoid the ambiguous `mount | grep /boot` (which
+        # could match unrelated lines inside the chroot).
+        OLD_BOOT_AT_ROOT=false
+        if findmnt -n /mnt/boot/firmware >/dev/null 2>&1; then
+            BOOTMOUNTDEV=$(findmnt -n -o SOURCE /mnt/boot/firmware)
+        elif findmnt -n /mnt/boot >/dev/null 2>&1; then
+            BOOTMOUNTDEV=$(findmnt -n -o SOURCE /mnt/boot)
+            OLD_BOOT_AT_ROOT=true
+        else
+            echo "ERROR: could not locate the old boot partition at /mnt/boot or /mnt/boot/firmware"
+            exit 1
+        fi
 
-    rsync --outbuf=N -aAXxvc /boot/ /mnt/boot/ --delete-before
+        if $OLD_BOOT_AT_ROOT; then
+            echo "Remounting old boot partition from /mnt/boot to /mnt/boot/firmware"
+            umount /mnt/boot
+            mkdir -p /mnt/boot/firmware
+            mount "${BOOTMOUNTDEV}" /mnt/boot/firmware
+        fi
 
-    if [ "${BOOTMOUNT}" = "/mnt/boot" ]; then
-        echo "Adjusting /etc/fstab"
-        # We are converting a system which was mounting /boot to now mount /boot/firmware
-        # Fixup boot partition mount point in /etc/fstab
-        sed -e "s# /boot # /boot/firmware #" -i /mnt/etc/fstab
-    fi
-    sed -i "s|root=/dev/[a-zA-Z0-9]* |root=${ROOTDEV} |g" /mnt/boot/firmware/cmdline.txt
-else
-    # Beaglebone
-    rsync -aAXxvc /boot/ /mnt/boot/ --delete-during
-fi
+        rsync --outbuf=N -aAXxvc /boot/ /mnt/boot/ --delete-before
+
+        if $OLD_BOOT_AT_ROOT; then
+            echo "Adjusting /etc/fstab: /boot -> /boot/firmware"
+            sed -e "s# /boot # /boot/firmware #" -i /mnt/etc/fstab
+        fi
+
+        # Pi uses cmdline.txt; BB64 uses extlinux.conf (updated later).
+        if [ "${FPPPLATFORM}" = "Raspberry Pi" ]; then
+            sed -i "s|root=/dev/[a-zA-Z0-9]* |root=${ROOTDEV} |g" /mnt/boot/firmware/cmdline.txt
+        fi
+        ;;
+    *)
+        # BeagleBone Black (still /boot, not /boot/firmware)
+        rsync -aAXxvc /boot/ /mnt/boot/ --delete-during
+        ;;
+esac
 
 echo
 
