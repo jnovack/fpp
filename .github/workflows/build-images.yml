@@ -296,12 +296,12 @@ jobs:
           **Build date:** $BUILD_DATE UTC
           **Commit:** [\`$SHORT\`](../../commit/$COMMIT)
 
-          Stable download URLs (always point at the most recent nightly):
+          Satic download URLs (always point at the most recent nightly):
           - \`releases/download/nightly/FPP-vnightly-Pi.img.zip\`
           - \`releases/download/nightly/FPP-vnightly-Pi64.img.zip\`
           - \`releases/download/nightly/FPP-vnightly-BB64.img.zip\`
           - \`releases/download/nightly/FPP-vnightly-BBB.img.zip\`
 
           > :warning: Nightly builds are unreleased development snapshots.
-          > Use tagged releases for production." \
+          > Use tagged releases for production. https://github.com/FalconChristmas/fpp/releases/latest" \
             release-files/*
