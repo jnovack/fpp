@@ -29,6 +29,7 @@
 #include <inttypes.h>
 #include <map>
 #include <memory>
+#include <set>
 #include <stdio.h>
 #include <string.h>
 #include <string>
@@ -92,6 +93,11 @@ static uint32_t ddpMaxChannel = 0;
 static uint32_t e131Errors = 0;
 static uint32_t e131SyncPackets = 0;
 static UniverseEntry unknownUniverse;
+
+// Sync universes we've auto-joined the multicast group for, based on the
+// sync-address field advertised in received data packets. Lets sync packets
+// reach the bridge even when the sync universe isn't a configured input.
+static std::set<int> joinedSyncUniverses;
 
 static bool bridgeDataReceived = false;
 
@@ -264,6 +270,52 @@ inline void SetBridgeData(uint8_t* data, int startChannel, int len, long long pa
     packetTime += expireOffSet;
     bridgeDataReceived = true;
     sequence->SetBridgeData(data, startChannel, len, packetTime);
+}
+
+// Add or drop multicast-group membership for the 239.255.x.y address
+// associated with an E1.31 universe across every non-loopback IPv4
+// interface. Op is IP_ADD_MEMBERSHIP or IP_DROP_MEMBERSHIP.
+static void ChangeE131MulticastMembership(int universe, int op) {
+    if (bridgeSock < 0 || universe <= 0) {
+        return;
+    }
+    struct ip_mreq mreq;
+    char strMulticastGroup[16];
+    snprintf(strMulticastGroup, sizeof(strMulticastGroup), "239.255.%d.%d",
+             universe / 256, universe % 256);
+    mreq.imr_multiaddr.s_addr = inet_addr(strMulticastGroup);
+
+    const char* action = (op == IP_ADD_MEMBERSHIP) ? "Adding" : "Removing";
+    LogInfo(VB_E131BRIDGE, "%s group %s\n", action, strMulticastGroup);
+
+    struct ifaddrs* interfaces;
+    if (getifaddrs(&interfaces) < 0) {
+        return;
+    }
+    char address[16];
+    address[0] = 0;
+    int multicastJoined = 0;
+    for (struct ifaddrs* tmp = interfaces; tmp; tmp = tmp->ifa_next) {
+        if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET) {
+            GetInterfaceAddress(tmp->ifa_name, address, NULL, NULL);
+            if (strcmp(address, "127.0.0.1")) {
+                mreq.imr_interface.s_addr = inet_addr(address);
+                if (setsockopt(bridgeSock, IPPROTO_IP, op, &mreq, sizeof(mreq)) < 0) {
+                    LogWarn(VB_E131BRIDGE, "   %s multicast group %s failed on interface %s: %s\n",
+                            action, strMulticastGroup, tmp->ifa_name, strerror(errno));
+                }
+                multicastJoined = 1;
+            }
+        }
+    }
+    if (!multicastJoined && op == IP_ADD_MEMBERSHIP) {
+        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+        if (setsockopt(bridgeSock, IPPROTO_IP, op, &mreq, sizeof(mreq)) < 0) {
+            LogWarn(VB_E131BRIDGE, "   Could not setup Multicast Group %s on default interface\n",
+                    strMulticastGroup);
+        }
+    }
+    freeifaddrs(interfaces);
 }
 
 /*
@@ -479,56 +531,34 @@ bool Bridge_Initialize_Internal(bool& hasArtNet) {
 }
 
 static void removeMulticastGroups() {
-    int UniverseOctet[2];
-    struct ip_mreq mreq;
-    char strMulticastGroup[16];
-
-    // get all the addresses
-    struct ifaddrs *interfaces, *tmp;
-    getifaddrs(&interfaces);
-
-    char address[16];
-    address[0] = 0;
-    // Join the multicast groups
     for (int i = 0; i < InputUniverseCount; i++) {
         if (InputUniverses[i].type == E131_TYPE_MULTICAST) {
-            UniverseOctet[0] = InputUniverses[i].universe / 256;
-            UniverseOctet[1] = InputUniverses[i].universe % 256;
-            snprintf(strMulticastGroup, sizeof(strMulticastGroup), "239.255.%d.%d", UniverseOctet[0], UniverseOctet[1]);
-            mreq.imr_multiaddr.s_addr = inet_addr(strMulticastGroup);
-
-            LogInfo(VB_E131BRIDGE, "Removing group %s\n", strMulticastGroup);
-
-            // add group to groups to listen for on eth0 and wlan0 if it exists
-            tmp = interfaces;
-            // loop through all the interfaces and subscribe to the group
-            while (tmp) {
-                // struct sockaddr_in *sin = (struct sockaddr_in *)tmp->ifa_addr;
-                // strcpy(address, inet_ntoa(sin->sin_addr));
-                if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET) {
-                    GetInterfaceAddress(tmp->ifa_name, address, NULL, NULL);
-                    if (strcmp(address, "127.0.0.1")) {
-                        LogDebug(VB_E131BRIDGE, "   Removing interface %s - %s\n", tmp->ifa_name, address);
-                        mreq.imr_interface.s_addr = inet_addr(address);
-                        if (setsockopt(bridgeSock, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-                            LogWarn(VB_E131BRIDGE, "   Could not remove Multicast Group for interface %s\n", tmp->ifa_name);
-                        }
-                    }
-                } else if (tmp->ifa_addr && tmp->ifa_addr->sa_family == AF_INET6) {
-                    // FIXME for ipv6 multicast
-                    // LogDebug(VB_E131BRIDGE, "   Inet6 interface %s\n", tmp->ifa_name);
-                }
-                tmp = tmp->ifa_next;
-            }
+            ChangeE131MulticastMembership(InputUniverses[i].universe, IP_DROP_MEMBERSHIP);
         }
     }
-    freeifaddrs(interfaces);
+    for (int u : joinedSyncUniverses) {
+        ChangeE131MulticastMembership(u, IP_DROP_MEMBERSHIP);
+    }
+    joinedSyncUniverses.clear();
 }
 
 bool Bridge_StoreData(uint8_t* bridgeBuffer, long long packetTime) {
     if ((bridgeBuffer[E131_VECTOR_INDEX] == VECTOR_ROOT_E131_DATA) &&
         (bridgeBuffer[E131_START_CODE] == 0x00)) {
         uint32_t universe = ((int)bridgeBuffer[E131_UNIVERSE_INDEX] << 8) + bridgeBuffer[E131_UNIVERSE_INDEX + 1];
+
+        // If the sender advertises a sync universe, make sure we're subscribed
+        // to its multicast group so the sync packets reach us. Data is still
+        // applied immediately; this only ensures the sync counter updates and
+        // sets the stage for any future buffered-until-sync handling.
+        int syncUniverse = ((int)bridgeBuffer[E131_SYNC_ADDRESS_INDEX] << 8) +
+                           bridgeBuffer[E131_SYNC_ADDRESS_INDEX + 1];
+        if (syncUniverse > 0 &&
+            Bridge_GetIndexFromUniverseNumber(syncUniverse) == BRIDGE_INVALID_UNIVERSE_INDEX &&
+            joinedSyncUniverses.insert(syncUniverse).second) {
+            ChangeE131MulticastMembership(syncUniverse, IP_ADD_MEMBERSHIP);
+        }
+
         uint32_t universeIndex = Bridge_GetIndexFromUniverseNumber(universe);
         if (universeIndex != BRIDGE_INVALID_UNIVERSE_INDEX) {
             uint32_t sn = bridgeBuffer[E131_SEQUENCE_INDEX];

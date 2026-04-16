@@ -26,6 +26,7 @@ public:
     virtual bool IsPingable() override;
 
     virtual void PrepareData(unsigned char* channelData, UDPOutputMessages& msgs) override;
+    virtual void PostPrepareData(unsigned char* channelData, UDPOutputMessages& msgs) override;
 
     virtual void DumpConfig() override;
     virtual void GetRequiredChannelRange(int& min, int& max) override;
@@ -35,8 +36,13 @@ public:
     int universe;
     int universeCount;
     int priority;
+    int syncUniverse;
 
     std::vector<sockaddr_in> e131Addresses;
     std::vector<struct iovec> e131Iovecs;
     std::vector<unsigned char*> e131Headers;
+
+    unsigned char* e131SyncPacket;
+    struct iovec e131SyncIovec;
+    sockaddr_in e131SyncAddress;
 };

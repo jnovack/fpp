@@ -48,6 +48,22 @@ const unsigned char E131header[] = {
     0x00, 0x00, 0x01, 0x72, 0x0b, 0x02, 0xa1, 0x00, 0x00, 0x00, 0x01, 0x02, 0x01, 0x00
 };
 
+const unsigned char E131SyncHeader[] = {
+    // Root Layer (38 bytes)
+    0x00, 0x10,                                                                         // Preamble Size
+    0x00, 0x00,                                                                         // Post-amble Size
+    0x41, 0x53, 0x43, 0x2d, 0x45, 0x31, 0x2e, 0x31, 0x37, 0x00, 0x00, 0x00,             // "ASC-E1.17\0\0\0"
+    0x70, 0x21,                                                                         // RLP Flags + Length (49-16=33)
+    0x00, 0x00, 0x00, 0x08,                                                             // Root Vector = VECTOR_ROOT_E131_EXTENDED
+    'F', 'A', 'L', 'C', 'O', 'N', ' ', 'F', 'P', 'P', 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // CID
+    // Framing Layer (11 bytes)
+    0x70, 0x0b,                                                                         // Framing Flags + Length (49-38=11)
+    0x00, 0x00, 0x00, 0x01,                                                             // Framing Vector = VECTOR_E131_EXTENDED_SYNCHRONIZATION
+    0x00,                                                                               // Sequence Number
+    0x00, 0x00,                                                                         // Synchronization Address
+    0x00, 0x00                                                                          // Reserved
+};
+
 static const std::string E131TYPE = "e1.31";
 
 const std::string& E131OutputData::GetOutputTypeString() const {
@@ -56,7 +72,9 @@ const std::string& E131OutputData::GetOutputTypeString() const {
 
 E131OutputData::E131OutputData(const Json::Value& config) :
     UDPOutputData(config),
-    universeCount(1) {
+    universeCount(1),
+    syncUniverse(0),
+    e131SyncPacket(nullptr) {
     sockaddr_in e131Address;
     memset((char*)&e131Address, 0, sizeof(sockaddr_in));
     e131Address.sin_family = AF_INET;
@@ -69,6 +87,12 @@ E131OutputData::E131OutputData(const Json::Value& config) :
     }
     if (universeCount < 1) {
         universeCount = 1;
+    }
+    if (config.isMember("syncUniverse")) {
+        syncUniverse = config["syncUniverse"].asInt();
+    }
+    if (syncUniverse < 0 || syncUniverse > 63999) {
+        syncUniverse = 0;
     }
     switch (type) {
     case 0: // Multicast
@@ -117,6 +141,8 @@ E131OutputData::E131OutputData(const Json::Value& config) :
 
         int uni = universe + x;
         e131Buffer[E131_PRIORITY_INDEX] = priority;
+        e131Buffer[E131_SYNC_ADDRESS_INDEX] = (char)(syncUniverse / 256);
+        e131Buffer[E131_SYNC_ADDRESS_INDEX + 1] = (char)(syncUniverse % 256);
         e131Buffer[E131_UNIVERSE_INDEX] = (char)(uni / 256);
         e131Buffer[E131_UNIVERSE_INDEX + 1] = (char)(uni % 256);
 
@@ -149,11 +175,32 @@ E131OutputData::E131OutputData(const Json::Value& config) :
         e131Iovecs[x * 2 + 1].iov_base = nullptr;
         e131Iovecs[x * 2 + 1].iov_len = channelCount;
     }
+
+    if (syncUniverse > 0) {
+        e131SyncPacket = (unsigned char*)malloc(E131_SYNC_PACKET_LENGTH);
+        memcpy(e131SyncPacket, E131SyncHeader, E131_SYNC_PACKET_LENGTH);
+        e131SyncPacket[E131_SYNC_PACKET_UNIVERSE_INDEX] = (unsigned char)(syncUniverse / 256);
+        e131SyncPacket[E131_SYNC_PACKET_UNIVERSE_INDEX + 1] = (unsigned char)(syncUniverse % 256);
+
+        e131SyncIovec.iov_base = e131SyncPacket;
+        e131SyncIovec.iov_len = E131_SYNC_PACKET_LENGTH;
+
+        memset((char*)&e131SyncAddress, 0, sizeof(sockaddr_in));
+        e131SyncAddress.sin_family = AF_INET;
+        e131SyncAddress.sin_port = htons(E131_DEST_PORT);
+        char sAddress[32];
+        snprintf(sAddress, sizeof(sAddress), "239.255.%d.%d",
+                 syncUniverse / 256, syncUniverse % 256);
+        e131SyncAddress.sin_addr.s_addr = inet_addr(sAddress);
+    }
 }
 
 E131OutputData::~E131OutputData() {
     for (auto a : e131Headers) {
         free(a);
+    }
+    if (e131SyncPacket) {
+        free(e131SyncPacket);
     }
 }
 
@@ -203,13 +250,40 @@ void E131OutputData::PrepareData(unsigned char* channelData, UDPOutputMessages& 
     }
 }
 
+void E131OutputData::PostPrepareData(unsigned char* channelData, UDPOutputMessages& msgs) {
+    if (!valid || !active || syncUniverse <= 0 || !e131SyncPacket) {
+        return;
+    }
+
+    // If another output already queued a sync packet for this same sync
+    // universe (same destination multicast address), skip to avoid duplicates.
+    auto& syncMsgs = msgs[E131_SYNC_KEY];
+    for (const auto& existing : syncMsgs) {
+        sockaddr_in* addr = (sockaddr_in*)existing.msg_hdr.msg_name;
+        if (addr && addr->sin_addr.s_addr == e131SyncAddress.sin_addr.s_addr) {
+            return;
+        }
+    }
+
+    ++e131SyncPacket[E131_SYNC_PACKET_SEQ_INDEX];
+
+    struct mmsghdr msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_hdr.msg_name = &e131SyncAddress;
+    msg.msg_hdr.msg_namelen = sizeof(sockaddr_in);
+    msg.msg_hdr.msg_iov = &e131SyncIovec;
+    msg.msg_hdr.msg_iovlen = 1;
+    msg.msg_len = E131_SYNC_PACKET_LENGTH;
+    syncMsgs.push_back(msg);
+}
+
 void E131OutputData::GetRequiredChannelRange(int& min, int& max) {
     min = startChannel - 1;
     max = startChannel + (channelCount * universeCount) - 1;
 }
 
 void E131OutputData::DumpConfig() {
-    LogDebug(VB_CHANNELOUT, "E1.31 Universe: %s   %d:%d:%d:%d:%d:%d  %s\n",
+    LogDebug(VB_CHANNELOUT, "E1.31 Universe: %s   %d:%d:%d:%d:%d:%d sync:%d  %s\n",
              description.c_str(),
              active,
              universe,
@@ -217,5 +291,6 @@ void E131OutputData::DumpConfig() {
              channelCount,
              type,
              universeCount,
+             syncUniverse,
              ipAddress.c_str());
 }

@@ -3341,6 +3341,31 @@ function RebuildFPPSource () {
 	location.href = 'rebuildfpp.php';
 }
 
+// Single source of truth for the per-row fields in the universe output/input
+// table (co-universes.php). Used by SetUniverseRowInputNames to assign the
+// name/id attributes for each control. When adding, removing, or reordering
+// columns here, also update:
+//   - the <th> list in www/co-universes.php (and channelinputs.php for inputs)
+//   - the <td> generator in populateUniverseData()
+// The order here does not affect visual column order, only the order fields
+// are visited when assigning ids; keeping it aligned with the HTML row order
+// makes it easier to scan for consistency.
+var UNIVERSE_ROW_FIELDS = [
+	'rowGrip',
+	'chkActive',
+	'txtDesc',
+	'universeType',
+	'txtIP',
+	'txtStartAddress',
+	'txtUniverse',
+	'numUniverseCount',
+	'txtSize',
+	'txtPriority',
+	'txtSyncUniverse',
+	'txtMonitor',
+	'txtDeDuplicate'
+];
+
 function SetUniverseCount (input) {
 	var txtCount = document.getElementById('txtUniverseCount');
 	var count = Number(txtCount.value);
@@ -3437,12 +3462,15 @@ function SetUniverseCount (input) {
 				startAddress;
 
 			if (!input) {
-				document.getElementById('tblUniversesBody').rows[
+				var pingBtn = document.getElementById('tblUniversesBody').rows[
 					UniverseCount
-				].cells[14].innerHTML =
-					"<input type='button' class='pingButton buttons' value='Ping' onClick='PingE131IP(" +
-					UniverseCount +
-					");'/>";
+				].querySelector('input.pingButton');
+				if (pingBtn) {
+					pingBtn.setAttribute(
+						'onClick',
+						'PingE131IP(' + UniverseCount + ');'
+					);
+				}
 			}
 			updateUniverseEndChannel(
 				document.getElementById('tblUniversesBody').rows[UniverseCount]
@@ -3527,6 +3555,15 @@ function IPOutputTypeChanged (item, input) {
 	}
 	var priority = $(item).parent().parent().find('input.txtPriority');
 	priority.prop('hidden', type > 1);
+
+	// Sync universe is only supported for E1.31 (types 0 and 1)
+	var syncUniv = $(item).parent().parent().find('input.txtSyncUniverse');
+	if (type > 1) {
+		syncUniv.val(0);
+		syncUniv.prop('hidden', true);
+	} else {
+		syncUniv.prop('hidden', false);
+	}
 }
 
 function updateUniverseEndChannel (row) {
@@ -3586,6 +3623,7 @@ function populateUniverseData (data, reload, input) {
 		var type = universe.type;
 		var unicastAddress = universe.address;
 		var priority = universe.priority;
+		var syncUniverse = universe.syncUniverse ? universe.syncUniverse : 0;
 		unicastAddress = unicastAddress.trim();
 		var endChannel = universe.startChannel + ucount * size - 1;
 
@@ -3746,6 +3784,18 @@ function populateUniverseData (data, reload, input) {
 			bodyHTML += ' disabled';
 		}
 		bodyHTML += '/></td>';
+		var syncStyle = input ? "style='display: none;'" : inputStyle;
+		bodyHTML +=
+			'<td ' +
+			syncStyle +
+			"><input class='txtSyncUniverse singleDigitInput' type='number' min='0' max='63999' value='" +
+			syncUniverse.toString() +
+			"'";
+		if (type > 1) {
+			// only E1.31 supports the sync universe field
+			bodyHTML += ' disabled';
+		}
+		bodyHTML += '/></td>';
 		bodyHTML +=
 			'<td ' +
 			inputStyle +
@@ -3821,27 +3871,14 @@ function getUniverses (reload, input) {
 }
 
 function SetUniverseRowInputNames (row, id) {
-	var fields = Array(
-		'rowGrip',
-		'chkActive',
-		'txtDesc',
-		'txtStartAddress',
-		'txtUniverse',
-		'numUniverseCount',
-		'txtSize',
-		'universeType',
-		'txtIP',
-		'txtPriority',
-		'txtMonitor',
-		'txtDeDuplicate'
-	);
 	row.find('span.rowID').html((id + 1).toString());
 
-	for (var i = 0; i < fields.length; i++) {
-		row.find('input.' + fields[i]).attr('name', fields[i] + '[' + id + ']');
-		row.find('input.' + fields[i]).attr('id', fields[i] + '[' + id + ']');
-		row.find('select.' + fields[i]).attr('name', fields[i] + '[' + id + ']');
-		row.find('select.' + fields[i]).attr('id', fields[i] + '[' + id + ']');
+	for (var i = 0; i < UNIVERSE_ROW_FIELDS.length; i++) {
+		var f = UNIVERSE_ROW_FIELDS[i];
+		row.find('input.' + f).attr('name', f + '[' + id + ']');
+		row.find('input.' + f).attr('id', f + '[' + id + ']');
+		row.find('select.' + f).attr('name', f + '[' + id + ']');
+		row.find('select.' + f).attr('id', f + '[' + id + ']');
 	}
 }
 function SetUniverseInputNames () {
@@ -3857,44 +3894,31 @@ function InitializeUniverses () {
 	UniverseCount = 0;
 }
 
+// Copy one field from row srcIdx to row destIdx. Handles checkboxes vs other
+// inputs/selects and silently skips non-input fields (like 'rowGrip').
+function copyUniverseRowField (fieldName, srcIdx, destIdx) {
+	var src = document.getElementById(fieldName + '[' + srcIdx + ']');
+	var dest = document.getElementById(fieldName + '[' + destIdx + ']');
+	if (!src || !dest) return;
+	if (src.type === 'checkbox') {
+		dest.checked = src.checked;
+	} else {
+		dest.value = src.value;
+	}
+}
+
 function DeleteUniverse (input) {
 	if (UniverseSelected >= 0) {
 		var selectedIndex = UniverseSelected;
 		for (i = UniverseSelected + 1; i < UniverseCount; i++, selectedIndex++) {
-			document.getElementById('txtUniverse[' + selectedIndex + ']').value =
-				document.getElementById('txtUniverse[' + i + ']').value;
-			document.getElementById('txtDesc[' + selectedIndex + ']').value =
-				document.getElementById('txtDesc[' + i + ']').value;
-			document.getElementById('universeType[' + selectedIndex + ']').value =
-				document.getElementById('universeType[' + i + ']').value;
+			for (var j = 0; j < UNIVERSE_ROW_FIELDS.length; j++) {
+				copyUniverseRowField(UNIVERSE_ROW_FIELDS[j], i, selectedIndex);
+			}
 			var universeType = document.getElementById(
 				'universeType[' + selectedIndex + ']'
 			).value;
-			document.getElementById('txtStartAddress[' + selectedIndex + ']').value =
-				document.getElementById('txtStartAddress[' + i + ']').value;
-			document.getElementById('numUniverseCount[' + selectedIndex + ']').value =
-				document.getElementById('numUniverseCount[' + i + ']').value;
-
-			var checkb = document.getElementById('chkActive[' + i + ']');
-			document.getElementById('chkActive[' + selectedIndex + ']').checked =
-				checkb.checked;
-			document.getElementById('txtSize[' + selectedIndex + ']').value =
-				document.getElementById('txtSize[' + i + ']').value;
-			document.getElementById('txtIP[' + selectedIndex + ']').value =
-				document.getElementById('txtIP[' + i + ']').value;
-			document.getElementById('txtPriority[' + selectedIndex + ']').value =
-				document.getElementById('txtPriority[' + i + ']').value;
-			document.getElementById('txtMonitor[' + selectedIndex + ']').checked =
-				document.getElementById('txtMonitor[' + i + ']').checked;
-			document.getElementById('txtDeDuplicate[' + selectedIndex + ']').checked =
-				document.getElementById('txtDeDuplicate[' + i + ']').checked;
-			if (universeType == '1' || universeType == '3') {
-				document.getElementById(
-					'txtIP[' + selectedIndex + ']'
-				).disabled = false;
-			} else {
-				document.getElementById('txtIP[' + selectedIndex + ']').disabled = true;
-			}
+			document.getElementById('txtIP[' + selectedIndex + ']').disabled =
+				!(universeType == '1' || universeType == '3');
 			updateUniverseEndChannel(
 				document.getElementById('tblUniversesBody').rows[selectedIndex]
 			);
@@ -3907,80 +3931,50 @@ function DeleteUniverse (input) {
 }
 
 function CloneUniverses (cloneNumber) {
-	var selectIndex = UniverseSelected.toString();
-	if (!isNaN(cloneNumber)) {
-		if (UniverseSelected + cloneNumber - 1 < UniverseCount) {
-			var universeDesc = document.getElementById(
-				'txtDesc[' + selectIndex + ']'
-			).value;
-			var universeType = document.getElementById(
-				'universeType[' + selectIndex + ']'
-			).value;
-			var unicastAddress = document.getElementById(
-				'txtIP[' + selectIndex + ']'
-			).value;
-			var size = Number(
-				document.getElementById('txtSize[' + selectIndex + ']').value
-			);
-			var uCount = Number(
-				document.getElementById('numUniverseCount[' + selectIndex + ']').value
-			);
-			var universe =
-				Number(
-					document.getElementById('txtUniverse[' + selectIndex + ']').value
-				) + uCount;
-			var startAddress =
-				Number(
-					document.getElementById('txtStartAddress[' + selectIndex + ']').value
-				) +
-				size * uCount;
-			var active = document.getElementById(
-				'chkActive[' + selectIndex + ']'
-			).value;
-			var priority = Number(
-				document.getElementById('txtPriority[' + selectIndex + ']').value
-			);
-			var monitor = document.getElementById('txtMonitor[' + selectIndex + ']')
-				.checked
-				? 1
-				: 0;
-			var deDuplicate = document.getElementById(
-				'txtDeDuplicate[' + selectIndex + ']'
-			).checked
-				? 1
-				: 0;
-
-			for (z = 0; z < cloneNumber; z++, universe += uCount) {
-				var i = z + UniverseSelected + 1;
-				i = i.toString();
-				document.getElementById('txtDesc[' + i + ']').value = universeDesc;
-				document.getElementById('txtUniverse[' + i + ']').value =
-					universe.toString();
-				document.getElementById('universeType[' + i + ']').value = universeType;
-				document.getElementById('txtStartAddress[' + i + ']').value =
-					startAddress.toString();
-				document.getElementById('numUniverseCount[' + i + ']').value =
-					uCount.toString();
-				document.getElementById('chkActive[' + i + ']').value = active;
-				document.getElementById('txtSize[' + i + ']').value = size.toString();
-				document.getElementById('txtIP[' + i + ']').value = unicastAddress;
-				document.getElementById('txtPriority[' + i + ']').value = priority;
-				document.getElementById('txtMonitor[' + i + ']').checked = monitor == 1;
-				document.getElementById('txtDeDuplicate[' + i + ']').checked =
-					deDuplicate == 1;
-				if (universeType == '1' || universeType == '3') {
-					document.getElementById('txtIP[' + i + ']').disabled = false;
-				} else {
-					document.getElementById('txtIP[' + i + ']').disabled = true;
-				}
-				updateUniverseEndChannel(
-					document.getElementById('tblUniversesBody').rows[i]
-				);
-				startAddress += size * uCount;
-			}
-		}
-	} else {
+	var selectIndex = UniverseSelected;
+	if (isNaN(cloneNumber)) {
 		DialogError('Clone Universe', 'Error, invalid number');
+		return;
+	}
+	if (UniverseSelected + cloneNumber - 1 >= UniverseCount) {
+		return;
+	}
+
+	var universeType = document.getElementById(
+		'universeType[' + selectIndex + ']'
+	).value;
+	var size = Number(
+		document.getElementById('txtSize[' + selectIndex + ']').value
+	);
+	var uCount = Number(
+		document.getElementById('numUniverseCount[' + selectIndex + ']').value
+	);
+	var universe =
+		Number(document.getElementById('txtUniverse[' + selectIndex + ']').value) +
+		uCount;
+	var startAddress =
+		Number(
+			document.getElementById('txtStartAddress[' + selectIndex + ']').value
+		) +
+		size * uCount;
+
+	for (var z = 0; z < cloneNumber; z++, universe += uCount) {
+		var i = z + UniverseSelected + 1;
+		for (var j = 0; j < UNIVERSE_ROW_FIELDS.length; j++) {
+			copyUniverseRowField(UNIVERSE_ROW_FIELDS[j], selectIndex, i);
+		}
+		// Per-clone overrides: each successive clone bumps the universe number
+		// and start channel by the source row's universe span.
+		document.getElementById('txtUniverse[' + i + ']').value = universe.toString();
+		document.getElementById('txtStartAddress[' + i + ']').value =
+			startAddress.toString();
+
+		document.getElementById('txtIP[' + i + ']').disabled =
+			!(universeType == '1' || universeType == '3');
+		updateUniverseEndChannel(
+			document.getElementById('tblUniversesBody').rows[i]
+		);
+		startAddress += size * uCount;
 	}
 }
 function CloneUniverse () {
@@ -4042,6 +4036,8 @@ function postUniverseJSON (input) {
 			document.getElementById('txtPriority[' + i + ']').value
 		);
 		if (!input) {
+			var syncEl = document.getElementById('txtSyncUniverse[' + i + ']');
+			universe.syncUniverse = syncEl ? parseInt(syncEl.value) || 0 : 0;
 			universe.monitor = document.getElementById('txtMonitor[' + i + ']')
 				.checked
 				? 1
@@ -4174,6 +4170,14 @@ function validateUniverseData () {
 		txtPriority = document.getElementById('txtPriority[' + i + ']');
 		if (!validateNumber(txtPriority, 0, 9999)) {
 			returnValue = false;
+		}
+
+		// sync universe (E1.31 only, 0 = disabled)
+		if (universeType == 0 || universeType == 1) {
+			var txtSyncUniverse = document.getElementById('txtSyncUniverse[' + i + ']');
+			if (txtSyncUniverse && !validateNumber(txtSyncUniverse, 0, 63999)) {
+				returnValue = false;
+			}
 		}
 	}
 	return returnValue;

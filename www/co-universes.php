@@ -203,6 +203,10 @@ if (file_exists(__DIR__ . "/fppdefines.php")) {
 									<th aria-label='Universe Count for this controller'>Universe <br>Count</th>
 									<th aria-label='Universe size'>Universe <br>Size</th>
 									<th aria-label='Universe Priority'>Universe <br>Priority</th>
+									<th aria-label='E1.31 Synchronization Universe'>Sync <br>Universe <span
+											data-bs-toggle='tooltip' data-bs-html='true' data-bs-placement='auto'
+											data-bs-title='Optional E1.31 sync universe. When set, data packets reference this sync universe and a sync packet is sent on it at the end of each frame. Set to 0 to disable.'><i
+												class="fas fa-clock"></i></span></th>
 									<th aria-label='Monitor controller'>Monitor <span data-bs-toggle='tooltip'
 											data-bs-html='true' data-bs-placement='auto'
 											data-bs-title='Monitor incoming data for this controller/universe. Useful for debugging and verifying that data is being received.'><i
