@@ -1361,7 +1361,17 @@ configure_logging() {
 
 configure_ccache() {
     echo "FPP - Configuring ccache"
-    mkdir -p /root/.ccache
+    # ccache 4.12+ uses the XDG paths by default:
+    #   cache dir: /root/.cache/ccache
+    #   config:    /root/.config/ccache/ccache.conf
+    # Several settings (e.g. max_size) are only accepted in the config
+    # file when it's at the XDG user path, NOT at $CCACHE_DIR/ccache.conf.
+    # Clean up stale legacy-location configs so ccache doesn't trip over
+    # them when CCACHE_CONFIGPATH isn't set in the environment.
+    rm -f /root/.ccache/ccache.conf
+    rm -f /root/.cache/ccache/ccache.conf
+    mkdir -p /root/.cache/ccache /root/.config/ccache
+    export CCACHE_CONFIGPATH=/root/.config/ccache/ccache.conf
     ccache -M 500M
     ccache --set-config=temporary_dir=/tmp
     # locale sloppiness keeps LANG/LC_ALL out of the cache key. Without it,
@@ -1379,9 +1389,12 @@ configure_ccache() {
     # across any such rewrite but still changes when the user actually upgrades
     # the compiler.
     ccache --set-config=compiler_check='%compiler% -dumpversion; %compiler% -dumpmachine'
+    # Mirror the config to the fpp user so non-root builds see the same
+    # settings. Use the XDG path, matching root's layout above.
     mkdir -p /home/fpp/.config/ccache
-    cp /root/.ccache/ccache.conf /home/fpp/.config/ccache
+    cp /root/.config/ccache/ccache.conf /home/fpp/.config/ccache/ccache.conf
     chown -R fpp:fpp /home/fpp/.config
+    unset CCACHE_CONFIGPATH
 }
 
 configure_logging

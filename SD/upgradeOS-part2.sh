@@ -59,15 +59,21 @@ cp -a mnt/etc/machine-id tmp/etc
 #remove some files that rsync won't copy over as they have the same timestamp and size, but are actually different
 #possibly due to ACL's or xtended attributes
 echo "Force cleaning files which do not sync properly"
+# Detect multiarch triplet (arm-linux-gnueabihf, aarch64-linux-gnu, etc.)
+# so this script works on both 32-bit and 64-bit Pi and on BB64.
+TRIPLE=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || gcc -dumpmachine 2>/dev/null)
 rm -f mnt/bin/ping
-rm -f mnt/lib/arm-linux-gnueabihf/librtmp.so.1
+rm -f mnt/lib/${TRIPLE}/librtmp.so.1
 rm -f mnt/usr/bin/dc mnt/usr/bin/bc mnt/usr/bin/hardlink mnt/usr/bin/lua5*
 
 SKIPFPP=""
 if [ -f /mnt/home/fpp/media/tmp/keepOptFPP ]
 then
-    echo "Preserving existing /opt/fpp and /root/.ccache"
-    SKIPFPP="--exclude=opt/fpp --exclude=root/.ccache"
+    echo "Preserving existing /opt/fpp and ccache (cache dir + XDG config)"
+    # ccache 4.12+ uses XDG paths (~/.cache/ccache, ~/.config/ccache);
+    # older versions used ~/.ccache. Exclude all three so either layout
+    # is preserved across the OS upgrade.
+    SKIPFPP="--exclude=opt/fpp --exclude=root/.ccache --exclude=root/.cache/ccache --exclude=root/.config/ccache"
 fi
 
 #if kiosk was installed, save that state so after reboot, it can be re-installed
@@ -81,10 +87,21 @@ echo "Running rsync to update / (root) file system:"
 stdbuf --output=L --error=L rsync --outbuf=N -aAXxv bin etc lib opt root sbin usr var /mnt --delete-during --exclude=var/lib/php/sessions --exclude=etc/fstab --exclude=etc/systemd/network/10-*.network --exclude=etc/systemd/network/*-fpp-* --exclude=root/.ssh ${SKIPFPP}
 echo
 
-# force copy a few files that rsync cannot properly replace
-cp -af usr/lib/arm-linux-gnueabihf/libzip.so.4.0 mnt/usr/lib/arm-linux-gnueabihf/libzip.so.4.0
-cp -af usr/lib/arm-linux-gnueabihf/libfribidi.so.0.4.0 mnt/usr/lib/arm-linux-gnueabihf/libfribidi.so.0.4.0
-cp -af usr/lib/arm-linux-gnueabihf/libbrotlicommon.so.1.0.9 mnt/usr/lib/arm-linux-gnueabihf/libbrotlicommon.so.1.0.9
+# force copy a few libs that rsync won't replace cleanly (same size/mtime
+# but different content via xattrs/ACLs). Use globs so we don't hard-code
+# package versions that drift with each OS release, and TRIPLE so this
+# works on both armhf and aarch64.
+force_copy_libs() {
+    local pattern
+    for pattern in "$@"; do
+        local src
+        for src in usr/lib/${TRIPLE}/${pattern}; do
+            [ -e "$src" ] || continue
+            cp -af "$src" "mnt/$src"
+        done
+    done
+}
+force_copy_libs 'libzip.so.*' 'libfribidi.so.*' 'libbrotlicommon.so.*'
 
 echo "Adjusting fstab"
 sed -i 's|tmpfs\s*/tmp\s*tmpfs.*||g' mnt/etc/fstab

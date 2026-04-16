@@ -59,7 +59,9 @@ populateCCACHE() {
         FILETOGET="ccache-${PLAT}-${MAJVER}.x-${BRANCH}.tar.gz"
         FULLURL="https://falconchristmas.github.io/ccache/${FILETOGET}"
         ETAG_GIT="/tmp/etag.$$"
-        ETAG_LOCAL="/root/.ccache/etag"
+        # ccache 4.12+ uses ~/.cache/ccache as the cache dir (XDG) by
+        # default; previous versions used ~/.ccache.
+        ETAG_LOCAL="/root/.cache/ccache/etag"
         NEEDS_UPDATED=0
 
         echo "Checking CCACHE -  $FILETOGET - $FULLURL"
@@ -96,27 +98,43 @@ populateCCACHE() {
         curl  -f --fail-early $FULLURL --output "/tmp/$FILETOGET"
 
         if [ -f "/tmp/$FILETOGET" ]; then
-            sudo cp /root/.ccache/ccache.conf /tmp
+            sudo cp /root/.config/ccache/ccache.conf /tmp 2>/dev/null || true
+            # Tarballs are built with the legacy .ccache layout at the root;
+            # after extraction, relocate to the new XDG cache path.
             sudo tar -x -z -C /root -f "/tmp/$FILETOGET"
             rm -f "/tmp/$FILETOGET"
+            if [ -d /root/.ccache ]; then
+                sudo mkdir -p /root/.cache
+                sudo rm -rf /root/.cache/ccache
+                sudo mv /root/.ccache /root/.cache/ccache
+            fi
             sudo mv $ETAG_GIT $ETAG_LOCAL
             sudo chmod 644 $ETAG_LOCAL
-            sudo cp /tmp/ccache.conf /root/.ccache/ccache.conf
+            sudo mkdir -p /root/.config/ccache
+            sudo cp /tmp/ccache.conf /root/.config/ccache/ccache.conf 2>/dev/null || true
         fi
     fi
 
-    # set the CCache sizes/flags that we need to be able to successfully compile
-    sudo ccache -M 500M
-    sudo ccache --set-config=temporary_dir=/tmp
-    sudo ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime,include_file_ctime,locale,modules
-    sudo ccache --set-config=pch_external_checksum=true
-    sudo ccache --set-config=hard_link=true
+    # Config lives at the XDG user path (/root/.config/ccache/ccache.conf),
+    # not in the per-cache-dir -- ccache 4.12+ rejects several settings
+    # (e.g. max_size) in the cache-dir config. Cache itself lives at
+    # /root/.cache/ccache (also XDG). Clean up any stale legacy configs
+    # from older installs. Match FPP_Install.sh.
+    sudo rm -f /root/.ccache/ccache.conf
+    sudo rm -f /root/.cache/ccache/ccache.conf
+    sudo mkdir -p /root/.config/ccache
+    export CCACHE_CONFIGPATH=/root/.config/ccache/ccache.conf
+    sudo -E ccache -M 500M
+    sudo -E ccache --set-config=temporary_dir=/tmp
+    sudo -E ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime,include_file_ctime,locale,modules
+    sudo -E ccache --set-config=pch_external_checksum=true
+    sudo -E ccache --set-config=hard_link=true
     # Must match FPP_Install.sh. compiler_check=content hashes the g++
     # binary bytes, which can differ between the chroot that populated the
     # shipped cache and the Pi running this upgrade -- that invalidates the
     # entire shipped cache. -dumpversion + -dumpmachine is stable across
     # binary rewrites but still changes on a real compiler upgrade.
-    sudo ccache --set-config=compiler_check='%compiler% -dumpversion; %compiler% -dumpmachine'
+    sudo -E ccache --set-config=compiler_check='%compiler% -dumpversion; %compiler% -dumpmachine'
 }
 
 
