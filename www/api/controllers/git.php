@@ -10,7 +10,7 @@ function GetGitOriginLog()
     exec("$fppDir/scripts/git_origin_log", $log);
 
     foreach ($log as $line) {
-        if (startsWith($line, "Git changes") || startsWith($line, "=========")) {
+        if (str_starts_with($line, "Git changes") || str_starts_with($line, "=========")) {
             continue;
         }
         $pos = strpos($line, "~~~~");
@@ -85,7 +85,7 @@ function GitOSReleases()
             if (isset($r["assets"]) && $settings['OSImagePrefix'] != "") {
                 foreach ($r["assets"] as $file) {
                     $name = $file["name"];
-                    if (endsWith($name, ".fppos")) {
+                    if (str_ends_with($name, ".fppos")) {
                         if ($platforms == "all") {
                             $row = array();
                             $row["tag"] = $r["tag_name"];
@@ -96,7 +96,7 @@ function GitOSReleases()
                             $row["downloaded"] = in_array($name, $existingFiles);
                             $row["size"] = $file["size"];
                             array_push($releases, $row);
-                        } else if (startsWith($name, $settings['OSImagePrefix'] . "-")) {
+                        } else if (str_starts_with($name, $settings['OSImagePrefix'] . "-")) {
                             $row = array();
                             $row["tag"] = $r["tag_name"];
                             $row["release_name"] = $r["name"];
@@ -143,7 +143,7 @@ function GitOSReleaseSizes()
             if (isset($r["assets"]) && $settings['OSImagePrefix'] != "") {
                 foreach ($r["assets"] as $file) {
                     $name = $file["name"];
-                    if (endsWith($name, ".fppos") && startsWith($name, $settings['OSImagePrefix'] . "-")) {
+                    if (str_ends_with($name, ".fppos") && str_starts_with($name, $settings['OSImagePrefix'] . "-")) {
                         $rc = $rc . $name . "," . $file["size"] . "\n";
                     }
                 }
@@ -178,7 +178,7 @@ function GitBranches()
 
     foreach ($log as $line) {
         $line = trim($line);
-        if (startsWith($line, "$remote/")) {
+        if (str_starts_with($line, "$remote/")) {
             $branch = substr($line, strlen($remote) + 1);
 
             if (
@@ -186,10 +186,10 @@ function GitBranches()
                     || preg_match("*v2\.[0-9x]*", $branch)   // old v2.x branchs, that can no longer work (wrong lib versions)
                     || preg_match("*v3\.[0-9x]*", $branch)   // old v3.x branchs, that can no longer work (wrong libhttp versions)
                     || preg_match("*v4\.[0-9x]*", $branch)   // old v4.x branchs, that can no longer work (wrong vlc versions)
-                    || preg_match("*v4\.[0-9x]*", $branch)   // old v4.x branchs, that can no longer work (wrong vlc versions)
                     || preg_match("*v5\.[0-9x]*", $branch)   // old v5.x branchs, that can no longer work (wrong OS versions)
-                    || startsWith($branch, "dependabot/")    // dependabot created branches
-                    || startsWith($branch, "HEAD ")
+                    || preg_match("*v6\.[0-9x]*", $branch)   // old v6.x branchs, below the FPP7 support floor
+                    || str_starts_with($branch, "dependabot/")    // dependabot created branches
+                    || str_starts_with($branch, "HEAD ")
                 )
             ) {
                 array_push($rows, $branch);

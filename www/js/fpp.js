@@ -6310,7 +6310,6 @@ function ShutdownFPP () {
 
 function UpgradePlaylist (data, editMode) {
 	var sections = ['leadIn', 'mainPlaylist', 'leadOut'];
-	var events = GetSync('api/events');
 	var error = '';
 
 	for (var s = 0; s < sections.length; s++) {
@@ -6390,24 +6389,7 @@ function UpgradePlaylist (data, editMode) {
 
 			// Changes needed only during edit mode when we are upgrading a playlist
 			if (editMode) {
-				if (type == 'event') {
-					var id =
-						PadLeft(o.majorID, '0', 2) + '_' + PadLeft(o.minorID, '0', 2);
-					if (typeof events[id] === 'object') {
-						n.type = 'command';
-						n.command = events[id].command;
-						n.args = events[id].args;
-
-						data[sections[s]][i] = n;
-					} else {
-						DialogError(
-							'Converting deprecated Event',
-							"The Event playlist entry type has been deprecated.  FPP tries to automatically convert these to the new FPP Command playlist entry type, but the specified event ID '" +
-								id +
-								"' could not be found.  The existing playlist on-disk will not be modified, but the deprecated Event has been removed from the playlist editor."
-						);
-					}
-				} else if (type == 'mqtt') {
+				if (type == 'mqtt') {
 					n.type = 'command';
 					n.command = 'MQTT';
 

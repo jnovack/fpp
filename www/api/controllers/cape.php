@@ -48,7 +48,7 @@ function GetEEPROMFilename()
     if (file_exists("/home/fpp/media/tmp/eeprom_location.txt")) {
         $eepromFile = file_get_contents("/home/fpp/media/tmp/eeprom_location.txt");
     }
-    if (!file_exists($eepromFile) && startsWith($eepromFile, "/sys/bus/i2c/devices/")) {
+    if (!file_exists($eepromFile) && str_starts_with($eepromFile, "/sys/bus/i2c/devices/")) {
         $target = "/sys/bus/i2c/devices/i2c-1/new_device";
         if ($settings['BeaglePlatform']) {
             $target = "/sys/bus/i2c/devices/i2c-2/new_device";

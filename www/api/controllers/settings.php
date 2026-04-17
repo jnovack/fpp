@@ -47,7 +47,7 @@ function PutSetting()
 
     WriteSettingToFile($setting, $value);
 
-    if (startsWith($setting, "LogLevel")) {
+    if (str_starts_with($setting, "LogLevel")) {
         SendCommand("LogLevel,$setting,$value,");
     } else if ($setting == "HostName") {
         $value = preg_replace("/[^-a-zA-Z0-9]/", "", $value);

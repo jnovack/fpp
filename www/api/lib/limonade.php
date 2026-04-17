@@ -61,8 +61,7 @@ define('LIM_START_MICROTIME',   microtime(true));
 //define('LIM_SESSION_NAME',      'LIMONADE'.str_replace('.','x',LIMONADE));
 define('LIM_SESSION_NAME',      false);
 define('LIM_SESSION_FLASH_KEY', '_lim_flash_messages');
-if(function_exists('memory_get_usage'))
-	define('LIM_START_MEMORY',      memory_get_usage());
+define('LIM_START_MEMORY',      memory_get_usage());
 define('E_LIM_HTTP',            32768);
 define('E_LIM_PHP',             65536);
 define('E_LIM_DEPRECATED',      35000);
@@ -72,59 +71,6 @@ define('ENV_PRODUCTION',        10);
 define('ENV_DEVELOPMENT',       100);
 define('X-SENDFILE',            10);
 define('X-LIGHTTPD-SEND-FILE',  20);
-
-# for PHP 5.3.0 <
-if(!defined('E_DEPRECATED'))         define('E_DEPRECATED',        8192);
-if(!defined('E_USER_DEPRECATED'))    define('E_USER_DEPRECATED',   16384);
-# for PHP 5.2.0 <
-if (!defined('E_RECOVERABLE_ERROR')) define('E_RECOVERABLE_ERROR', 4096);
-
-
-## SETTING BASIC SECURITY _____________________________________________________
-
-# A. Unsets all global variables set from a superglobal array
-
-/**
- * @access private
- * @return void
- */
-function unregister_globals()
-{
-  $args = func_get_args();
-  foreach($args as $k => $v)
-    if(array_key_exists($k, $GLOBALS)) unset($GLOBALS[$k]);
-}
-
-if(ini_get('register_globals'))
-{
-  unregister_globals( '_POST', '_GET', '_COOKIE', '_REQUEST', '_SERVER', 
-                      '_ENV', '_FILES');
-  ini_set('register_globals', 0);
-}
-
-# B. removing magic quotes
-
-/**
- * @access private
- * @param string $array 
- * @return array
- */
-function remove_magic_quotes($array)
-{
-  foreach ($array as $k => $v)
-    $array[$k] = is_array($v) ? remove_magic_quotes($v) : stripslashes($v);
-  return $array;
-}
-
-#if (get_magic_quotes_gpc())
-#{
-#  $_GET    = remove_magic_quotes($_GET);
-#  $_POST   = remove_magic_quotes($_POST);
-#  $_COOKIE = remove_magic_quotes($_COOKIE);
-#  ini_set('magic_quotes_gpc', 0);
-#}
-
-if(function_exists('set_magic_quotes_runtime') && get_magic_quotes_runtime()) set_magic_quotes_runtime(false);
 
 # C. Disable error display
 #    by default, no error reporting; it will be switched on later in run().
@@ -371,7 +317,6 @@ function run($env = null)
 
   # 3. Loading libs
   require_once_dir(option('lib_dir'));
-  fallbacks_for_not_implemented_functions();
 
   # 4. Starting session
   if(!defined('SID') && option('session'))
@@ -1593,7 +1538,7 @@ function txt($content_or_func, $layout = '', $locals = array())
 function json($data, $json_option = 0)
 {
   send_header('Content-Type: application/json; charset='.strtolower(option('encoding')));
-  return version_compare(PHP_VERSION, '5.3.0', '>=') ? json_encode($data, $json_option) : json_encode($data);
+  return json_encode($data, $json_option);
 }
 
 /**
@@ -2604,49 +2549,14 @@ function file_list_dir($dir)
 
 ## Extra utils  ________________________________________________________________
 
-if(!function_exists('array_replace'))
-{
-  /**
-   * For PHP 5 < 5.3.0 (backward compatibility)
-   * (from {@link http://www.php.net/manual/fr/function.array-replace.php#92549 this php doc. note})
-   * 
-   * @see array_replace()
-   * @param string $array 
-   * @param string $array1 
-   * @return $array
-   */
-  function array_replace( array &$array, array &$array1 )
-  {
-    $args  = func_get_args();
-    $count = func_num_args();
-
-    for ($i = 0; $i < $count; ++$i)
-    {
-      if(is_array($args[$i]))
-      {
-        foreach ($args[$i] as $key => $val) $array[$key] = $val;
-      }
-      else
-      {
-        trigger_error(
-          __FUNCTION__ . '(): Argument #' . ($i+1) . ' is not an array',
-          E_USER_WARNING
-        );
-        return null;
-      }
-    }
-    return $array;
-  }
-}
-
 /**
  * Check if a string is an url
  *
- * This implementation no longer requires 
- * {@link http://www.php.net/manual/en/book.filter.php the filter extenstion}, 
+ * This implementation no longer requires
+ * {@link http://www.php.net/manual/en/book.filter.php the filter extenstion},
  * so it will improve compatibility with older PHP versions.
  *
- * @param string $str 
+ * @param string $str
  * @return false, str   the string if true, false instead
  */
 function filter_var_url($str)
@@ -2655,54 +2565,6 @@ function filter_var_url($str)
   $options = array( "options" => array("regexp" => $regexp ));
   return preg_match($regexp, $str) ? $str : false;
 }
-
-
-/**
- * For PHP 5 < 5.1.0 (backward compatibility)
- * (from {@link http://www.php.net/manual/en/function.htmlspecialchars-decode.php#82133})
- * 
- * @param string $string 
- * @param string $quote_style, one of: ENT_COMPAT, ENT_QUOTES, ENT_NOQUOTES 
- * @return the decoded string
- */
-function limonade_htmlspecialchars_decode($string, $quote_style = ENT_COMPAT)
-{
-	$table = array_flip(get_html_translation_table(HTML_SPECIALCHARS, $quote_style));
-	if($quote_style === ENT_QUOTES)
-		$table['&#039;'] = $table['&#39;'] = '\'';
-	return strtr($string, $table);
-}
-
-if(!function_exists('htmlspecialchars_decode'))
-{
-	function htmlspecialchars_decode($string, $quote_style = ENT_COMPAT)
-	{
-		return limonade_htmlspecialchars_decode($string, $quote_style);
-	}
-}
-
-/**
- * Called just after loading libs, it provides fallback for some 
- * functions if they don't exists.
- *
- */
-function fallbacks_for_not_implemented_functions()
-{
-  if(!function_exists('json_encode'))
-  {
-    /**
-     * for PHP 5 < PHP 5.2.0
-     *
-     */
-    function json_encode()
-    {
-      trigger_error(
-        __FUNCTION__ . '(): no JSON functions available. Please provide your own implementation of ' . __FUNCTION__ . '() in order to use it.', E_USER_WARNING
-      );
-    }
-  }
-}
-
 
 
 #   ================================= END ==================================   #

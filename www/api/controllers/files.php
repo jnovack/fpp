@@ -26,7 +26,7 @@ function MapExtention($filename)
                         $pluginConfig = json_decode(file_get_contents($pluginInfoFile), true);
                         if (isset($pluginConfig["fileExtensions"])) {
                             foreach ($pluginConfig["fileExtensions"] as $key => $value) {
-                                if (endsWith($filename, $key) && isset($value["folder"])) {
+                                if (str_ends_with($filename, $key) && isset($value["folder"])) {
                                     return $mediaDirectory . "/" . $value["folder"];
                                 }
                             }
@@ -289,7 +289,7 @@ function CallPluginFileUploaded($dir, $filename)
                 $pluginConfig = json_decode(file_get_contents($pluginInfoFile), true);
                 if (isset($pluginConfig["fileExtensions"])) {
                     foreach ($pluginConfig["fileExtensions"] as $key => $value) {
-                        if (endsWith($filename, $key) && isset($value["onUpload"])) {
+                        if (str_ends_with($filename, $key) && isset($value["onUpload"])) {
                             $cmd = $pluginDirectory . "/" . $plugin . "/" . $pluginConfig["fileExtensions"][$key]["onUpload"];
                             $cmd .= " ";
                             $cmd .= escapeshellarg($dir . "/" . $filename);
@@ -326,7 +326,7 @@ function MovePluginFile($uploadDir, $filename)
                     $pluginConfig = json_decode(file_get_contents($pluginInfoFile), true);
                     if (isset($pluginConfig["fileExtensions"])) {
                         foreach ($pluginConfig["fileExtensions"] as $key => $value) {
-                            if (endsWith($filename, $key) && isset($value["folder"])) {
+                            if (str_ends_with($filename, $key) && isset($value["folder"])) {
                                 if (!rename($uploadDir . "/" . $filename, $mediaDirectory . "/" . $value["folder"] . "/" . $filename)) {
                                     return false;
                                 }

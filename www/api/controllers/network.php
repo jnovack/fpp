@@ -38,7 +38,7 @@ function network_wifi_scan()
     exec($cmd, $output);
 
     foreach ($output as $row) {
-        if (startsWith($row, "BSS")) {
+        if (str_starts_with($row, "BSS")) {
             array_push($networks, $current);
             $current = array();
         } else if (preg_match('/freq: (.*)/', $row, $matches)) {
@@ -330,9 +330,9 @@ function network_get_interface()
                     if ($line == "[DHCPServerStaticLease]") {
                         $mac = "";
                         $ip = "";
-                    } else if (startsWith($line, "MACAddress=")) {
+                    } else if (str_starts_with($line, "MACAddress=")) {
                         $mac = substr($line, 11);
-                    } else if (startsWith($line, "Address=")) {
+                    } else if (str_starts_with($line, "Address=")) {
                         $ip = substr($line, 8);
                     }
                     if ($mac != "" && $ip != "") {
@@ -354,7 +354,7 @@ function network_get_interface()
             $line = trim($line);
             //echo $line . "\n";
 
-            if (!$inLeases && startsWith($line, "Offered DHCP leases")) {
+            if (!$inLeases && str_starts_with($line, "Offered DHCP leases")) {
                 $inLeases = true;
                 $line = trim(substr($line, 20));
             }

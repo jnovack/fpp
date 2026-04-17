@@ -48,7 +48,7 @@ if ($uiLevel >= 1) {
             $thisVersion = preg_replace('/^([a-zA-Z0-9-]+).*/', '$1', $line);
             $line = preg_replace('/^([a-zA-Z0-9-]+)/', "<a href='#' onClick='DisplayVersionOptions(\"$1\"); return false;'>$1</a>", $line);
 
-            if (startsWith($currentVersion, $thisVersion)) {
+            if (str_starts_with($currentVersion, $thisVersion)) {
                 $git_log .= "--> " . $line . '<br/>';
             } else {
                 $git_log .= "    " . $line . '<br/>';

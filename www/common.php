@@ -16,21 +16,6 @@ function check($var, $var_name = "", $function_name = "")
 
 }
 
-function startsWith($haystack, $needle)
-{
-    $length = strlen($needle);
-    return substr($haystack, 0, $length) === $needle;
-}
-
-function endsWith($haystack, $needle)
-{
-    $length = strlen($needle);
-    if (!$length) {
-        return true;
-    }
-    return substr($haystack, -$length) === $needle;
-}
-
 function getFileList($dir, $ext)
 {
     $i = array();

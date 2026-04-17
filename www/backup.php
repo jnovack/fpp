@@ -361,7 +361,7 @@ function doRestore($restore_Area, $restore_Data, $restore_Filepath, $restore_kee
             //Check backup version
             if (array_key_exists('fpp_backup_version', $file_contents_decoded)) {
                 if (!is_null($file_contents_decoded['fpp_backup_version'])) {
-                    $_fpp_backup_version = floatval($file_contents_decoded['fpp_backup_version']); //Minimum version is 2
+                    $_fpp_backup_version = floatval($file_contents_decoded['fpp_backup_version']); //Minimum supported version is 7
                 } else {
                     $_fpp_backup_version = floatval($fpp_backup_format_version);
                 }
@@ -626,37 +626,19 @@ function processRestoreData($restore_area, $restore_area_data, $backup_version)
             foreach ($restore_area_data as $plugin_name => $plugin_data) {
                 $settings_restored[$restore_area_key][$plugin_name]['ATTEMPT'] = true;
 
-                //Version 3 backups need to restore the config file to the config folder generating the filename form the JSON structure
-                //Version 4 backups need to restore the config file(s) to the config folder using the parents/node key as the filename
-                if ($backup_version <= 3) {
-                    //Write older plugin configurations to tha assumed filename (normally plugin.<plugin-name>)
-                    $plugin_settings_path = $plugin_settings_path_base . "/plugin." . $plugin_name;
-                    $data = implode("\n", $plugin_data[0]);
+                //plugin data is keyed into what file the data is from to make it easier to backup multiple config files per plugin
+                //and plugin config data is written back to the right file
 
-                    //Write the data out
+                //Get the filename (to restore data into) and file data to go into that file
+                foreach ($plugin_data as $p_data_filename => $p_data_data) {
+                    $plugin_settings_path = $plugin_settings_path_base . "/" . $p_data_filename;
+                    $data = implode("\n", $p_data_data[0]);
+
+                    //Write the data out each time
                     if (file_put_contents($plugin_settings_path, $data) === false) {
                         $save_result = false;
                     } else {
                         $save_result = true;
-                    }
-                } else {
-                    //Backup versions 4 and above
-                    //plugin data is keyed into what file the data is from to make it easier to backup multiple config files per plugin
-                    //and plugin config data is written back to the right file
-
-                    //Get the filename (to restore data into) and file data to go into that file
-                    foreach ($plugin_data as $p_data_filename => $p_data_data) {
-                        //Adjust the path too (use the key as the filename instead of generating it as we did in v3 backups
-                        $plugin_settings_path = $plugin_settings_path_base . "/" . $p_data_filename;
-                        //data is also in a different array location
-                        $data = implode("\n", $p_data_data[0]);
-
-                        //Write the data out each time
-                        if (file_put_contents($plugin_settings_path, $data) === false) {
-                            $save_result = false;
-                        } else {
-                            $save_result = true;
-                        }
                     }
                 }
 
@@ -817,13 +799,7 @@ function processRestoreData($restore_area, $restore_area_data, $backup_version)
 
                     //Make sure we have an array, there will be 2 indexes, 0 the timezone and 1 a linebreak
                     if (is_array($restore_data) || !is_null($restore_data)) {
-                        //Version 2 backups need to locate the TimeZone data slightly differently due to how it was stored back then
-                        if ($backup_version == 2) {
-                            $data = $restore_data[0]; //first index has the timezone, index 1 is empty to due carriage return in file when its backed up
-                        } else {
-                            //Version 3 backups - TimeZone data is located at the first index
-                            $data = $restore_data;
-                        }
+                        $data = $restore_data;
 
                         if (!empty($data)) {
                             //
@@ -1022,14 +998,6 @@ function processRestoreDataArray($restore_area_key, $restore_area_sub_key, $rest
     global $args;
 
     //RESTORE TWEAKS FOR SPECIFIC VERSIONS (all changes done by the logic below
-    //Version 2 backups need to restore the schedule file to the old locations (auto converted on FPPD restart)
-    //Version 3 backups need to restore the schedule to it's new json location
-    //Version 4 backups - nothing changed
-    //Version 5 backups - FPD/Falcon Pixelnet at the root of ['channelOutputs']['falcon_pixelnet_DMX'] is FPDv1 data
-    //Version 6 backups - FPD/Falcon Pixelnet DMX data is keyed by the file it came from to more easily support a future version
-    //                  - ['channelOutputs']['falcon_pixelnet_DMX'] will contain an additional key for each FPD file read
-    //                  - eg Falcon.FPDV1 and in the future Falcon.F16V2
-    //     Note: FPD/Falcon Pixelnet is no longer supported
     //Version >7.2 backups - Panel layout is generated from the actual panel config (using col & row data) if the layout doesn't exist anywhere
     //                    - Single Panel size is generated from the same config and also written to the system settings
 
@@ -1145,17 +1113,6 @@ function processRestoreDataArray($restore_area_key, $restore_area_sub_key, $rest
                                     }
 
                                 }
-                            }
-
-                            //if restore sub-area is the schedule, determine how to restore it based on the $backup_version
-                            if (strtolower($restore_areas_idx) == "schedule") {
-                                if ($backup_version == 2) {
-                                    //Override the restore location so we write to the old schedule file, FPPD will convert this to the new json file
-                                    $restore_location = $scheduleFile;
-                                }
-                                //                                    else if ($backup_version == 3){
-                                //                                    //restore it to the new json file - don't adjust the path it'll go to configured path
-                                //                                    }
                             }
 
                             ///////////////////////////////////////////////////
