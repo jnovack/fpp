@@ -177,10 +177,11 @@ int PixelString::Init(Json::Value config, Json::Value* pinConfig) {
                 smartReceiverType = ReceiverType::v2;
             }
         }
+        m_isSmartReceiver = smartReceiverType != ReceiverType::Standard;
     } else {
         smartReceiverType = ReceiverType::None;
+        m_isSmartReceiver = false;
     }
-    m_isSmartReceiver = smartReceiverType != ReceiverType::Standard;
     if (smartReceiverType == ReceiverType::v1) {
         // v1 needs a lead in
         AddVirtualString(VirtualString(0, 0));
