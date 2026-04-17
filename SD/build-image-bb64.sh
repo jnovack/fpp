@@ -40,7 +40,7 @@ BASE_IMAGE_SIZE="${BASE_IMAGE_SIZE:-8gb}"
 BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-pocketbeagle2-debian-${BASE_IMAGE_DEBVER}-iot-${BASE_IMAGE_KERNEL}-arm64-${BASE_IMAGE_DATE}-${BASE_IMAGE_SIZE}.img.xz}"
 BASE_IMAGE_URL="${BASE_IMAGE_URL:-}"
 BASE_IMAGE_SHA256="${BASE_IMAGE_SHA256:-}"
-IMG_SIZE_MB="${IMG_SIZE_MB:-8400}"   # must be >= base image size (8GB+)
+IMG_SIZE_MB="${IMG_SIZE_MB:-0}"      # 0 = use base image size as-is
 WORK_DIR="${WORK_DIR:-$(pwd)/build}"
 OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/output}"
 KEEP_WORK="${KEEP_WORK:-0}"
@@ -64,7 +64,7 @@ Options:
   --base-image-date DATE   rcn-ee build date (default: ${BASE_IMAGE_DATE})
   --base-image-name NAME   rcn-ee image filename (default derived from date)
   --base-image-sha256 HEX  Optional sha256 of the .img.xz to verify
-  --img-size-mb N          Raw output image size in MiB (default: ${IMG_SIZE_MB})
+  --img-size-mb N          Raw output image size in MiB (default: base image size)
   --work-dir DIR           Scratch dir (default: ./build)
   --output-dir DIR         Artifact dir (default: ./output)
   --skip-fppos             Do not produce .fppos squashfs
@@ -156,7 +156,7 @@ FPP Image Build (BB64 / PocketBeagle 2)
   Base image   : $BASE_IMAGE_URL
   Local installer: $LOCAL_INSTALLER
   Local src    : $( [ "$USE_LOCAL_SRC" = "1" ] && echo "$FPP_SRC_DIR (seeded into /opt/fpp)" || echo "(not used; installer clones from github)" )
-  Image size   : ${IMG_SIZE_MB} MiB
+  Image size   : $( [ "$IMG_SIZE_MB" -gt 0 ] && echo "${IMG_SIZE_MB} MiB" || echo "(base image size)" )
   Work dir     : $WORK_DIR
   Output dir   : $OUTPUT_DIR
 ============================================================
@@ -215,18 +215,21 @@ WORK_IMG="fpp-${PLATFORM_SUFFIX}-v${VERSION}.img"
 echo "[2/8] Decompressing and preparing working image..."
 rm -f "$WORK_IMG"
 xz -dc "$BASE_XZ" > "$WORK_IMG"
-# Never truncate smaller than the decompressed base, or we'd corrupt the
-# partition table.  rcn-ee BB64 images are 8GB+; bump --img-size-mb if you
-# pick a larger base image in the future.
+# When IMG_SIZE_MB is 0 (the default), keep the base image size as-is.
+# Otherwise, grow (never shrink) the image to the requested size.
 CURRENT_BYTES=$(stat -c%s "$WORK_IMG")
-TARGET_BYTES=$((IMG_SIZE_MB * 1024 * 1024))
-if [ "$TARGET_BYTES" -lt "$CURRENT_BYTES" ]; then
-    echo "ERROR: --img-size-mb (${IMG_SIZE_MB}) is smaller than the base" >&2
-    echo "       image (${CURRENT_BYTES} bytes / ~$((CURRENT_BYTES/1024/1024))M)." >&2
-    echo "       Pass a larger --img-size-mb to avoid truncating the partition table." >&2
-    exit 1
+if [ "$IMG_SIZE_MB" -gt 0 ]; then
+    TARGET_BYTES=$((IMG_SIZE_MB * 1024 * 1024))
+    if [ "$TARGET_BYTES" -lt "$CURRENT_BYTES" ]; then
+        echo "ERROR: --img-size-mb (${IMG_SIZE_MB}) is smaller than the base" >&2
+        echo "       image (${CURRENT_BYTES} bytes / ~$((CURRENT_BYTES/1024/1024))M)." >&2
+        echo "       Pass a larger --img-size-mb to avoid truncating the partition table." >&2
+        exit 1
+    fi
+    truncate -s "${IMG_SIZE_MB}M" "$WORK_IMG"
+else
+    IMG_SIZE_MB=$((CURRENT_BYTES / 1024 / 1024))
 fi
-truncate -s "${IMG_SIZE_MB}M" "$WORK_IMG"
 
 #############################################################################
 # 3. Grow root partition (p3 on BB) + attach loop device + resize FS

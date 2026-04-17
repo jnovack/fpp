@@ -31,7 +31,7 @@ FPPBRANCH="${FPPBRANCH:-master}"
 BASE_IMAGE_DATE="${BASE_IMAGE_DATE:-2025-12-04}"
 BASE_IMAGE_URL="${BASE_IMAGE_URL:-}"
 BASE_IMAGE_SHA256="${BASE_IMAGE_SHA256:-}"
-IMG_SIZE_MB="${IMG_SIZE_MB:-7900}"           # Final raw image size
+IMG_SIZE_MB="${IMG_SIZE_MB:-7200}"           # Final raw image size
 WORK_DIR="${WORK_DIR:-$(pwd)/build}"
 OUTPUT_DIR="${OUTPUT_DIR:-$(pwd)/output}"
 KEEP_WORK="${KEEP_WORK:-0}"                  # 1 => leave WORK_DIR populated
@@ -55,7 +55,7 @@ Options:
   --base-image-url URL     Override base image URL
   --base-image-date DATE   Raspbian release date (default: 2025-12-04)
   --base-image-sha256 HEX  Optional sha256 of the .img.xz to verify
-  --img-size-mb N          Raw output image size in MiB (default: 7900)
+  --img-size-mb N          Raw output image size in MiB (default: 7200)
   --work-dir DIR           Scratch dir (default: ./build)
   --output-dir DIR         Artifact dir (default: ./output)
   --skip-kernel-update     Skip rpi-update of the kernel (faster iteration;
