@@ -21,6 +21,50 @@ mount -t vfat /dev/mmcblk1p1 /boot/firmware
 mount  -t tmpfs /tmp
 
 echo "---------------------------------------"
+
+# Some PB2i boards ship with blank or improperly-programmed EEPROMs.
+# The factory write is two-step: (1) board template, (2) serial number.
+# Either or both steps can fail, so check both:
+#   - Magic header (bytes 0-1) should be AA55
+#   - Serial number (bytes 52-55) should not be all FF
+# The fix scripts use a merge strategy that only overwrites 0xFF bytes
+# in the existing EEPROM, so they're safe to run in either failure mode.
+EEPROM=/sys/bus/i2c/devices/0-0050/eeprom
+NEEDS_FIX=false
+if [ -f "$EEPROM" ]; then
+    MAGIC=$(dd if="$EEPROM" bs=1 count=2 2>/dev/null | xxd -p)
+    SERIAL=$(dd if="$EEPROM" bs=1 skip=52 count=4 2>/dev/null | xxd -p)
+    if [ "$MAGIC" != "aa55" ]; then
+        echo "EEPROM header invalid (expected aa55, got ${MAGIC:-empty})"
+        NEEDS_FIX=true
+    elif [ "$SERIAL" = "ffffffff" ]; then
+        echo "EEPROM header valid but serial number is blank"
+        NEEDS_FIX=true
+    else
+        echo "EEPROM valid (magic=${MAGIC}, serial=${SERIAL})"
+    fi
+
+    if $NEEDS_FIX; then
+        # Determine board variant from device-tree model string.
+        # PB2 Industrial contains "Industrial"; fall back to PB2I if
+        # the model string is unavailable (common with blank EEPROM).
+        MODEL=$(cat /proc/device-tree/model 2>/dev/null || true)
+        case "$MODEL" in
+            *[Ii]ndustrial*|"")
+                echo "Running fix_pb2i_eeprom.sh"
+                /bin/bash /opt/fpp/capes/drivers/bb64/fix_pb2i_eeprom.sh
+                ;;
+            *)
+                echo "Running fix_pb2_eeprom.sh"
+                /bin/bash /opt/fpp/capes/drivers/bb64/fix_pb2_eeprom.sh
+                ;;
+        esac
+    fi
+else
+    echo "WARNING: EEPROM device not found at $EEPROM"
+fi
+
+echo "---------------------------------------"
 echo "Installing bootloader "
 echo ""
 
