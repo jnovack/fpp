@@ -3773,9 +3773,10 @@ function populateUniverseData (data, reload, input) {
 			"' value='" +
 			size.toString() +
 			"' onChange='updateUniverseEndChannel($(this).parent().parent());' onkeypress='this.onchange();' onpaste='this.onchange();' oninput='this.onchange();'></td>";
+		var priorityStyle = settings['uiLevel'] < 1 ? "style='display: none;'" : inputStyle;
 		bodyHTML +=
 			'<td ' +
-			inputStyle +
+			priorityStyle +
 			"><input class='txtPriority' type='number' min='0' max='9999' value='" +
 			priority.toString() +
 			"'";
@@ -3784,7 +3785,7 @@ function populateUniverseData (data, reload, input) {
 			bodyHTML += ' disabled';
 		}
 		bodyHTML += '/></td>';
-		var syncStyle = input ? "style='display: none;'" : inputStyle;
+		var syncStyle = (input || settings['uiLevel'] < 1) ? "style='display: none;'" : inputStyle;
 		bodyHTML +=
 			'<td ' +
 			syncStyle +
