@@ -69,6 +69,57 @@ volatile bool artnetSocketAsInput = false;
 long long last_packet_time = GetTimeMS();
 long long expireOffSet = 1000; // expire after 1 second
 
+// When true, the bridge tracks the active source per universe and prefers
+// the highest-priority sender. For E1.31 the priority comes from the packet
+// header; for ArtNet (which has no priority field) all senders share the
+// same priority so it reduces to first-source-wins with timeout failover.
+// A lower-priority source only takes over if the current source stops
+// sending for longer than expireOffSet.
+static std::atomic<bool> sourcePriorityEnabled{false};
+
+// Source address of the ArtNet packet currently being handled. Set by
+// Bridge_ReceiveArtNetData before each handler callback so the handler can
+// use it without changing the public AddArtNetOpcodeHandler signature.
+static in_addr_t currentArtNetSourceIP = 0;
+
+// Evaluate whether to accept a packet from the given source for this
+// universe under the priority-aware policy. Updates the entry's active
+// source state as a side effect. Returns true if the packet should be
+// applied; false if it should be suppressed. sourceJustSwitched is set to
+// true when the caller should skip sequence-number error counting for this
+// packet because the active source identifier just changed.
+static inline bool EvaluateSource(UniverseEntry& entry,
+                                  const uint8_t* sourceId,
+                                  uint8_t priority,
+                                  long long packetTime,
+                                  bool& sourceJustSwitched) {
+    sourceJustSwitched = false;
+    bool idMatches = entry.activeSourceValid &&
+                     memcmp(entry.activeSourceId, sourceId, 16) == 0;
+    bool expired = entry.activeSourceValid &&
+                   (packetTime - entry.activeSourceLastTime) > expireOffSet;
+
+    if (!entry.activeSourceValid || expired || priority > entry.activeSourcePriority) {
+        if (entry.activeSourceValid && !idMatches) {
+            sourceJustSwitched = true;
+        }
+        memcpy(entry.activeSourceId, sourceId, 16);
+        entry.activeSourcePriority = priority;
+        entry.activeSourceLastTime = packetTime;
+        entry.activeSourceValid = true;
+        return true;
+    }
+    if (idMatches) {
+        entry.activeSourcePriority = priority;
+        entry.activeSourceLastTime = packetTime;
+        return true;
+    }
+    // Lower-or-equal priority from a different source while the current
+    // source is still active; suppress it.
+    entry.suppressedPackets++;
+    return false;
+}
+
 #define MAX_MSG 64
 #define BUFSIZE 1500
 struct mmsghdr msgs[MAX_MSG];
@@ -360,6 +411,7 @@ bool Bridge_ReceiveArtNetData(void) {
             int opCode = (bridgeBuffer[9] << 8) | bridgeBuffer[8];
             auto cb = ArtNetOpcodeHandlers.find(opCode);
             if (cb != ArtNetOpcodeHandlers.end()) {
+                currentArtNetSourceIP = inAddress[x].sin_addr.s_addr;
                 sync |= cb->second(bridgeBuffer, packetTime);
             }
         }
@@ -561,8 +613,19 @@ bool Bridge_StoreData(uint8_t* bridgeBuffer, long long packetTime) {
 
         uint32_t universeIndex = Bridge_GetIndexFromUniverseNumber(universe);
         if (universeIndex != BRIDGE_INVALID_UNIVERSE_INDEX) {
+            bool sourceJustSwitched = false;
+            if (sourcePriorityEnabled.load(std::memory_order_relaxed)) {
+                uint8_t sourceId[16];
+                memcpy(sourceId, &bridgeBuffer[E131_CID_INDEX], E131_CID_LENGTH);
+                if (!EvaluateSource(InputUniverses[universeIndex], sourceId,
+                                    bridgeBuffer[E131_PRIORITY_INDEX],
+                                    packetTime, sourceJustSwitched)) {
+                    return false;
+                }
+            }
+
             uint32_t sn = bridgeBuffer[E131_SEQUENCE_INDEX];
-            if (InputUniverses[universeIndex].packetsReceived != 0) {
+            if (!sourceJustSwitched && InputUniverses[universeIndex].packetsReceived != 0) {
                 if (InputUniverses[universeIndex].lastSequenceNumber == 255) {
                     // some wrap from 255 -> 1 and some from 255 -> 0, spec doesn't say which
                     if (sn != 0 && sn != 1) {
@@ -622,7 +685,20 @@ bool Bridge_StoreArtNetData(uint8_t* bridgeBuffer, long long packetTime) {
         len += bridgeBuffer[17];
         uint32_t universeIndex = Bridge_GetIndexFromUniverseNumber(univ);
         if (universeIndex != BRIDGE_INVALID_UNIVERSE_INDEX) {
-            if (InputUniverses[universeIndex].packetsReceived != 0) {
+            bool sourceJustSwitched = false;
+            if (sourcePriorityEnabled.load(std::memory_order_relaxed)) {
+                // ArtNet has no priority field in ArtDMX; key on source IP
+                // and use a constant priority so all sources tie. The helper
+                // then reduces to first-source-wins with timeout failover.
+                uint8_t sourceId[16] = {};
+                memcpy(sourceId, &currentArtNetSourceIP, sizeof(currentArtNetSourceIP));
+                if (!EvaluateSource(InputUniverses[universeIndex], sourceId,
+                                    100, packetTime, sourceJustSwitched)) {
+                    return false;
+                }
+            }
+
+            if (!sourceJustSwitched && InputUniverses[universeIndex].packetsReceived != 0) {
                 if (InputUniverses[universeIndex].lastSequenceNumber == 255) {
                     // some wrap from 255 -> 1 and some from 255 -> 0
                     if (sn != 0 && sn != 1) {
@@ -1168,6 +1244,7 @@ void Bridge_Shutdown(void) {
     }
     BridgeShutdownUDP(false);
     unregisterSettingsListener("DisableFakeNetworkBridges", "DisableFakeNetworkBridges");
+    unregisterSettingsListener("BridgeSourcePriority", "BridgeSourcePriority");
     std::string udpInFile = FPP_DIR_CONFIG("/ci-universes.json");
     FileMonitor::INSTANCE.RemoveFile("ci-universes.json", udpInFile);
     std::string dmxInFile = FPP_DIR_CONFIG("/ci-dmx.json");
@@ -1180,6 +1257,19 @@ void Bridge_Initialize(std::map<int, std::function<bool(int)>>& callbacks) {
     registerSettingsListener("DisableFakeNetworkBridges", "DisableFakeNetworkBridges", [](const std::string& s) {
         // reload the bridges when the setting changes
         BridgeReloadUDP();
+    });
+    sourcePriorityEnabled.store(getSettingInt("BridgeSourcePriority") != 0,
+                                std::memory_order_relaxed);
+    registerSettingsListener("BridgeSourcePriority", "BridgeSourcePriority", [](const std::string& s) {
+        bool enabled = !s.empty() && s != "0";
+        sourcePriorityEnabled.store(enabled, std::memory_order_relaxed);
+        // Clear per-universe source state so the next packet establishes a
+        // fresh active source under the new setting.
+        for (int i = 0; i < InputUniverseCount; i++) {
+            InputUniverses[i].activeSourceValid = false;
+            InputUniverses[i].activeSourcePriority = 0;
+            InputUniverses[i].activeSourceLastTime = 0;
+        }
     });
 
     std::string udpInFile = FPP_DIR_CONFIG("/ci-universes.json");

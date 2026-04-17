@@ -28,6 +28,7 @@ public:
     uint32_t bytesReceived = 0;
     uint32_t packetsReceived = 0;
     uint32_t errorPackets = 0;
+    uint32_t suppressedPackets = 0;
     uint32_t lastSequenceNumber = 0;
     uint32_t priority = 0;
 
@@ -35,4 +36,13 @@ public:
     uint64_t lastTimestamp = 0;
     uint32_t lastIndex = 0;
     int inFile = -1;
+
+    // Per-universe active source for priority-based selection. Populated
+    // only when the BridgeSourcePriority setting is enabled. The id is a
+    // 16-byte opaque identifier: for E1.31 it holds the sender CID; for
+    // ArtNet it holds the source IPv4 address in the first 4 bytes.
+    bool activeSourceValid = false;
+    uint8_t activeSourceId[16] = {};
+    uint8_t activeSourcePriority = 0;
+    long long activeSourceLastTime = 0;
 };

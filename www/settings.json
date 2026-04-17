@@ -203,6 +203,7 @@
 			"description": "Input Control",
 			"settings": [
 				"DisableFakeNetworkBridges",
+				"BridgeSourcePriority",
 				"bridgeDataPriority"
 			]
 		},
@@ -947,6 +948,19 @@
 			"description": "Disable Network Bridge Monitoring (E1.31/DDP/ArtNet)",
 			"gatherStats": true,
 			"tip": "FPP normally listens on the network bridge ports for incoming data even when not running in Bridge mode to monitor for and identify misconfigurations in the environment.  The disable setting is provided to allow the user to disable these listeners if they need to spin up their own listener software.",
+			"level": 1,
+			"restart": 0,
+			"reboot": 0,
+			"checkedValue": "1",
+			"uncheckedValue": "0",
+			"default": "0",
+			"type": "checkbox"
+		},
+		"BridgeSourcePriority": {
+			"name": "BridgeSourcePriority",
+			"description": "Bridge Input Source Priority",
+			"gatherStats": true,
+			"tip": "When multiple senders transmit to the same input universe, lock onto a single source and suppress the others.  For E1.31, the priority byte in the packet header is honored so a higher-priority source always wins.  For ArtNet (which has no priority field), the first source seen wins.  In both cases, if the active source stops sending for longer than the input timeout, the next packet from any source takes over.  DDP is unaffected.",
 			"level": 1,
 			"restart": 0,
 			"reboot": 0,
