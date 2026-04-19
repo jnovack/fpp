@@ -451,19 +451,26 @@ int GStreamerOutput::Start(int msTime) {
 
     LogWarn(VB_MEDIAOUT, "GStreamer: Start() building pipeline...");
 
-    std::string pipelineSinkName = getSetting("PipeWireSinkName");
+    std::string audioBackend = toLowerCopy(getSetting("AudioBackend"));
+    bool usePipeWire = (audioBackend == "pipewire");
 
-    // For multi-stream slots > 1, check for a per-slot PipeWire sink setting.
-    // Format: PipeWireSinkName_2, PipeWireSinkName_3, etc.
-    // If not set, falls back to the global PipeWireSinkName.
-    if (m_streamSlot > 1) {
-        std::string slotSetting = "PipeWireSinkName_" + std::to_string(m_streamSlot);
-        std::string slotSinkName = getSetting(slotSetting.c_str());
-        if (!slotSinkName.empty()) {
-            pipelineSinkName = slotSinkName;
+    std::string pipelineSinkName;
+    if (usePipeWire) {
+        pipelineSinkName = getSetting("PipeWireSinkName");
+
+        // For multi-stream slots > 1, check for a per-slot PipeWire sink setting.
+        // Format: PipeWireSinkName_2, PipeWireSinkName_3, etc.
+        // If not set, falls back to the global PipeWireSinkName.
+        if (m_streamSlot > 1) {
+            std::string slotSetting = "PipeWireSinkName_" + std::to_string(m_streamSlot);
+            std::string slotSinkName = getSetting(slotSetting.c_str());
+            if (!slotSinkName.empty()) {
+                pipelineSinkName = slotSinkName;
+            }
         }
     }
-    LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s' (slot %d)\n", pipelineSinkName.c_str(), m_streamSlot);
+    LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s' (slot %d, backend=%s)\n",
+            pipelineSinkName.c_str(), m_streamSlot, audioBackend.c_str());
 
     // Log PipeWire group delay for reference (handled natively by PipeWire
     // filter-chain delay nodes, not by GStreamer ts-offset).
