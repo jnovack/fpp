@@ -343,13 +343,21 @@ int GStreamerOutput::Start(int msTime) {
 
     // Read PipeWire video routing setting early — it affects whether we
     // still need a video pipeline even when the primary HDMI is disconnected.
-    m_pwVideoSinkName = getSetting("PipeWireVideoSinkName");
-    if (m_streamSlot > 1) {
-        std::string slotSetting = "PipeWireVideoSinkName_" + std::to_string(m_streamSlot);
-        std::string slotVideoSinkName = getSetting(slotSetting.c_str());
-        if (!slotVideoSinkName.empty()) {
-            m_pwVideoSinkName = slotVideoSinkName;
+    // Only honour it when PipeWire is actually the audio backend; in ALSA-only
+    // mode PipeWire isn't running so pipewiresink would fail to connect and
+    // block the pipeline (causing audio stall / playback abort).
+    std::string earlyAudioBackend = toLowerCopy(getSetting("AudioBackend"));
+    if (earlyAudioBackend == "pipewire") {
+        m_pwVideoSinkName = getSetting("PipeWireVideoSinkName");
+        if (m_streamSlot > 1) {
+            std::string slotSetting = "PipeWireVideoSinkName_" + std::to_string(m_streamSlot);
+            std::string slotVideoSinkName = getSetting(slotSetting.c_str());
+            if (!slotVideoSinkName.empty()) {
+                m_pwVideoSinkName = slotVideoSinkName;
+            }
         }
+    } else {
+        m_pwVideoSinkName.clear();
     }
     if (!m_pwVideoSinkName.empty()) {
         LogInfo(VB_MEDIAOUT, "GStreamer: PipeWireVideoSinkName='%s' (slot %d) — video will route through PipeWire\n",
@@ -451,8 +459,7 @@ int GStreamerOutput::Start(int msTime) {
 
     LogWarn(VB_MEDIAOUT, "GStreamer: Start() building pipeline...");
 
-    std::string audioBackend = toLowerCopy(getSetting("AudioBackend"));
-    bool usePipeWire = (audioBackend == "pipewire");
+    bool usePipeWire = (earlyAudioBackend == "pipewire");
 
     std::string pipelineSinkName;
     if (usePipeWire) {
@@ -470,7 +477,7 @@ int GStreamerOutput::Start(int msTime) {
         }
     }
     LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s' (slot %d, backend=%s)\n",
-            pipelineSinkName.c_str(), m_streamSlot, audioBackend.c_str());
+            pipelineSinkName.c_str(), m_streamSlot, earlyAudioBackend.c_str());
 
     // Log PipeWire group delay for reference (handled natively by PipeWire
     // filter-chain delay nodes, not by GStreamer ts-offset).
