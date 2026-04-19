@@ -72,9 +72,10 @@ public:
         }
 
         if (mode == "dpi") {
-            // alt1 is dpi
+            // Pi 5 (RP1): DPI is alt1, Pi 4 and earlier (BCM2711/BCM2835): DPI is alt2
+            const char* alt = isPi5() ? "a1" : "a2";
             char buf[256];
-            snprintf(buf, 256, "/usr/bin/pinctrl set %d a1", gpio);
+            snprintf(buf, 256, "/usr/bin/pinctrl set %d %s", gpio, alt);
             system(buf);
             return 0;
         }
