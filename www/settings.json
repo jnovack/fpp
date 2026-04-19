@@ -765,7 +765,7 @@
 			"tip": "Select how FPP handles audio and video playback. Hardware Direct talks directly to ALSA for audio and sends video to a single output device. PipeWire routes all media through the PipeWire stack, enabling multi-device audio groups, video fan-out, and advanced routing.",
 			"gatherStats": true,
 			"restart": 0,
-			"reboot": 0,
+			"reboot": 1,
 			"default": "alsa",
 			"type": "select",
 			"options": {
