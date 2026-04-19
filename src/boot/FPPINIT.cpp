@@ -1924,8 +1924,14 @@ static void setupAudio() {
             };
             const char* posStr = (maxChannels >= 1 && maxChannels <= 8) ? positionArrays[maxChannels] : "[ FL FR ]";
 
-            printf("FPP - PipeWire: creating adapter fpp_alsa_%s for card %d (%s) [%dch %s]\n",
-                   cidNorm.c_str(), cardNum, cId.c_str(), maxChannels, audioFormat.c_str());
+            // USB audio cards need extra headroom: their independent oscillators
+            // drift relative to the PipeWire graph driver clock, causing resyncs.
+            bool isUsbCard = cardLines.count(key) && cardLines[key].find("USB-Audio") != std::string::npos;
+            int headroom = isUsbCard ? 4096 : 256;
+
+            printf("FPP - PipeWire: creating adapter fpp_alsa_%s for card %d (%s) [%dch %s]%s\n",
+                   cidNorm.c_str(), cardNum, cId.c_str(), maxChannels, audioFormat.c_str(),
+                   isUsbCard ? " (USB, headroom=4096)" : "");
             pipewireSink << "  { factory = adapter\n"
                          << "    args = {\n"
                          << "      factory.name = api.alsa.pcm.sink\n"
@@ -1934,7 +1940,7 @@ static void setupAudio() {
                          << "      media.class = \"Audio/Sink\"\n"
                          << "      api.alsa.path = \"hw:" << cId << "\"\n"
                          << "      api.alsa.period-size = " << perSize << "\n"
-                         << "      api.alsa.headroom = 256\n"
+                         << "      api.alsa.headroom = " << headroom << "\n"
                          << "      audio.format = \"" << audioFormat << "\"\n"
                          << "      audio.rate = " << pipewireSampleRate << "\n"
                          << "      audio.channels = " << maxChannels << "\n"

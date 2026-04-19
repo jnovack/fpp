@@ -3794,7 +3794,16 @@ function GeneratePipeWireGroupsConfig($groups, $returnCardMap = false)
             $conf .= "      api.alsa.path = \"hw:$cid\"\n";
             $adapterPeriod = isset($info['periodSize']) && $info['periodSize'] > 0 ? intval($info['periodSize']) : 1024;
             $conf .= "      api.alsa.period-size = $adapterPeriod\n";
-            $conf .= "      api.alsa.headroom = 256\n";
+            // USB audio cards need extra headroom: their independent oscillators
+            // drift relative to the PipeWire graph driver clock, causing resyncs.
+            $cardNum = ResolveCardIdToNumber($cid);
+            $isUsb = false;
+            if ($cardNum >= 0) {
+                $driverLink = @readlink("/sys/class/sound/card$cardNum/device/driver");
+                $isUsb = ($driverLink !== false && str_contains(basename($driverLink), 'usb'));
+            }
+            $adapterHeadroom = $isUsb ? 4096 : 256;
+            $conf .= "      api.alsa.headroom = $adapterHeadroom\n";
             $adapterFormat = isset($info['format']) ? $info['format'] : 'S16LE';
             $conf .= "      audio.format = \"$adapterFormat\"\n";
             $adapterRate = isset($info['rate']) && $info['rate'] > 0 ? intval($info['rate']) : 0;
