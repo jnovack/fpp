@@ -445,8 +445,8 @@ function setVolume($vol)
         }
 
         // PipeWire backend handles volume through fppd, skip direct amixer call
-        $audioBackend = isset($settings['AudioBackend']) ? strtolower($settings['AudioBackend']) : '';
-        if ($audioBackend !== 'pipewire') {
+        $mediaBackend = isset($settings['MediaBackend']) ? strtolower($settings['MediaBackend']) : '';
+        if ($mediaBackend !== 'pipewire') {
             // Why do we do this here and in fppd's settings.c
             $status = exec($SUDO . " amixer -c $card set '$mixerDevice' -- " . $vol . "%");
         }

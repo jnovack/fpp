@@ -123,7 +123,7 @@
 		"avModes": {
 			"description": "A/V Mode",
 			"settings": [
-				"AudioBackend"
+				"MediaBackend"
 			]
 		},
 		"generalAudio": {
@@ -759,8 +759,8 @@
 			],
 			"optionsURL": "api/settings/AudioOutput/options"
 		},
-		"AudioBackend": {
-			"name": "AudioBackend",
+		"MediaBackend": {
+			"name": "MediaBackend",
 			"description": "Media Backend",
 			"tip": "Select how FPP handles audio and video playback. Hardware Direct talks directly to ALSA for audio and sends video to a single output device. PipeWire routes all media through the PipeWire stack, enabling multi-device audio groups, video fan-out, and advanced routing.",
 			"gatherStats": true,

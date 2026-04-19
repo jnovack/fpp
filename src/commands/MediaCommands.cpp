@@ -294,13 +294,8 @@ void GStreamerPlayData::Stopped() {
 // Runtime backend selection for "Play Media" command
 static bool UseGStreamerForPlayMedia() {
 #ifdef HAS_GSTREAMER
-    std::string backend = getSetting("MediaBackend");
-    if (backend == "gstreamer") return true;
-    // Default to GStreamer when PipeWire audio backend is active (unified clock)
-    if (backend.empty()) {
-        std::string audioBackend = getSetting("AudioBackend");
-        return (audioBackend == "pipewire");
-    }
+    // GStreamer is the sole media player for all backends
+    return true;
 #endif
     return false;
 }

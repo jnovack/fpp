@@ -253,7 +253,7 @@ if ${ALL_OK} && ${GST_OK}; then
     echo "To verify audio sinks, run:"
     echo "  PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp wpctl status"
     echo ""
-    echo "If the AudioBackend setting is not yet set to 'pipewire', update it via"
+    echo "If the MediaBackend setting is not yet set to 'pipewire', update it via"
     echo "the FPP web UI under Status/Control > FPP Settings > Audio."
 else
     if ! ${ALL_OK}; then

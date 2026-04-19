@@ -162,7 +162,7 @@ function PutSetting()
         unset($output);
     } else if ($setting == "AudioOutput") {
         SetAudioOutput($value);
-    } else if ($setting == "AudioBackend") {
+    } else if ($setting == "MediaBackend") {
         ApplySetting($setting, $value);
         SendCommand("SetSetting,$setting,$value,");
         exec($SUDO . " " . $settings['fppDir'] . "/src/fppinit setupAudio", $output, $return_val);

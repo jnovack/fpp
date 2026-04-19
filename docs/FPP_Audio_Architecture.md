@@ -286,7 +286,7 @@ Step 1: HTTP API receives volume change
   PUT http://localhost:32322/fppd/volume?set=43
 
 Step 2: setVolume(43) in mediaoutput.cpp
-  Detects AudioBackend = "pipewire"
+  Detects MediaBackend = "pipewire"
 
 Step 3: wpctl sets volume on PipeWire default sink
   Command: PIPEWIRE_REMOTE=/run/pipewire-fpp/pipewire-0 wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.4300
@@ -559,7 +559,7 @@ HTTP API: /fppd/volume?set=43
   ▼
 setVolume(43) in mediaoutput.cpp
   │
-  ├── AudioBackend = "pipewire" ?
+  ├── MediaBackend = "pipewire" ?
   │     YES: wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.43
   │           → Sets volume on combine-stream sink node
   │           → All downstream outputs affected equally

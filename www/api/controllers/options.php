@@ -199,7 +199,7 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
 
     // In PipeWire mode with fulllist, enumerate PipeWire Audio/Source nodes via pw-dump.
     // Stored value = node.name (stable PipeWire identifier), display = node.description.
-    if ($fulllist && isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') {
+    if ($fulllist && isset($settings['MediaBackend']) && $settings['MediaBackend'] == 'pipewire') {
         if ($allowMedia) {
             $AlsaCards['-- Playing Media --'] = '-- Playing Media --';
         }

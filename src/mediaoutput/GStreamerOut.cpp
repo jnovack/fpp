@@ -56,14 +56,14 @@ void GStreamerOutput::EnsureGStreamerInit() {
     if (!gst_initialized) {
         LogWarn(VB_MEDIAOUT, "GStreamer: EnsureGStreamerInit() entered\n");
         // Set PipeWire env vars so pipewiresink can find the FPP PipeWire runtime
-        std::string audioBackend = getSetting("AudioBackend");
-        if (audioBackend == "pipewire") {
+        std::string mediaBackend = getSetting("MediaBackend");
+        if (mediaBackend == "pipewire") {
             setenv("PIPEWIRE_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("XDG_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("PULSE_RUNTIME_PATH", "/run/pipewire-fpp/pulse", 1);
             LogWarn(VB_MEDIAOUT, "GStreamer: Set PipeWire env (PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp)\n");
         } else {
-            LogWarn(VB_MEDIAOUT, "GStreamer: AudioBackend='%s', not setting PipeWire env\n", audioBackend.c_str());
+            LogWarn(VB_MEDIAOUT, "GStreamer: MediaBackend='%s', not setting PipeWire env\n", mediaBackend.c_str());
         }
         LogWarn(VB_MEDIAOUT, "GStreamer: Calling gst_init()...\n");
         gst_init(nullptr, nullptr);
@@ -346,8 +346,8 @@ int GStreamerOutput::Start(int msTime) {
     // Only honour it when PipeWire is actually the audio backend; in ALSA-only
     // mode PipeWire isn't running so pipewiresink would fail to connect and
     // block the pipeline (causing audio stall / playback abort).
-    std::string earlyAudioBackend = toLowerCopy(getSetting("AudioBackend"));
-    if (earlyAudioBackend == "pipewire") {
+    std::string mediaBackend = toLowerCopy(getSetting("MediaBackend"));
+    if (mediaBackend == "pipewire") {
         m_pwVideoSinkName = getSetting("PipeWireVideoSinkName");
         if (m_streamSlot > 1) {
             std::string slotSetting = "PipeWireVideoSinkName_" + std::to_string(m_streamSlot);
@@ -459,7 +459,7 @@ int GStreamerOutput::Start(int msTime) {
 
     LogWarn(VB_MEDIAOUT, "GStreamer: Start() building pipeline...");
 
-    bool usePipeWire = (earlyAudioBackend == "pipewire");
+    bool usePipeWire = (mediaBackend == "pipewire");
 
     std::string pipelineSinkName;
     if (usePipeWire) {
@@ -477,7 +477,7 @@ int GStreamerOutput::Start(int msTime) {
         }
     }
     LogWarn(VB_MEDIAOUT, "GStreamer: PipeWireSinkName='%s' (slot %d, backend=%s)\n",
-            pipelineSinkName.c_str(), m_streamSlot, earlyAudioBackend.c_str());
+            pipelineSinkName.c_str(), m_streamSlot, mediaBackend.c_str());
 
     // Log PipeWire group delay for reference (handled natively by PipeWire
     // filter-chain delay nodes, not by GStreamer ts-offset).

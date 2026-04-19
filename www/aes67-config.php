@@ -178,7 +178,7 @@
                     <?php } ?>
 
                     <!-- PipeWire status bar -->
-                    <?php if (!isset($settings['AudioBackend']) || $settings['AudioBackend'] != 'pipewire') { ?>
+                    <?php if (!isset($settings['MediaBackend']) || $settings['MediaBackend'] != 'pipewire') { ?>
                         <div class="callout callout-warning" style="padding:1rem;">
                             <h4>PipeWire Backend Required</h4>
                             <p>AES67 audio-over-IP requires the PipeWire audio backend.<br>

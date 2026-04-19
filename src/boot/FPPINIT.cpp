@@ -1359,9 +1359,9 @@ static bool waitForInterfacesUp(bool flite, int timeOut) {
             // the PipeWire environment variables so the ALSA-PipeWire plugin in
             // .asoundrc can locate the PipeWire socket.  Without these, flite
             // silently fails to produce any audio output.
-            std::string audioBackend;
-            getRawSetting("AudioBackend", audioBackend);
-            std::string abLower = audioBackend;
+            std::string mediaBackend;
+            getRawSetting("MediaBackend", mediaBackend);
+            std::string abLower = mediaBackend;
             std::transform(abLower.begin(), abLower.end(), abLower.begin(),
                            [](unsigned char c) { return std::tolower(c); });
             std::string fliteCmd;
@@ -1630,13 +1630,13 @@ static void setupAudio() {
     if (!FileExists("/root/.libao")) {
         PutFileContents("/root/.libao", "dev=default");
     }
-    std::string audioBackend = "alsa";
-    getRawSetting("AudioBackend", audioBackend);
-    std::string audioBackendLower = audioBackend;
-    std::transform(audioBackendLower.begin(), audioBackendLower.end(), audioBackendLower.begin(), [](unsigned char c) {
+    std::string mediaBackend = "alsa";
+    getRawSetting("MediaBackend", mediaBackend);
+    std::string mediaBackendLower = mediaBackend;
+    std::transform(mediaBackendLower.begin(), mediaBackendLower.end(), mediaBackendLower.begin(), [](unsigned char c) {
         return std::tolower(c);
     });
-    bool usePipeWireBackend = (audioBackendLower == "pipewire");
+    bool usePipeWireBackend = (mediaBackendLower == "pipewire");
     bool runningInDocker = FileExists("/.dockerenv");
     const std::string audioEnvPath = "/run/fppd/fpp-audio.env";
     printf("FPP - Audio backend: %s\n", usePipeWireBackend ? "PipeWire" : "ALSA");

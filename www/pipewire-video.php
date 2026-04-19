@@ -211,14 +211,14 @@
                 <?php } ?>
 
                 <?php
-                $audioBackend = isset($settings['AudioBackend']) ? $settings['AudioBackend'] : 'alsa';
-                if ($audioBackend !== 'pipewire') {
+                $mediaBackend = isset($settings['MediaBackend']) ? $settings['MediaBackend'] : 'alsa';
+                if ($mediaBackend !== 'pipewire') {
                     ?>
                     <div class="alsa-warning">
                         <i class="fas fa-exclamation-triangle fa-2x" style="color: var(--bs-warning, #ffc107);"></i>
                         <h4>PipeWire Backend Required</h4>
                         <p>Video Output Groups require the PipeWire audio backend to be active.<br>
-                            Currently using: <strong><?= htmlspecialchars(ucfirst($audioBackend)) ?></strong></p>
+                            Currently using: <strong><?= htmlspecialchars(ucfirst($mediaBackend)) ?></strong></p>
                         <p>Change to PipeWire in <a href="settings.php?tab=Audio%2FVideo">FPP Settings &rarr;
                                 Audio/Video</a>,
                             then return here to configure video output groups.</p>

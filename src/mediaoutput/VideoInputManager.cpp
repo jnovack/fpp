@@ -45,9 +45,9 @@ void VideoInputManager::Init() {
         return;
 
     // Only init if PipeWire backend is active
-    std::string backend = getSetting("AudioBackend");
+    std::string backend = getSetting("MediaBackend");
     if (backend != "pipewire") {
-        LogDebug(VB_MEDIAOUT, "VideoInputManager: Skipping init (AudioBackend=%s, not pipewire)\n", backend.c_str());
+        LogDebug(VB_MEDIAOUT, "VideoInputManager: Skipping init (MediaBackend=%s, not pipewire)\n", backend.c_str());
         return;
     }
 

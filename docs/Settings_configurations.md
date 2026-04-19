@@ -10,7 +10,7 @@ The local instance of fpp stores its current setting configuration in:  /home/fp
 
 ## Audio Backend
 
-`AudioBackend` (General -> Audio) controls whether Falcon Player opens the audio hardware directly through ALSA (`Direct ALSA`) or routes playback through the PipeWire stack (`PipeWire`).
+`MediaBackend` (General -> Audio) controls whether Falcon Player opens the audio hardware directly through ALSA (`Direct ALSA`) or routes playback through the PipeWire stack (`PipeWire`).
 
 - **Direct ALSA (default)** keeps the legacy `.asoundrc` pipeline that hands audio straight to the selected card. Choose this when you rely on the existing Audio Output drop-down to pick a specific device or when PipeWire is not required.
 - **PipeWire** starts the `fpp-pipewire`, `fpp-wireplumber`, and `fpp-pipewire-pulse` services, rewrites `.asoundrc` to use the PipeWire ALSA bridge, and exposes a PulseAudio-compatible server for SDL clients. PipeWire adds software mixing with predictable latency (tuned in `etc/pipewire/pipewire.conf.d/90-fpp.conf`). The default sink follows WirePlumber policy; use `wpctl status` / `wpctl set-default <sink-id>` to steer audio to a specific device, or switch back to ALSA if you need per-card routing from the UI.

@@ -232,8 +232,8 @@
                 <?php } ?>
 
                 <?php
-                $audioBackend = isset($settings['AudioBackend']) ? $settings['AudioBackend'] : 'alsa';
-                if ($audioBackend !== 'pipewire') {
+                $mediaBackend = isset($settings['MediaBackend']) ? $settings['MediaBackend'] : 'alsa';
+                if ($mediaBackend !== 'pipewire') {
                     ?>
                     <div class="alsa-warning">
                         <p>The Routing Matrix requires PipeWire audio backend with Input Groups configured.<br>

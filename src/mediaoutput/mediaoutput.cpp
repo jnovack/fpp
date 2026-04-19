@@ -87,9 +87,9 @@ void setVolume(int vol) {
     std::string mixerDevice = getSetting("AudioMixerDevice");
     int audioOutput = getSettingInt("AudioOutput");
     std::string audio0Type = getSetting("AudioCard0Type");
-    std::string audioBackend = toLowerCopy(getSetting("AudioBackend"));
+    std::string mediaBackend = toLowerCopy(getSetting("MediaBackend"));
 
-    bool usePipeWireBackend = (audioBackend == "pipewire");
+    bool usePipeWireBackend = (mediaBackend == "pipewire");
 
 #ifndef PLATFORM_OSX
     volume = vol;
@@ -338,12 +338,6 @@ MediaOutputBase* CreateMediaOutput(const std::string& mediaFilename, const std::
     // routed through the PipeWire stack; in Hardware Direct (ALSA) mode
     // GStreamer talks directly to ALSA for audio and uses kmssink for video.
     bool useGStreamer = true;
-    {
-        std::string backend = getSetting("MediaBackend");
-        if (!backend.empty() && backend != "gstreamer") {
-            useGStreamer = false;
-        }
-    }
 
     if (useGStreamer && IsExtensionAudio(ext)) {
         LogInfo(VB_MEDIAOUT, "Using GStreamer for audio playback: %s (slot %d)\n", mediaFilename.c_str(), streamSlot);

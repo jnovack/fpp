@@ -43,9 +43,9 @@ PrintSettingGroup('avModes');
 
 PrintSettingGroup('generalAudio');
 
-// PipeWire section — always rendered, visibility controlled dynamically by AudioBackend
+// PipeWire section — always rendered, visibility controlled dynamically by MediaBackend
 {
-    $isPipeWire = (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire');
+    $isPipeWire = (isset($settings['MediaBackend']) && $settings['MediaBackend'] == 'pipewire');
     ?>
     <div id="pipeWireSection" <?= $isPipeWire ? '' : ' style="display:none;"' ?>>
         <h2>General PipeWire</h2>
@@ -62,18 +62,18 @@ PrintSettingGroup('generalAudio');
 
     </div>
 
-    <div id="alsaHardwareAudioSection" <?= (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') ? ' style="display:none;"' : '' ?>>
+    <div id="alsaHardwareAudioSection" <?= (isset($settings['MediaBackend']) && $settings['MediaBackend'] == 'pipewire') ? ' style="display:none;"' : '' ?>>
         <?
         PrintSettingGroup('alsaHardwareAudio');
         ?>
     </div>
     <script>
         $(document).ready(function () {
-            var origChildFn = window.UpdateAudioBackendChildren;
+            var origChildFn = window.UpdateMediaBackendChildren;
             if (typeof origChildFn === 'function') {
-                window.UpdateAudioBackendChildren = function (mode) {
+                window.UpdateMediaBackendChildren = function (mode) {
                     origChildFn(mode);
-                    var val = $('#AudioBackend').val();
+                    var val = $('#MediaBackend').val();
                     if (val === 'pipewire') {
                         $('#pipeWireSection').show();
                         $('#pipeWireVideoSection').show();
@@ -93,13 +93,13 @@ PrintSettingGroup('generalAudio');
 }
 ?>
 
-<div id="pipeWireVideoSection" <?= (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') ? '' : ' style="display:none;"' ?>>
+<div id="pipeWireVideoSection" <?= (isset($settings['MediaBackend']) && $settings['MediaBackend'] == 'pipewire') ? '' : ' style="display:none;"' ?>>
     <?
     PrintSettingGroup('pipeWireVideo');
     ?>
 </div>
 
-<div id="hardwareDirectVideoSection" <?= (isset($settings['AudioBackend']) && $settings['AudioBackend'] == 'pipewire') ? ' style="display:none;"' : '' ?>>
+<div id="hardwareDirectVideoSection" <?= (isset($settings['MediaBackend']) && $settings['MediaBackend'] == 'pipewire') ? ' style="display:none;"' : '' ?>>
     <?
     PrintSettingGroup('generalVideo');
     ?>

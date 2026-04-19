@@ -212,7 +212,7 @@ class GStreamerPlayData {
   - `MediaOutputBase*` map allows both VLC and GStreamer instances to coexist
 
 - [x] **1.8** Wire up `PlayMediaCommand` to use runtime backend selection:
-  - `UseGStreamerForPlayMedia()` returns true when `AudioBackend=pipewire` or `MediaBackend=gstreamer`
+  - `UseGStreamerForPlayMedia()` returns true when `MediaBackend=pipewire` or `MediaBackend=gstreamer`
   - Falls back to VLC when GStreamer not preferred or not available
 
 - [x] **1.9** Test (all passing):
@@ -238,7 +238,7 @@ class GStreamerPlayData {
 - [x] `amixer -c 0 sget Speaker` stays at 100% through playback
 - [x] All group members produce audio simultaneously with matching latency
 - [x] Bus errors logged cleanly on failure (no segfaults)
-- [x] Runtime backend selection: GStreamer when `AudioBackend=pipewire`, VLC otherwise
+- [x] Runtime backend selection: GStreamer when `MediaBackend=pipewire`, VLC otherwise
 
 ---
 

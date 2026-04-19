@@ -257,7 +257,7 @@ added as an input group member.
 - [x] **1.5** Add menu entry for input mixing page ✅
   - Added `PipeWireInputMixing` to `settings.json` as modal type
   - Appears in PipeWire Audio section alongside Audio Groups and AES67
-  - Listed under `AudioBackend` → `pipewire` children
+  - Listed under `MediaBackend` → `pipewire` children
 
 - [x] **1.6** Update graph API to handle input group nodes ✅
   - `GetPipeWireGraph()` enriches `fpp_input_*` nodes with:
@@ -546,7 +546,7 @@ fppd
 | **`Stop()` deadlock**                                     | Appsink/bus callbacks held the lock while `gst_element_set_state(NULL)` tried to drain them                                                              | Clean up appsink and bus *before* state change                                                      | `370dfa57` |
 | **PipeWire audio groups not robust across reboots**       | USB card names changed across reboots, breaking input group config references                                                                            | Boot-time card resolution + regeneration script for `96-fpp-input-groups.conf`                      | `3675b7a6` |
 | **Input group mute/volume not working in real-time**      | `ToggleMute()` didn't send API call; mute flag didn't persist correctly                                                                                  | Send `POST /api/pipewire/audio/input-groups/volume` with `mute` flag; preserve saved volume on mute | `4da04d7a` |
-| **Routing matrix page missing header**                    | Used `common/menuBody.inc` instead of FPP standard `menu.inc` pattern; `AudioPipeWire` setting check was wrong                                           | Restructured to standard FPP page layout; changed check to `AudioBackend === 'pipewire'`            | `7bda3e18` |
+| **Routing matrix page missing header**                    | Used `common/menuBody.inc` instead of FPP standard `menu.inc` pattern; `AudioPipeWire` setting check was wrong                                           | Restructured to standard FPP page layout; changed check to `MediaBackend === 'pipewire'`            | `7bda3e18` |
 | **Graph showed fppd stream routing to wrong input group** | `$fppdStreamTargets` map was single-value, last group overwrote previous                                                                                 | Changed to array-of-targets so all group assignments are preserved                                  | `40819271` |
 | **Songs skipping without playing (5s stall)**             | Same overwrite bug in `ApplyPipeWireAudioGroups` and `ApplyPipeWireInputGroupsConfig` — last input group wrote `PipeWireSinkName` to a non-existent node | First-wins semantics: `if (!isset($slotTargets[$slotNum]))`                                         | `e00bb6e1` |
 | **Volume/mute API returned "loopback node not found"**    | PipeWire loopback modules create only `input.NAME` and `output.NAME` sub-nodes (no bare parent)                                                          | Match all three name variants: bare, `input.` prefix, `output.` prefix                              | `54eb4abf` |
@@ -770,7 +770,7 @@ const COL_LABELS = ['Input Sources', 'Input Groups', 'Output Groups', 'Effects',
 - [x] `Stop()` deadlock (appsink/bus cleanup before state change) — `370dfa57`
 - [x] Boot robustness (USB card resolution + regeneration) — `3675b7a6`
 - [x] Mute/volume real-time control + persistence — `4da04d7a`
-- [x] Routing matrix page structure + AudioBackend check — `7bda3e18`
+- [x] Routing matrix page structure + MediaBackend check — `7bda3e18`
 - [x] Graph multi-target (fppd stream → multiple input groups) — `40819271`
 - [x] PipeWireSinkName first-wins overwrite fix — `e00bb6e1`
 - [x] Loopback sub-node matching (`input.`/`output.` prefixes) — `54eb4abf`
