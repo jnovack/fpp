@@ -653,7 +653,7 @@ install_base_packages() {
                       vorbis-tools libgraphicsmagick++1-dev graphicsmagick-libmagick-dev-compat libdrogon-dev \
                       gettext apt-utils x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain clang-format \
                       libmosquitto-dev mosquitto-clients mosquitto libzstd-dev lzma zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev libnl-3-dev libnl-genl-3-dev \
-                      fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
+                      fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev libsdl3-dev mesa-common-dev qrencode libusb-1.0-0-dev \
                       pipewire pipewire-bin pipewire-alsa pipewire-pulse pipewire-jack pipewire-audio-client-libraries wireplumber \
                       libpipewire-0.3-dev libspa-0.2-bluetooth pulseaudio-utils linuxptp \
                       gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \

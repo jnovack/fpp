@@ -75,7 +75,7 @@ if [ "x${ANSWER}" != "xY" -a "x${ANSWER}" != "xy" ]; then
     echo
     exit
 fi
-brew install php git httpd ccache make zstd wget taglib mosquitto jsoncpp drogon graphicsmagick libusb
+brew install php git httpd ccache make zstd wget taglib mosquitto jsoncpp drogon graphicsmagick libusb sdl2
 echo ""
 ccache -M 350M
 ccache --set-config=temporary_dir=/tmp
