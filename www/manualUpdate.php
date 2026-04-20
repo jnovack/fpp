@@ -26,7 +26,7 @@ if (!$wrapped) {
   <body>
     <h2>FPP Manual Update</h2>
     <pre>
-      <?
+        <?
 }
 ?>
 Pulling in updates...
@@ -97,11 +97,11 @@ if ($return_val === 0) {
 
 if (!$wrapped) {
   ?>
-      <a href='index.php'>Go to FPP Main Status Page</a><br>
-      <a href='about.php'>Go back to FPP About page</a><br>
+        <a href='index.php'>Go to FPP Main Status Page</a><br>
+        <a href='system-upgrade.php'>Go back to FPP Upgrade page</a><br>
 
-      </body>
-      </html>
-      <?
+        </body>
+        </html>
+        <?
 }
 ?>

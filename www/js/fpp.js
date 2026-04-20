@@ -31,6 +31,21 @@ var VolumeChangeAPIInProgress = false;
 var currentWarnings = [];
 var warningDefinitions = [];
 
+// Global FPP update state - used by navbar icon, menu banner, and upgrade page
+var FPP_UPDATE_STATE = {
+	branchUpgradeAvailable: false,
+	branchUpgradeTarget: '',
+	branchUpgradeVersion: '',
+	isMajorVersionUpgrade: false,
+	commitUpdateAvailable: false,
+	remoteCommit: '',
+	currentBranch: '',
+	localCommit: '',
+	isEndOfLife: false,
+	latestMajorVersion: 0,
+	checked: false
+};
+
 /* jQuery Colpick activation */
 var fppCommandColorPicker_fppDialogIntervalTimer = null;
 var fppCommandColorPicker_fppDialogIsOpen = false;
@@ -3252,9 +3267,11 @@ function ViewReleaseNotes (version) {
 
 	$.get('api/system/releaseNotes/' + version)
 		.done(function (data) {
+			// version is without 'v' prefix (for GitHub API), but UpgradeFPPVersion needs 'v' prefix (for git)
+			var gitVersion = version.startsWith('v') ? version : 'v' + version;
 			$('#releaseNotesText').html(
 				'<center><input onClick=\'UpgradeFPPVersion("' +
-					version +
+					gitVersion +
 					"\");' type='button' class='buttons' value='Upgrade'></center>" +
 					"<pre style='white-space: pre-wrap; word-wrap: break-word;'>" +
 					data.body +
@@ -9247,59 +9264,120 @@ function scrollToTop () {
 }
 
 /**
- * Uses the fppstats server to check if a new version is avaiable.
+ * Uses the unified update status API to check for updates.
+ * Updates global FPP_UPDATE_STATE and fires 'fpp:updateStatusChanged' event.
+ * Supports test mode via URL param: ?test=branch|commit|both|uptodate
  */
 function checkForFppUpdate () {
-	const epochTimeMilliseconds = Date.now();
-	$.get(
-		'https://fppstats.falconchristmas.com/api/fpp_commits?v=' +
-			epochTimeMilliseconds
-	)
+	var testMode = new URLSearchParams(window.location.search).get('test');
+	var apiUrl = 'api/system/updateStatus';
+	if (testMode) {
+		apiUrl += '?test=' + testMode;
+		console.log('Update check using test mode: ' + testMode);
+	}
+	$.get(apiUrl)
 		.done(function (data) {
-			let remote_found = false;
-			let remote_commit = '';
-			let latest_non_master = '';
-			let latest_non_master_epoch = 0;
-			data.branches.forEach(branch => {
-				if (branch.name === FPP_BRANCH) {
-					remote_found = true;
-					remote_commit = branch.commit.sha;
-				}
-				// Only consider branches that start with 'v' followed by a digit as releases
-				// This ignores dev branches like '2345 - new functionality test'
-				if (branch.name != 'master' && /^v\d/.test(branch.name)) {
-					var bn = branch.name.substr(1);
-					if (bn.startsWith('v')) {
-						bn = branch.name.substr(1);
-					}
-					bn = parseFloat(bn);
-					if (
-						bn >= FPP_VERSION_FLOAT &&
-						branch.commit.date_epoch > latest_non_master_epoch
-					) {
-						latest_non_master = branch.name;
-						latest_non_master_epoch = branch.commit.date_epoch;
-					}
-				}
-			});
+			if (data.status !== 'OK') {
+				console.log('Update status API returned error');
+				return;
+			}
 
-			let msg = '';
-			// If not currently on master and a new branch with higher commit date
-			// avaiable, then new release available.
-			//
-			// TODO: Need to change link
-			if (FPP_BRANCH != 'master' && FPP_BRANCH != latest_non_master) {
-				msg = 'Release: ' + latest_non_master + ' available ';
-				// If update avaiable in current branch
-			} else if (!remote_commit.startsWith(FPP_LOCAL_COMMIT)) {
-				msg = 'Branch update available';
-			}
-			if (msg != '') {
-				$('#navbarUpdateAvailIcon').attr('title', msg);
-				$('#navbarUpdateAvail').show();
-			}
+			// Update global state
+			FPP_UPDATE_STATE.branchUpgradeAvailable = data.branchUpgradeAvailable;
+			FPP_UPDATE_STATE.branchUpgradeTarget = data.branchUpgradeTarget;
+			FPP_UPDATE_STATE.branchUpgradeVersion = data.branchUpgradeVersion;
+			FPP_UPDATE_STATE.isMajorVersionUpgrade = data.isMajorVersionUpgrade || false;
+			FPP_UPDATE_STATE.commitUpdateAvailable = data.commitUpdateAvailable;
+			FPP_UPDATE_STATE.remoteCommit = data.remoteCommit;
+			FPP_UPDATE_STATE.currentBranch = data.currentBranch;
+			FPP_UPDATE_STATE.localCommit = data.localCommit;
+			FPP_UPDATE_STATE.isEndOfLife = data.isEndOfLife || false;
+			FPP_UPDATE_STATE.latestMajorVersion = data.latestMajorVersion || 0;
+			FPP_UPDATE_STATE.checked = true;
+
+			// Update navbar indicator
+			updateNavbarUpdateIndicator();
+
+			// Fire event for other components (menu banner, upgrade page)
+			$(document).trigger('fpp:updateStatusChanged', [FPP_UPDATE_STATE]);
 		})
 		.fail(function () {
-			console.log('Failed to check for updates. Assuming no internet acces');
+			console.log('Failed to check for updates via API');
+
+			// Fallback to legacy fppstats check for navbar only
+			const epochTimeMilliseconds = Date.now();
+			$.get(
+				'https://fppstats.falconchristmas.com/api/fpp_commits?v=' +
+					epochTimeMilliseconds
+			)
+				.done(function (data) {
+					let remote_commit = '';
+					let latest_non_master = '';
+					let latest_non_master_epoch = 0;
+
+					data.branches.forEach(branch => {
+						if (branch.name === FPP_BRANCH) {
+							remote_commit = branch.commit.sha;
+						}
+						if (branch.name != 'master' && /^v\d/.test(branch.name)) {
+							var bn = parseFloat(branch.name.substr(1));
+							if (
+								bn >= FPP_VERSION_FLOAT &&
+								branch.commit.date_epoch > latest_non_master_epoch
+							) {
+								latest_non_master = branch.name;
+								latest_non_master_epoch = branch.commit.date_epoch;
+							}
+						}
+					});
+
+					// Update global state from legacy data
+					if (FPP_BRANCH != 'master' && FPP_BRANCH != latest_non_master && latest_non_master) {
+						FPP_UPDATE_STATE.branchUpgradeAvailable = true;
+						FPP_UPDATE_STATE.branchUpgradeTarget = latest_non_master;
+						FPP_UPDATE_STATE.branchUpgradeVersion = latest_non_master.replace(/^v/, '');
+
+						// Check if this is a major version upgrade
+						var currentMatch = FPP_BRANCH.match(/^v?(\d+)/);
+						var targetMatch = latest_non_master.match(/^v?(\d+)/);
+						if (currentMatch && targetMatch) {
+							FPP_UPDATE_STATE.isMajorVersionUpgrade = parseInt(targetMatch[1]) > parseInt(currentMatch[1]);
+						}
+					}
+					if (remote_commit && !remote_commit.startsWith(FPP_LOCAL_COMMIT)) {
+						FPP_UPDATE_STATE.commitUpdateAvailable = true;
+						FPP_UPDATE_STATE.remoteCommit = remote_commit;
+					}
+					FPP_UPDATE_STATE.currentBranch = FPP_BRANCH;
+					FPP_UPDATE_STATE.localCommit = FPP_LOCAL_COMMIT;
+					FPP_UPDATE_STATE.checked = true;
+
+					updateNavbarUpdateIndicator();
+					$(document).trigger('fpp:updateStatusChanged', [FPP_UPDATE_STATE]);
+				})
+				.fail(function () {
+					console.log('Failed to check for updates. Assuming no internet access');
+				});
 		});
+}
+
+/**
+ * Update the navbar update indicator based on FPP_UPDATE_STATE
+ */
+function updateNavbarUpdateIndicator () {
+	let msg = '';
+
+	if (FPP_UPDATE_STATE.branchUpgradeAvailable) {
+		// Branch upgrade takes priority
+		msg = 'Upgrade to ' + FPP_UPDATE_STATE.branchUpgradeTarget + ' available';
+	} else if (FPP_UPDATE_STATE.commitUpdateAvailable) {
+		msg = 'Software update available';
+	}
+
+	if (msg !== '') {
+		$('#navbarUpdateAvailIcon').attr('title', msg);
+		$('#navbarUpdateAvail').show();
+	} else {
+		$('#navbarUpdateAvail').hide();
+	}
 }

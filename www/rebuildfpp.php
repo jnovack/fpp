@@ -26,7 +26,7 @@ if (!$wrapped) {
     <body>
         <h2>Rebuild FPP</h2>
         <pre>
-    <?
+        <?
 }
 
 // Only output script tags if being viewed directly in a browser (not via curl/proxy)
@@ -81,15 +81,15 @@ Rebuild Complete.
 <?
 if (!$wrapped) {
     ?>
-    <a href='index.php'>Go to FPP Main Status Page</a><br>
-    <a href='about.php'>Go back to FPP About page</a><br>
-    <script>
-        // Ensure we scroll to bottom on page load
-        window.scrollTo(0, document.body.scrollHeight);
-    </script>
+            <a href='index.php'>Go to FPP Main Status Page</a><br>
+            <a href='system-upgrade.php'>Go back to FPP Upgrade page</a><br>
+        <script>
+            // Ensure we scroll to bottom on page load
+            window.scrollTo(0, document.body.scrollHeight);
+        </script>
 
-    </body>
-    </html>
-    <?
+        </body>
+        </html>
+        <?
 }
 ?>

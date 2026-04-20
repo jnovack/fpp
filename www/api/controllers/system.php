@@ -125,6 +125,171 @@ function ViewReleaseNotes()
     }
 }
 
+// GET /api/system/updateStatus
+function GetUpdateStatus()
+{
+    // Test mode: simulate different upgrade scenarios
+    // Usage: api/system/updateStatus?test=branch (or commit, both, uptodate, major/eol, osonly)
+    // This allows testing the upgrade UI without being on an actual old version
+    if (isset($_GET['test'])) {
+        $test = $_GET['test'];
+        $localCommit = get_local_git_version();
+        $currentMajor = getFPPMajorVersion();
+
+        if ($test === 'branch') {
+            // Simulate: on v9.4, v9.5 available (minor version upgrade)
+            return json(array(
+                "status" => "OK",
+                "branchUpgradeAvailable" => true,
+                "branchUpgradeTarget" => "v9.5",
+                "branchUpgradeVersion" => "9.5",
+                "isMajorVersionUpgrade" => false,
+                "commitUpdateAvailable" => false,
+                "remoteCommit" => "",
+                "currentBranch" => "v9.4",
+                "localCommit" => $localCommit,
+                "isEndOfLife" => false,
+                "latestMajorVersion" => $currentMajor
+            ));
+        } else if ($test === 'major' || $test === 'eol') {
+            // Simulate: major version upgrade available (e.g., v9.x → v10.0)
+            // This also triggers EOL since current major < latest major
+            $nextMajor = intval($currentMajor) + 1;
+            return json(array(
+                "status" => "OK",
+                "branchUpgradeAvailable" => true,
+                "branchUpgradeTarget" => "v" . $nextMajor . ".0",
+                "branchUpgradeVersion" => $nextMajor . ".0",
+                "isMajorVersionUpgrade" => true,
+                "commitUpdateAvailable" => false,
+                "remoteCommit" => "",
+                "currentBranch" => "v" . $currentMajor . ".5",
+                "localCommit" => $localCommit,
+                "isEndOfLife" => true,
+                "latestMajorVersion" => $nextMajor
+            ));
+        } else if ($test === 'commit') {
+            // Simulate: on current branch, commits behind
+            return json(array(
+                "status" => "OK",
+                "branchUpgradeAvailable" => false,
+                "branchUpgradeTarget" => "",
+                "branchUpgradeVersion" => "",
+                "isMajorVersionUpgrade" => false,
+                "commitUpdateAvailable" => true,
+                "remoteCommit" => "def456789",
+                "currentBranch" => getFPPBranch(),
+                "localCommit" => $localCommit,
+                "isEndOfLife" => false,
+                "latestMajorVersion" => $currentMajor
+            ));
+        } else if ($test === 'both') {
+            // Simulate: branch upgrade AND commits behind
+            return json(array(
+                "status" => "OK",
+                "branchUpgradeAvailable" => true,
+                "branchUpgradeTarget" => "v9.5",
+                "branchUpgradeVersion" => "9.5",
+                "isMajorVersionUpgrade" => false,
+                "commitUpdateAvailable" => true,
+                "remoteCommit" => "def456789",
+                "currentBranch" => "v9.4",
+                "localCommit" => $localCommit,
+                "isEndOfLife" => false,
+                "latestMajorVersion" => $currentMajor
+            ));
+        } else if ($test === 'uptodate') {
+            // Simulate: everything up to date
+            return json(array(
+                "status" => "OK",
+                "branchUpgradeAvailable" => false,
+                "branchUpgradeTarget" => "",
+                "branchUpgradeVersion" => "",
+                "isMajorVersionUpgrade" => false,
+                "commitUpdateAvailable" => false,
+                "remoteCommit" => $localCommit,
+                "currentBranch" => getFPPBranch(),
+                "localCommit" => $localCommit,
+                "isEndOfLife" => false,
+                "latestMajorVersion" => $currentMajor
+            ));
+        } else if ($test === 'osonly') {
+            // Simulate: FPP up to date, but OS upgrade available
+            return json(array(
+                "status" => "OK",
+                "branchUpgradeAvailable" => false,
+                "branchUpgradeTarget" => "",
+                "branchUpgradeVersion" => "",
+                "isMajorVersionUpgrade" => false,
+                "commitUpdateAvailable" => false,
+                "remoteCommit" => $localCommit,
+                "currentBranch" => getFPPBranch(),
+                "localCommit" => $localCommit,
+                "forceOsUpgradeAvailable" => true,
+                "isEndOfLife" => false,
+                "latestMajorVersion" => $currentMajor
+            ));
+        }
+    }
+
+    // Get the latest release version from GitHub (cached)
+    $latestReleaseVersion = file_cache('github_latest_release', function () {
+        $ch = curl_init('https://api.github.com/repos/FalconChristmas/fpp/releases/latest');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'FPP');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        if ($response) {
+            $releaseData = json_decode($response, true);
+            if (isset($releaseData['tag_name'])) {
+                return $releaseData['tag_name'];
+            }
+        }
+        return '';
+    }, 300, 60);
+
+    // Get unified update status
+    $updateStatus = check_fppstats_updates($latestReleaseVersion);
+
+    // Get current major version
+    $currentMajor = getFPPMajorVersion();
+
+    // Determine latest major version from the release tag
+    $latestMajorVersion = $currentMajor; // Default to current if we can't determine
+    if ($latestReleaseVersion && preg_match('/^v?(\d+)/', $latestReleaseVersion, $matches)) {
+        $latestMajorVersion = intval($matches[1]);
+    }
+
+    // Check if this is a major version upgrade (e.g., v9.x → v10.x)
+    $isMajorVersionUpgrade = false;
+    if ($updateStatus['branchUpgradeAvailable']) {
+        if (preg_match('/^v?(\d+)/', $updateStatus['branchUpgradeTarget'], $matches)) {
+            $targetMajor = intval($matches[1]);
+            $isMajorVersionUpgrade = ($targetMajor > intval($currentMajor));
+        }
+    }
+
+    // Check if current version is End of Life
+    // EOL = current major version is older than the latest major version
+    $isEndOfLife = (intval($currentMajor) < $latestMajorVersion);
+
+    return json(array(
+        "status" => "OK",
+        "branchUpgradeAvailable" => $updateStatus['branchUpgradeAvailable'],
+        "branchUpgradeTarget" => $updateStatus['branchUpgradeTarget'],
+        "branchUpgradeVersion" => $updateStatus['branchUpgradeVersion'],
+        "isMajorVersionUpgrade" => $isMajorVersionUpgrade,
+        "commitUpdateAvailable" => $updateStatus['commitUpdateAvailable'],
+        "remoteCommit" => $updateStatus['remoteCommit'],
+        "currentBranch" => $updateStatus['currentBranch'],
+        "localCommit" => $updateStatus['localCommit'],
+        "isEndOfLife" => $isEndOfLife,
+        "latestMajorVersion" => $latestMajorVersion
+    ));
+}
+
 // PUT /system/volume
 function SystemSetAudio()
 {

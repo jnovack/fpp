@@ -1615,12 +1615,39 @@ function humanFileSize($bytes)
 }
 
 /**
- * Returns current memory usage
- * @return float|int
+ * Returns memory information: used, free, buffer/cache breakdown
+ * All sizes are in bytes.
+ *
+ * @return array {
+ *   'total'              => int,   Total physical memory
+ *   'free'               => int,   Free (unused) memory
+ *   'used'               => int,   Used memory excluding buffers/cache
+ *   'buffers'            => int,   Kernel buffer memory
+ *   'cached'             => int,   Page cache memory
+ *   'buffer_cache'       => int,   Combined buffers + cached
+ *   'usage_percent'      => float, Used memory as % of total
+ *   'buffer_percent'     => float, Buffer/cache as % of total
+ *   'free_percent'       => float, Free memory as % of total
+ *   'total_used_percent' => float, (Used + buffer/cache) as % of total
+ * }
  */
-function get_server_memory_usage()
+function get_server_memory_info()
 {
     global $settings;
+
+    $info = [
+        'total' => 0,
+        'free' => 0,
+        'used' => 0,
+        'buffers' => 0,
+        'cached' => 0,
+        'buffer_cache' => 0,
+        'usage_percent' => 0,
+        'buffer_percent' => 0,
+        'free_percent' => 0,
+        'total_used_percent' => 0,
+    ];
+
     if (file_exists("/proc/meminfo")) {
         $fh = fopen('/proc/meminfo', 'r');
         $total = 0;
@@ -1628,30 +1655,57 @@ function get_server_memory_usage()
         $buffers = 0;
         $cached = 0;
         while ($line = fgets($fh)) {
-            $pieces = array();
-            if (preg_match('/^MemTotal:\s+(\d+)\skB$/', $line, $pieces)) {
-                $total = $pieces[1];
-            } else if (preg_match('/^MemFree:\s+(\d+)\skB$/', $line, $pieces)) {
-                $free = $pieces[1];
-            } else if (preg_match('/^Buffers:\s+(\d+)\skB$/', $line, $pieces)) {
-                $buffers = $pieces[1];
-            } else if (preg_match('/^Cached:\s+(\d+)\skB$/', $line, $pieces)) {
-                $cached = $pieces[1];
+            if (preg_match('/^MemTotal:\s+(\d+)\skB$/', $line, $m)) {
+                $total = $m[1] * 1024;
+            } else if (preg_match('/^MemFree:\s+(\d+)\skB$/', $line, $m)) {
+                $free = $m[1] * 1024;
+            } else if (preg_match('/^Buffers:\s+(\d+)\skB$/', $line, $m)) {
+                $buffers = $m[1] * 1024;
+            } else if (preg_match('/^Cached:\s+(\d+)\skB$/', $line, $m)) {
+                $cached = $m[1] * 1024;
             }
         }
         fclose($fh);
 
+        $buffer_cache = $buffers + $cached;
         $used = $total - $free - $buffers - $cached;
-        $memory_usage = 1.0 * $used / $total * 100;
+
+        $info['total'] = $total;
+        $info['free'] = $free;
+        $info['used'] = $used;
+        $info['buffers'] = $buffers;
+        $info['cached'] = $cached;
+        $info['buffer_cache'] = $buffer_cache;
+
+        if ($total > 0) {
+            $info['usage_percent'] = $used / $total * 100;
+            $info['buffer_percent'] = $buffer_cache / $total * 100;
+            $info['free_percent'] = $free / $total * 100;
+            $info['total_used_percent'] = ($used + $buffer_cache) / $total * 100;
+        }
     } else if ($settings["Platform"] == "MacOS") {
         $output = exec("memory_pressure | grep System-wide");
         $array = explode(":", $output);
-        $memory_usage = trim(rtrim($array[1], "%"));
-        $memory_usage = 100 - $memory_usage;
-    } else {
-        $memory_usage = 0;
+        $pct = 100 - trim(rtrim($array[1], "%"));
+        $info['usage_percent'] = $pct;
+        $info['total_used_percent'] = $pct;
     }
-    return $memory_usage;
+
+    return $info;
+}
+
+/**
+ * Returns current memory usage as a percentage for about.php 
+ * TODO: DELETE ME WHEN ABOUT.PHP IS REMOVED
+ *
+ * @deprecated Use get_server_memory_info() for detailed memory breakdown
+ *             including used, free, buffer/cache, and percentages.
+ * @return float|int
+ */
+function get_server_memory_usage()
+{
+    $info = get_server_memory_info();
+    return $info['usage_percent'];
 }
 
 /**
@@ -1797,7 +1851,21 @@ function get_cpu_stats()
 }
 
 /**
+ * Returns raw cumulative CPU counters from /proc/stat,
+ */
+function get_cpu_stats_raw()
+{
+    global $settings;
+    if ($settings["Platform"] == "MacOS") {
+        $output = exec("ps -A -o %cpu | awk '{s+=$1} END {print s}'");
+        return array('mac' => floatval($output));
+    }
+    return get_cpu_stats();
+}
+
+/**
  * Returns average CPU usage
+ * Still used by GetSystemInfoJsonInternal() which feeds api/system/info
  * @return mixed
  */
 function get_server_cpu_usage()
@@ -1983,10 +2051,27 @@ function get_remote_git_version()
             }
             if ($return_val == 0) {
                 //Google DNS Ping success
-                // this can take a couple seconds to complete so we'll cache it
-                $git_remote_version = exec("(git --git-dir=" . $settings["fppDir"] . "/.git/ ls-remote -q -h origin $git_branch | awk '$1 > 0 { print substr($1,1,9)}')", $output, $return_val);
-                if ($return_val != 0) {
-                    $git_remote_version = "Unknown";
+
+                // First, try to get the upstream tracking branch
+                $upstream = exec("git --git-dir=" . $settings["fppDir"] . "/.git/ rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null", $output, $return_val);
+                unset($output);
+
+                $remote_name = "origin";
+                $remote_branch = $git_branch;
+
+                // If we have an upstream tracking branch, parse it (format: remote/branch)
+                if ($return_val == 0 && !empty($upstream) && strpos($upstream, '/') !== false) {
+                    list($remote_name, $remote_branch) = explode('/', $upstream, 2);
+                }
+
+                // Try to get remote version from the tracking branch
+                $git_remote_version = exec("git --git-dir=" . $settings["fppDir"] . "/.git/ ls-remote -q -h $remote_name $remote_branch 2>/dev/null | awk '$1 > 0 { print substr(\$1,1,9)}'", $output, $return_val);
+                if ($return_val != 0 || empty($git_remote_version)) {
+                    // Fallback to origin
+                    $git_remote_version = exec("git --git-dir=" . $settings["fppDir"] . "/.git/ ls-remote -q -h origin $git_branch 2>/dev/null | awk '$1 > 0 { print substr(\$1,1,9)}'", $output, $return_val);
+                    if ($return_val != 0) {
+                        $git_remote_version = "Unknown";
+                    }
                 }
 
                 unset($output);
@@ -1995,7 +2080,7 @@ function get_remote_git_version()
                 // use ssh to access github, so fallback and check for a
                 // 'github' origin which can be setup to use https://
                 if ($git_remote_version == "") {
-                    $git_remote_version = exec("ping -q -c 1 github.com > /dev/null && (git --git-dir=" . $settings["fppDir"] . "/.git/ ls-remote -q -h github $git_branch | awk '$1 > 0 { print substr($1,1,9)}')", $output, $return_val);
+                    $git_remote_version = exec("ping -q -c 1 github.com > /dev/null && (git --git-dir=" . $settings["fppDir"] . "/.git/ ls-remote -q -h github $git_branch 2>/dev/null | awk '$1 > 0 { print substr(\$1,1,9)}')", $output, $return_val);
                     if ($return_val != 0) {
                         $git_remote_version = "Unknown";
                     }
@@ -2010,6 +2095,153 @@ function get_remote_git_version()
         }, $cache_age, 30);
     }
     return $git_remote_version;
+}
+
+/**
+ * Check for FPP updates via fppstats API
+ * Returns unified update status for both branch upgrades and commit updates
+ * @param string $latestReleaseVersion Optional pre-fetched latest release version (from GitHub API)
+ * @return array Update status with branchUpgradeAvailable, commitUpdateAvailable, etc.
+ */
+function check_fppstats_updates($latestReleaseVersion = null)
+{
+    global $settings;
+
+    $currentBranch = getFPPBranch();
+    $localCommit = get_local_git_version();
+    $fppVersion = getFPPVersion();
+
+    $fppVersionFloat = 0;
+    if (preg_match('/^v?(\d+\.\d+)/', $currentBranch, $matches)) {
+        $fppVersionFloat = floatval($matches[1]);
+    } elseif (preg_match('/^(\d+)\./', $fppVersion, $matches)) {
+        $fppVersionFloat = floatval($matches[1]);
+    }
+
+    $result = [
+        'branchUpgradeAvailable' => false,
+        'branchUpgradeTarget' => '',
+        'branchUpgradeVersion' => '',
+        'commitUpdateAvailable' => false,
+        'remoteCommit' => '',
+        'currentBranch' => $currentBranch,
+        'localCommit' => $localCommit,
+        'fppVersionFloat' => $fppVersionFloat
+    ];
+
+    // Skip branch upgrade detection for master branch users
+    $checkBranchUpgrade = ($currentBranch !== 'master' && $currentBranch !== 'main');
+
+    $fppstatsData = file_cache('fppstats_commits', function () {
+        $ch = curl_init('https://fppstats.falconchristmas.com/api/fpp_commits');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'FPP');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($response && $httpCode === 200) {
+            return $response;
+        }
+        return '';
+    }, 90, 30);
+
+    if (!empty($fppstatsData)) {
+        $data = json_decode($fppstatsData, true);
+
+        if (isset($data['branches']) && is_array($data['branches'])) {
+            $latestNonMaster = '';
+            $latestNonMasterEpoch = 0;
+
+            foreach ($data['branches'] as $branch) {
+                // Check for remote commit on current branch
+                if ($branch['name'] === $currentBranch) {
+                    $remoteCommit = $branch['commit']['sha'] ?? '';
+                    $result['remoteCommit'] = $remoteCommit;
+
+                    // Check if local is behind remote (commit update available)
+                    if (!empty($remoteCommit) && !empty($localCommit) &&
+                        strpos($remoteCommit, $localCommit) !== 0 &&
+                        strpos($localCommit, $remoteCommit) !== 0) {
+                        $result['commitUpdateAvailable'] = true;
+                    }
+                }
+
+                // Check for newer release branches (only for non-master users)
+                if ($checkBranchUpgrade && $branch['name'] !== 'master') {
+                    // Only consider branches that start with 'v' followed by a digit
+                    if (preg_match('/^v(\d+\.\d+)/', $branch['name'], $matches)) {
+                        $branchVersion = floatval($matches[1]);
+                        $branchEpoch = $branch['commit']['date_epoch'] ?? 0;
+
+                        if ($branchVersion >= $fppVersionFloat && $branchEpoch > $latestNonMasterEpoch) {
+                            $latestNonMaster = $branch['name'];
+                            $latestNonMasterEpoch = $branchEpoch;
+                        }
+                    }
+                }
+            }
+
+            // Check if a newer branch is available
+            if ($checkBranchUpgrade && !empty($latestNonMaster) && $latestNonMaster !== $currentBranch) {
+                $result['branchUpgradeAvailable'] = true;
+                $result['branchUpgradeTarget'] = $latestNonMaster;
+                // Strip 'v' prefix for GitHub API
+                $result['branchUpgradeVersion'] = ltrim($latestNonMaster, 'v');
+            }
+        }
+    } else {
+        // Fallback: fppstats unreachable
+        $remoteGitVersion = get_remote_git_version();
+        $result['remoteCommit'] = $remoteGitVersion;
+
+        if (!empty($remoteGitVersion) && $remoteGitVersion !== 'Unknown' &&
+            !empty($localCommit) && $localCommit !== 'Unknown' &&
+            $remoteGitVersion !== $localCommit) {
+            $result['commitUpdateAvailable'] = true;
+        }
+    }
+
+    if ($latestReleaseVersion && $result['branchUpgradeAvailable']) {
+        // Ensure the branch upgrade target matches
+        $latestVersionFloat = floatval(ltrim($latestReleaseVersion, 'v'));
+        $targetVersionFloat = floatval($result['branchUpgradeVersion']);
+
+        // Only show branch upgrade if target is at or above the official latest release
+        if ($targetVersionFloat < $latestVersionFloat) {
+            // Update to the official latest release instead
+            $result['branchUpgradeTarget'] = 'v' . $latestReleaseVersion;
+            $result['branchUpgradeVersion'] = ltrim($latestReleaseVersion, 'v');
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Returns a user-friendly version string for display to standard users
+ * For master/main branch: "FPP 9.x"
+ * For release branches (v9.3): "FPP 9.3"
+ * For other branches: "FPP 9.x (branch-name)"
+ * @return string
+ */
+function getFPPVersionDisplay()
+{
+    $major = getFPPMajorVersion();
+    $branch = getFPPBranch();
+
+    // For master/main branch, show "FPP 9.x" format
+    if ($branch == 'master' || $branch == 'main') {
+        return "FPP " . $major . ".x";
+    }
+    // For release branches (e.g., "v9.3"), show clean version
+    if (preg_match('/^v?(\d+\.\d+)/', $branch, $matches)) {
+        return "FPP " . $matches[1];
+    }
+    // Fallback: use major version with branch name
+    return "FPP " . $major . ".x (" . $branch . ")";
 }
 
 function ReplaceIllegalCharacters($input_string)

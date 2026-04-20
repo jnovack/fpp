@@ -1,0 +1,357 @@
+#!/bin/bash
+
+COMMON_PATH=$(dirname "$0")
+COMMON_PATH=$(cd "$COMMON_PATH" && pwd)
+
+. ${COMMON_PATH}/common
+
+BROWSER_TIME="$1"
+
+PASS_COUNT=0
+WARN_COUNT=0
+FAIL_COUNT=0
+
+# Usage: emit_event ID LABEL ICON STATUS MESSAGE
+emit_event() {
+    local id="$1"
+    local label="$2"
+    local icon="$3"
+    local status="$4"
+    local message="$5"
+
+    message=$(echo "$message" | sed 's/"/\\"/g')
+
+    echo "data: {\"id\":\"$id\",\"label\":\"$label\",\"icon\":\"$icon\",\"status\":\"$status\",\"message\":\"$message\"}"
+    echo ""
+
+    case "$status" in
+        pass) PASS_COUNT=$((PASS_COUNT + 1)) ;;
+        warn) WARN_COUNT=$((WARN_COUNT + 1)) ;;
+        fail) FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+    esac
+}
+
+# Health Check Functions: each outputs one SSE event
+
+HC_FPPD() {
+    local status="pass"
+    local message=""
+
+    PID=$(pgrep fppd)
+    if [ ! -f "${FPPDIR}/src/fppd" ]; then
+        status="fail"
+        message="FPPD executable is missing. Rebuild required."
+    elif [ "x${PID}" != "x" ]; then
+        status="pass"
+        message="Running at PID ${PID}"
+    else
+        status="fail"
+        message="FPPD is not running"
+    fi
+
+    emit_event "fppd" "FPPD Daemon" "fa-play-circle" "$status" "$message"
+}
+
+HC_Warnings() {
+    local status="pass"
+    local message=""
+    local WARNING_FILE="${FPPDIR}/www/warnings.json"
+
+    if ! command -v jq &>/dev/null; then
+        status="fail"
+        message="jq not installed. Perform FPP Upgrade"
+        emit_event "warnings" "FPPD Warnings" "fa-exclamation-triangle" "$status" "$message"
+    elif [ ! -r "$WARNING_FILE" ]; then
+        status="pass"
+        message="No warnings"
+        emit_event "warnings" "FPPD Warnings" "fa-exclamation-triangle" "$status" "$message"
+    else
+        CNT=$(jq 'length' "$WARNING_FILE" 2>/dev/null)
+        if [ "${CNT:-0}" == "0" ]; then
+            status="pass"
+            message="No warnings"
+            emit_event "warnings" "FPPD Warnings" "fa-exclamation-triangle" "$status" "$message"
+        else
+            status="warn"
+            message="${CNT} warning(s) found"
+            local details
+            details=$(jq -c '.' "$WARNING_FILE" 2>/dev/null)
+            echo "data: {\"id\":\"warnings\",\"label\":\"FPPD Warnings\",\"icon\":\"fa-exclamation-triangle\",\"status\":\"$status\",\"message\":\"$message\",\"details\":$details}"
+            echo ""
+            WARN_COUNT=$((WARN_COUNT + 1))
+        fi
+    fi
+}
+
+HC_Scheduler() {
+    local status="pass"
+    local message=""
+
+    DISABLED=$(getSetting DisableScheduler)
+
+    if [ "x${DISABLED}" != "x1" ]; then
+        status="pass"
+        message="Enabled"
+    else
+        status="warn"
+        message="Disabled"
+    fi
+
+    emit_event "scheduler" "Scheduler" "fa-calendar-alt" "$status" "$message"
+}
+
+HC_HostName() {
+    local status="pass"
+    local message=""
+
+    FPPHOSTNAMES=$(curl -s http://127.0.0.1/api/fppd/multiSyncSystems 2>/dev/null | sed -e "s/},/}\n/g" | grep fppMode | sed -e 's/\(.*\)"hostname":"\([^"]*\)"\(.*\)/\2/' | grep -i "^fpp$" | wc -l)
+    HOSTNAME=$(getSetting HostName)
+
+    if [ ${FPPHOSTNAMES} -gt 1 ]; then
+        status="warn"
+        message="Multiple FPP hosts detected"
+    elif [ "x${HOSTNAME}" = "x" ]; then
+        status="warn"
+        message="Not set (using default)"
+    elif [ "x${HOSTNAME}" != "xFPP" -a "x${HOSTNAME}" != "xfpp" ]; then
+        status="pass"
+        message="${HOSTNAME}"
+    else
+        status="warn"
+        message="Using default 'FPP'"
+    fi
+
+    emit_event "hostname" "Unique Hostname" "fa-server" "$status" "$message"
+}
+
+HC_CheckGateways() {
+    local status="pass"
+    local message=""
+
+    # get gateway info once, store for HC_PingGateway
+    GATEWAY_LINES=$(netstat -rn | grep "^0\.0\.0\.0")
+    GATEWAY_COUNT=$(echo "$GATEWAY_LINES" | grep -c .)
+    GATEWAY_IP=$(echo "$GATEWAY_LINES" | head -1 | awk '{print $2}')
+
+    if [ "${GATEWAY_COUNT}" == "1" ]; then
+        status="pass"
+        message="Single gateway found"
+    elif [ "${GATEWAY_COUNT}" == "0" ]; then
+        status="fail"
+        message="No gateway found"
+    else
+        status="fail"
+        message="Multiple gateways found"
+    fi
+
+    emit_event "gateway" "Default Gateway" "fa-network-wired" "$status" "$message"
+    [ "${GATEWAY_COUNT}" == "1" ] && return 0 || return 1
+}
+
+HC_PingGateway() {
+    local status="pass"
+    local message=""
+
+    if [ -n "$GATEWAY_IP" ]; then
+        if ping -c 1 -q -W 2 "$GATEWAY_IP" > /dev/null 2>&1; then
+            status="pass"
+            message="Gateway reachable ($GATEWAY_IP)"
+        else
+            status="fail"
+            message="Cannot reach $GATEWAY_IP"
+        fi
+    else
+        status="fail"
+        message="No gateway configured"
+    fi
+
+    emit_event "gateway_ping" "Gateway Reachable" "fa-exchange-alt" "$status" "$message"
+    [ "$status" == "pass" ] && return 0 || return 1
+}
+
+HC_Internet() {
+    local status="pass"
+    local message=""
+
+    ips=("1.1.1.1" "8.8.8.8" "9.9.9.9")
+    rc=1
+
+    for ip in "${ips[@]}"; do
+        if ping -c 1 -q -W 2 "$ip" > /dev/null 2>&1; then
+            rc=0
+            break
+        fi
+    done
+
+    if [ $rc -eq 0 ]; then
+        status="pass"
+        message="Connected"
+    else
+        status="fail"
+        message="No internet access"
+    fi
+
+    emit_event "internet" "Internet Access" "fa-globe" "$status" "$message"
+
+    [ $rc -eq 0 ] && return 0 || return 1
+}
+
+HC_DNS() {
+    local status="pass"
+    local message=""
+
+    OUT=$(getent hosts github.com 2>&1)
+    if [ "x${OUT}" = "x" ]; then
+        status="fail"
+        message="DNS lookup failed"
+    else
+        status="pass"
+        message="DNS working"
+    fi
+
+    emit_event "dns" "DNS Resolution" "fa-search" "$status" "$message"
+
+    [ "$status" == "pass" ] && return 0 || return 1
+}
+
+HC_NTPOffset() {
+    local status="pass"
+    local message=""
+
+    offsets=$(ntpq -nc peers 2>/dev/null | tail -n +3 | cut -c 62-66 | tr -d '\.-')
+
+    status="pass"
+    message="Time synchronized"
+
+    for offset in ${offsets}; do
+        if [ ${offset:-0} -ge ${limit:-100} ]; then
+            status="warn"
+            message="Time may be incorrect"
+        fi
+    done
+
+    emit_event "ntp" "Time Sync (NTP)" "fa-clock" "$status" "$message"
+}
+
+HC_DateTime() {
+    local status="pass"
+    local message=""
+
+    if [ -z "$BROWSER_TIME" ] || [ "$BROWSER_TIME" == "0" ]; then
+        status="pass"
+        message="Skipped (no browser time)"
+        emit_event "datetime" "Browser Time Sync" "fa-clock" "$status" "$message"
+        return
+    fi
+
+    fppsystem_timestamp=$(date +%s)
+    WARN_THRESHOLD=600
+    FAIL_THRESHOLD=14400
+
+    diff=$((fppsystem_timestamp - BROWSER_TIME))
+    [ $diff -lt 0 ] && diff=$((-diff))
+
+    if [ $diff -ge $FAIL_THRESHOLD ]; then
+        status="fail"
+        message="Significantly different from browser"
+    elif [ $diff -ge $WARN_THRESHOLD ]; then
+        status="warn"
+        message="More than 10 min difference"
+    else
+        status="pass"
+        message="Aligned with browser"
+    fi
+
+    emit_event "datetime" "Browser Time Sync" "fa-clock" "$status" "$message"
+}
+
+HC_RootDisk() {
+    local status="pass"
+    local message=""
+
+    USED=$(df -k / | grep -v Filesystem | awk '{print $5}' | sed -e "s/%//")
+
+    if [ ${USED} -lt 85 ]; then
+        status="pass"
+        message="${USED}% used"
+    elif [ ${USED} -lt 95 ]; then
+        status="warn"
+        message="${USED}% used"
+    else
+        status="fail"
+        message="${USED}% used - critical!"
+    fi
+
+    emit_event "rootdisk" "Root Filesystem" "fa-hdd" "$status" "$message"
+}
+
+HC_MediaDisk() {
+    FSTAB=$(mount | grep "/home/fpp/media")
+    if [ "x${FSTAB}" = "x" ]; then
+        return
+    fi
+
+    local status="pass"
+    local message=""
+
+    USED=$(df -k /home/fpp/media | grep -v Filesystem | awk '{print $5}' | sed -e "s/%//")
+
+    if [ ${USED} -lt 85 ]; then
+        status="pass"
+        message="${USED}% used"
+    elif [ ${USED} -lt 95 ]; then
+        status="warn"
+        message="${USED}% used"
+    else
+        status="fail"
+        message="${USED}% used - critical!"
+    fi
+
+    emit_event "mediadisk" "Media Partition" "fa-folder" "$status" "$message"
+}
+
+# Run all health checks in logical order the javaScript routes each check to left or right column based on ID
+
+# FPP Core
+HC_FPPD
+HC_Warnings
+HC_HostName
+
+# Network chain order
+dns_ok=1
+HC_CheckGateways
+gw_ok=$?
+
+if [ $gw_ok -eq 0 ]; then
+    HC_PingGateway
+    ping_ok=$?
+
+    if [ $ping_ok -eq 0 ]; then
+        HC_Internet
+        inet_ok=$?
+
+        if [ $inet_ok -eq 0 ]; then
+            HC_DNS
+            dns_ok=$?
+        fi
+    fi
+fi
+
+# Time checks
+if [ $dns_ok -eq 0 ]; then
+    HC_NTPOffset
+fi
+HC_DateTime
+
+# Storage
+HC_RootDisk
+HC_MediaDisk
+
+# Conditional
+MODE=$(getSetting fppMode)
+if [ "x${MODE}" = "xplayer" -o "x${MODE}" = "xmaster" ]; then
+    HC_Scheduler
+fi
+
+echo "data: {\"id\":\"done\",\"summary\":{\"pass\":${PASS_COUNT},\"warn\":${WARN_COUNT},\"fail\":${FAIL_COUNT}}}"
+echo ""

@@ -82,9 +82,9 @@ function list_plugin_entries($menu)
                 }
                 ?>
             </a>
-            <a href='about.php' class='nonULLink headerLink versionHead'><?php echo $fpp_head_version; ?></a>
+            <a href='system-upgrade.php' class='nonULLink headerLink versionHead'><?php echo $fpp_head_version; ?></a>
             <div id="navbarUpdateAvail">
-                &nbsp;<a href="about.php" role="button">
+                &nbsp;<a href="system-upgrade.php" role="button">
                     <i class="fa-solid fa-download" id="navbarUpdateAvailIcon"></i>
                 </a>
             </div>
@@ -238,9 +238,30 @@ function list_plugin_entries($menu)
                 <?
             }
             ?>
-            <!--
-  <div id='upgradeFlag' class="alert detract"><span class='inlineBlock'>FPP v7.1 is available for install</span><span class='inlineBlock'><button name="btnUpgrade" type="button" onClick="ViewReleaseNotes('7.1');"  class = "buttons btn-outline-light" ><i class='fas fa-fw fa-sync fa-nbsp'></i>Upgrade FPP</button></span></div>
--->
+            <div id='upgradeFlag' class="alert detract" style="display: none;">
+                <span class='inlineBlock' id='upgradeFlagText'>FPP update available</span>
+                <span class='inlineBlock'>
+                    <button name="btnUpgrade" type="button" id='upgradeFlagButton' class="buttons btn-outline-light">
+                        <i class='fas fa-fw fa-sync fa-nbsp'></i><span id='upgradeFlagButtonText'>Upgrade FPP</span>
+                    </button>
+                </span>
+            </div>
+            <script>
+            $(document).on('fpp:updateStatusChanged', function(e, state) {
+                if (state.branchUpgradeAvailable && !state.isMajorVersionUpgrade) {
+                    // Minor branch upgrade available - show banner with release notes link
+                    $('#upgradeFlagText').text('FPP ' + state.branchUpgradeTarget + ' is available for install');
+                    $('#upgradeFlagButtonText').text('Upgrade to ' + state.branchUpgradeTarget);
+                    $('#upgradeFlagButton').off('click').on('click', function() {
+                        ViewReleaseNotes(state.branchUpgradeVersion);
+                    });
+                    $('#upgradeFlag').show();
+                } else {
+                    // No branch upgrade or major version (requires OS upgrade) - hide banner
+                    $('#upgradeFlag').hide();
+                }
+            });
+            </script>
             <div id='restartFlag' class="alert detract"><span class='inlineBlock'>Settings have changed. FPPD Restart
                     Required</span><span class='inlineBlock'><button name="btnRestartFPPD" type="button"
                         onClick="RestartFPPD();common_ViewPortChange();" class="buttons btn-outline-light"><i
@@ -258,7 +279,7 @@ function list_plugin_entries($menu)
             <? if (!file_exists(__DIR__ . "/../src/fppd")) { ?>
                 <div id='rebuildPopup' title='FPP Upgrade' style="display: none">
                     <textarea style='width: 99%; height: 97%;' disabled id='rebuildText'>
-                                                                                                                                                                                            </textarea>
+                                                                                                                                                                                                </textarea>
                 </div>
                 <script>
                     function RebuildFPPDDone() {
@@ -444,7 +465,7 @@ function list_plugin_entries($menu)
                                     rel="noopener noreferrer"><i class="fas fa-solid fa-gift"></i> Donate to FPP <i
                                         class="fas fa-external-link-alt external-link"></i></a>
                                 <hr class="dropdown-divider">
-                                <a class="dropdown-item" href="healthCheck.php"><i class="fas fa-thermometer-half"></i>
+                                <a class="dropdown-item" href="system-stats.php"><i class="fas fa-thermometer-half"></i>
                                     System Health
                                     Check</a>
                                 <a class="dropdown-item" href="troubleshooting.php"><i class="fas fa-code"></i>
