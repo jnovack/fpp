@@ -54,6 +54,51 @@ function GitStatus()
 
 // GET http://fpp/api/git/releases/os
 // Returns fppos files for download
+function MatchesDeviceOSImage($name, $settings)
+{
+    if (!str_ends_with($name, ".fppos") || !isset($settings['OSImagePrefix']) || $settings['OSImagePrefix'] == "") {
+        return false;
+    }
+
+    $prefix = $settings['OSImagePrefix'];
+    $is64Bit = !empty($settings['Is64Bit']);
+
+    if ($prefix == "Pi" || $prefix == "Pi64") {
+        if (!(str_starts_with($name, "Pi-") || str_starts_with($name, "Pi64-"))) {
+            return false;
+        }
+    } else if ($prefix == "BBB" || $prefix == "BB64") {
+        if (!(str_starts_with($name, "BBB-") || str_starts_with($name, "BB64-"))) {
+            return false;
+        }
+    } else if (!str_starts_with($name, $prefix . "-")) {
+        return false;
+    }
+
+    // Match explicit architecture markers when they are present.
+    $has64Marker = preg_match('/(^|[-_])(64|64bit|aarch64|arm64)([-_.]|$)/i', $name) === 1;
+    $has32Marker = preg_match('/(^|[-_])(32|32bit|armv7|armv7l|armhf|arm32)([-_.]|$)/i', $name) === 1;
+
+    if ($has64Marker && !$is64Bit) {
+        return false;
+    }
+    if ($has32Marker && $is64Bit) {
+        return false;
+    }
+
+    // Preserve legacy behavior if marker isn't present.
+    if (!$has64Marker && !$has32Marker) {
+        if ($is64Bit && ($prefix == "Pi64" || $prefix == "BB64")) {
+            return str_starts_with($name, $prefix . "-");
+        }
+        if (!$is64Bit && ($prefix == "Pi" || $prefix == "BBB")) {
+            return str_starts_with($name, $prefix . "-");
+        }
+    }
+
+    return true;
+}
+
 function GitOSReleases()
 {
     global $settings;
@@ -97,7 +142,7 @@ function GitOSReleases()
                             $row["size"] = $file["size"];
                             $row["prerelease"] = $r["prerelease"];
                             array_push($releases, $row);
-                        } else if (str_starts_with($name, $settings['OSImagePrefix'] . "-")) {
+                        } else if (MatchesDeviceOSImage($name, $settings)) {
                             $row = array();
                             $row["tag"] = $r["tag_name"];
                             $row["release_name"] = $r["name"];
@@ -145,7 +190,7 @@ function GitOSReleaseSizes()
             if (isset($r["assets"]) && $settings['OSImagePrefix'] != "") {
                 foreach ($r["assets"] as $file) {
                     $name = $file["name"];
-                    if (str_ends_with($name, ".fppos") && str_starts_with($name, $settings['OSImagePrefix'] . "-")) {
+                    if (MatchesDeviceOSImage($name, $settings)) {
                         $rc = $rc . $name . "," . $file["size"] . "\n";
                     }
                 }

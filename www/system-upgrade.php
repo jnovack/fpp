@@ -494,6 +494,43 @@
                 //cleanup previous load values
                 $('#osSelect option').filter(function () { return parseInt(this.value) > 0; }).remove();
 
+                var osImagePrefix = '<?= $settings['OSImagePrefix'] ?>';
+                var is64BitDevice = <?= !empty($settings['Is64Bit']) ? 'true' : 'false' ?>;
+
+                function matchesDeviceOSBuild(filename) {
+                    var name = filename || '';
+                    var has64Marker = /(^|[-_])(64|64bit|aarch64|arm64)([-_.]|$)/i.test(name);
+                    var has32Marker = /(^|[-_])(32|32bit|armv7|armv7l|armhf|arm32)([-_.]|$)/i.test(name);
+
+                    if ((osImagePrefix === 'Pi' || osImagePrefix === 'Pi64') && !/^(Pi|Pi64)-/i.test(name)) {
+                        return false;
+                    }
+                    if ((osImagePrefix === 'BBB' || osImagePrefix === 'BB64') && !/^(BBB|BB64)-/i.test(name)) {
+                        return false;
+                    }
+                    if (osImagePrefix !== 'Pi' && osImagePrefix !== 'Pi64' && osImagePrefix !== 'BBB' && osImagePrefix !== 'BB64' && !name.startsWith(osImagePrefix + '-')) {
+                        return false;
+                    }
+
+                    if (has64Marker && !is64BitDevice) {
+                        return false;
+                    }
+                    if (has32Marker && is64BitDevice) {
+                        return false;
+                    }
+
+                    if (!has64Marker && !has32Marker) {
+                        if (is64BitDevice && (osImagePrefix === 'Pi64' || osImagePrefix === 'BB64')) {
+                            return name.startsWith(osImagePrefix + '-');
+                        }
+                        if (!is64BitDevice && (osImagePrefix === 'Pi' || osImagePrefix === 'BBB')) {
+                            return name.startsWith(osImagePrefix + '-');
+                        }
+                    }
+
+                    return true;
+                }
+
                 $.get(allPlatforms, function (data) {
                     var devMode = (settings['uiLevel'] && (parseInt(settings['uiLevel']) == 3));
                     var showLegacy = $('#LegacyOS').is(':checked');
@@ -553,6 +590,12 @@
                     osUpdateFiles.forEach(element => {
                         var isLegacyVersion = legacyVersionRegex.test(element);
                         if (isLegacyVersion && !showLegacy && !devMode) {
+                            return;
+                        }
+                        if (/nightly/i.test(element) && !devMode) {
+                            return;
+                        }
+                        if (!matchesDeviceOSBuild(element)) {
                             return;
                         }
                         if (select.has('option:contains("' + element + '")').length == 0) {
