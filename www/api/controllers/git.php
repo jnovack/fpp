@@ -95,6 +95,7 @@ function GitOSReleases()
                             $row["asset_id"] = $file["id"];
                             $row["downloaded"] = in_array($name, $existingFiles);
                             $row["size"] = $file["size"];
+                            $row["prerelease"] = $r["prerelease"];
                             array_push($releases, $row);
                         } else if (str_starts_with($name, $settings['OSImagePrefix'] . "-")) {
                             $row = array();
@@ -105,6 +106,7 @@ function GitOSReleases()
                             $row["asset_id"] = $file["id"];
                             $row["downloaded"] = in_array($name, $existingFiles);
                             $row["size"] = $file["size"];
+                            $row["prerelease"] = $r["prerelease"];
                             array_push($releases, $row);
                         }
                     }

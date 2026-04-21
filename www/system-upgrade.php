@@ -73,7 +73,7 @@
             }
 
             var hasNewerOS = false;
-            $('#osSelect option').each(function() {
+            $('#osSelect option').each(function () {
                 if (this.value !== '') {
                     var availableVersion = parseOSVersion(this.text);
                     if (isNewerOSVersion(availableVersion, currentVersion)) {
@@ -98,10 +98,10 @@
                 return;
             }
 
-            $.get('api/git/originLog', function(data) {
+            $.get('api/git/originLog', function (data) {
                 gitOriginLogCache = data;
                 callback(data);
-            }).fail(function() {
+            }).fail(function () {
                 callback(null);
             });
         }
@@ -126,7 +126,7 @@
             html += '<tbody>';
 
             if (data && data.rows && data.rows.length > 0) {
-                data.rows.forEach(function(row) {
+                data.rows.forEach(function (row) {
                     html += '<tr>';
                     html += '<td><code>' + row.hash.substring(0, 8) + '</code></td>';
                     html += '<td>' + row.author + '</td>';
@@ -148,7 +148,7 @@
          * Get commit count from cached or fresh git log data
          */
         function getGitCommitCount(callback) {
-            fetchGitOriginLog(function(data) {
+            fetchGitOriginLog(function (data) {
                 var count = (data && data.rows) ? data.rows.length : 0;
                 callback(count);
             });
@@ -220,7 +220,7 @@
                 'You can still update to get the latest changes using the "Update FPP Now" button.' +
                 '</div></td></tr>';
 
-            fetchGitOriginLog(function(data) {
+            fetchGitOriginLog(function (data) {
                 if (data === null) {
                     $('#gitOriginLogModal .modal-body').html('<div class="alert alert-danger">Failed to load git changes</div>');
                     return;
@@ -405,7 +405,7 @@
                     $('#fppVersionCurrent').hide();
 
                     // Fetch commit count and update label
-                    getGitCommitCount(function(count) {
+                    getGitCommitCount(function (count) {
                         if (count > 0) {
                             $('#commitCount').text(count);
                             $('#commitCountStandard').text(count);
@@ -515,6 +515,12 @@
 
                             var isLegacyVersion = legacyVersionRegex.test(file['filename']);
                             if (isLegacyVersion && !showLegacy && !devMode) {
+                                continue;
+                            }
+
+                            // Only show nightly OS builds in Dev mode
+                            var isNightlyBuild = file["prerelease"] === true;
+                            if (isNightlyBuild && !devMode) {
                                 continue;
                             }
 
@@ -761,7 +767,7 @@
 
         function initFaqAccordion() {
             document.querySelectorAll('.fpp-faq__item').forEach(item => {
-                item.querySelector('.fpp-faq__question').addEventListener('click', function() {
+                item.querySelector('.fpp-faq__question').addEventListener('click', function () {
                     const isOpen = item.classList.contains('fpp-faq__item--open');
                     document.querySelectorAll('.fpp-faq__item').forEach(i => i.classList.remove('fpp-faq__item--open'));
                     if (!isOpen) item.classList.add('fpp-faq__item--open');
@@ -804,7 +810,8 @@
                         <p class="fpp-banner__message">
                             You are running FPP <span id="eolCurrentVersion"></span>, which has reached End of Life.
                             This version no longer receives bug fixes or security updates.
-                            Please upgrade to FPP <span id="eolLatestVersion"></span> via OS Upgrade to continue receiving support.
+                            Please upgrade to FPP <span id="eolLatestVersion"></span> via OS Upgrade to continue
+                            receiving support.
                         </p>
                     </div>
                 </div>
@@ -815,7 +822,8 @@
                     </div>
                     <div class="fpp-banner__content">
                         <div class="fpp-banner__title">FPP Software Update Available!</div>
-                        <p class="fpp-banner__message">A new version of the FPP software is ready to install. Updates typically complete in under 5 minutes and keep all your settings.</p>
+                        <p class="fpp-banner__message">A new version of the FPP software is ready to install. Updates
+                            typically complete in under 5 minutes and keep all your settings.</p>
                     </div>
                 </div>
 
@@ -825,7 +833,8 @@
                     </div>
                     <div class="fpp-banner__content">
                         <div class="fpp-banner__title">Operating System Upgrade Available</div>
-                        <p class="fpp-banner__message">A major OS version is available. OS upgrades include security patches, new hardware support, and system improvements. Always backup first!</p>
+                        <p class="fpp-banner__message">A major OS version is available. OS upgrades include security
+                            patches, new hardware support, and system improvements. Always backup first!</p>
                     </div>
                 </div>
 
@@ -835,7 +844,8 @@
                         <i class="fas fa-lightbulb"></i>
                     </div>
                     <div class="fpp-banner__content">
-                        <div class="fpp-banner__title" id="upgradeRecommendationTitle">Recommended: Update FPP Software First</div>
+                        <div class="fpp-banner__title" id="upgradeRecommendationTitle">Recommended: Update FPP Software
+                            First</div>
                         <p class="fpp-banner__message" id="upgradeRecommendationMessage">
                             Both a software update and OS upgrade are available. We recommend updating
                             FPP software first - it's quick (2-5 min) and may resolve any issues.
@@ -856,10 +866,14 @@
                         <form action="https://www.paypal.com/donate" method="post" target="_top">
                             <input type="hidden" name="hosted_button_id" value="ASF9XYZ2V2F5G" />
                             <button type="submit" class="fpp-donate-btn" title="Donate to the Falcon Player">
-                                <svg class="paypal-logo" viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 3.72a.77.77 0 0 1 .757-.629h6.578c2.182 0 3.91.558 5.143 1.66 1.233 1.1 1.677 2.65 1.321 4.612-.042.236-.09.473-.152.707a7.092 7.092 0 0 1-.906 2.326c-.402.627-.905 1.16-1.5 1.586-.596.426-1.297.756-2.09.986-.792.23-1.666.345-2.604.345h-1.58a.95.95 0 0 0-.938.803l-.692 4.39-.394 2.5a.641.641 0 0 1-.633.531h-.278zm11.461-14.02c-.014.084-.03.168-.048.254-.593 3.044-2.623 4.095-5.215 4.095h-1.32a.641.641 0 0 0-.633.543l-.676 4.282-.383 2.43a.336.336 0 0 0 .332.39h2.333a.564.564 0 0 0 .557-.476l.023-.12.441-2.8.028-.154a.564.564 0 0 1 .557-.476h.35c2.268 0 4.042-.921 4.561-3.585.217-1.113.105-2.042-.47-2.695a2.238 2.238 0 0 0-.637-.488z"/></svg>
+                                <svg class="paypal-logo" viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
+                                    <path
+                                        d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 3.72a.77.77 0 0 1 .757-.629h6.578c2.182 0 3.91.558 5.143 1.66 1.233 1.1 1.677 2.65 1.321 4.612-.042.236-.09.473-.152.707a7.092 7.092 0 0 1-.906 2.326c-.402.627-.905 1.16-1.5 1.586-.596.426-1.297.756-2.09.986-.792.23-1.666.345-2.604.345h-1.58a.95.95 0 0 0-.938.803l-.692 4.39-.394 2.5a.641.641 0 0 1-.633.531h-.278zm11.461-14.02c-.014.084-.03.168-.048.254-.593 3.044-2.623 4.095-5.215 4.095h-1.32a.641.641 0 0 0-.633.543l-.676 4.282-.383 2.43a.336.336 0 0 0 .332.39h2.333a.564.564 0 0 0 .557-.476l.023-.12.441-2.8.028-.154a.564.564 0 0 1 .557-.476h.35c2.268 0 4.042-.921 4.561-3.585.217-1.113.105-2.042-.47-2.695a2.238 2.238 0 0 0-.637-.488z" />
+                                </svg>
                                 Donate with PayPal
                             </button>
-                            <img alt="" src="https://www.paypal.com/en_US/i/scr/pixel.gif" width="1" height="1" style="display:none;" />
+                            <img alt="" src="https://www.paypal.com/en_US/i/scr/pixel.gif" width="1" height="1"
+                                style="display:none;" />
                         </form>
                         <p class="fpp-donate-banner__footer">
                             <i class="fas fa-coffee"></i> It takes a lot of time, equipment, and coffee to power your shows!
@@ -879,16 +893,20 @@
                                 <div>
                                     <h3 class="fpp-card__title">
                                         Update FPP Software
-                                        <span id="gitUpdateBadge" class="fpp-badge fpp-badge--success fpp-badge--sm" style="display: none;">Update Available</span>
-                                        <span id="fppRecommendedBadge" class="fpp-badge fpp-badge--info fpp-badge--sm" style="display: none;">Recommended</span>
+                                        <span id="gitUpdateBadge" class="fpp-badge fpp-badge--success fpp-badge--sm"
+                                            style="display: none;">Update Available</span>
+                                        <span id="fppRecommendedBadge" class="fpp-badge fpp-badge--info fpp-badge--sm"
+                                            style="display: none;">Recommended</span>
                                     </h3>
-                                    <p class="fpp-card__subtitle">Get the latest bug fixes and features. This is safe and quick.</p>
+                                    <p class="fpp-card__subtitle">Get the latest bug fixes and features. This is safe
+                                        and quick.</p>
                                 </div>
                             </div>
 
                             <div class="fpp-info-grid">
                                 <div class="fpp-info-box fpp-info-box--neutral">
-                                    <div class="fpp-info-box__title"><i class="fas fa-question-circle"></i> When to use</div>
+                                    <div class="fpp-info-box__title"><i class="fas fa-question-circle"></i> When to use
+                                    </div>
                                     <ul>
                                         <li>When "Update Available" badge shows</li>
                                         <li>For latest bug fixes &amp; features</li>
@@ -896,31 +914,42 @@
                                     </ul>
                                 </div>
                                 <div class="fpp-info-box fpp-info-box--info">
-                                    <div class="fpp-info-box__title"><i class="fas fa-info-circle"></i> What it does</div>
-                                    <p>Downloads the latest code changes for your version and rebuilds FPP. Typically takes 2-5 minutes. Reboots are not usually required.</p>
+                                    <div class="fpp-info-box__title"><i class="fas fa-info-circle"></i> What it does
+                                    </div>
+                                    <p>Downloads the latest code changes for your version and rebuilds FPP. Typically
+                                        takes 2-5 minutes. Reboots are not usually required.</p>
                                 </div>
                             </div>
 
                             <!-- Standard View Version Indicators (uiLevel 0 - Basic) -->
                             <div id="fppVersionStandard" class="fpp-version-standard-wrapper">
                                 <!-- Standard: Branch upgrade available (e.g., v9.4 → v9.5) -->
-                                <div id="fppVersionStandardBranchUpgrade" class="fpp-version-indicator fpp-version-indicator--clickable" style="display: none;" onclick="HandleFPPUpdate();" title="Click to see release notes">
+                                <div id="fppVersionStandardBranchUpgrade"
+                                    class="fpp-version-indicator fpp-version-indicator--clickable"
+                                    style="display: none;" onclick="HandleFPPUpdate();"
+                                    title="Click to see release notes">
                                     <span class="fpp-version-indicator__current"><?= $fppVersionDisplay ?></span>
                                     <i class="fas fa-arrow-right fpp-version-indicator__arrow"></i>
                                     <span class="fpp-version-indicator__to" id="fppTargetVersion">Latest</span>
                                     <span class="fpp-badge fpp-badge--warning fpp-badge--sm">Upgrade Available</span>
-                                    <span class="fpp-version-indicator__label fpp-version-indicator__label--subtle">Click to see release notes</span>
+                                    <span
+                                        class="fpp-version-indicator__label fpp-version-indicator__label--subtle">Click
+                                        to see release notes</span>
                                 </div>
 
                                 <!-- Standard: Commit updates available (same version, new commits) -->
-                                <div id="fppVersionStandardCommitUpdate" class="fpp-version-indicator" style="display: none;">
+                                <div id="fppVersionStandardCommitUpdate" class="fpp-version-indicator"
+                                    style="display: none;">
                                     <span class="fpp-version-indicator__current"><?= $fppVersionDisplay ?></span>
                                     <span class="fpp-badge fpp-badge--success fpp-badge--sm">Update Available</span>
-                                    <span class="fpp-version-indicator__label fpp-version-indicator__label--subtle"><span id="commitCountStandard"></span> updates ready to install</span>
+                                    <span
+                                        class="fpp-version-indicator__label fpp-version-indicator__label--subtle"><span
+                                            id="commitCountStandard"></span> updates ready to install</span>
                                 </div>
 
                                 <!-- Standard: Up to date -->
-                                <div id="fppVersionStandardCurrent" class="fpp-version-indicator fpp-version-indicator--current" style="display: none;">
+                                <div id="fppVersionStandardCurrent"
+                                    class="fpp-version-indicator fpp-version-indicator--current" style="display: none;">
                                     <i class="fas fa-check-circle"></i>
                                     <span class="fpp-version-indicator__current"><?= $fppVersionDisplay ?></span>
                                     <span class="fpp-version-indicator__label">You're up to date!</span>
@@ -930,23 +959,31 @@
                             <!-- Advanced View Version Indicators (uiLevel >= 1 - Advanced) -->
                             <div id="fppVersionAdvanced" class="fpp-version-advanced-wrapper" style="display: none;">
                                 <!-- Advanced: Update available (git hashes) -->
-                                <div id="fppVersionIndicator" class="fpp-version-indicator fpp-version-indicator--clickable" style="display: none;" onclick="GetGitOriginLog();" title="Click to preview changes">
-                                    <span class="fpp-version-indicator__from" id="localGitShort"><?= $localGitVersion ?></span>
+                                <div id="fppVersionIndicator"
+                                    class="fpp-version-indicator fpp-version-indicator--clickable"
+                                    style="display: none;" onclick="GetGitOriginLog();"
+                                    title="Click to preview changes">
+                                    <span class="fpp-version-indicator__from"
+                                        id="localGitShort"><?= $localGitVersion ?></span>
                                     <i class="fas fa-arrow-right fpp-version-indicator__arrow"></i>
                                     <span class="fpp-version-indicator__to" id="remoteGitShort"></span>
-                                    <span class="fpp-version-indicator__label"><i class="fas fa-search"></i> <span id="commitCount">0</span> changes behind</span>
+                                    <span class="fpp-version-indicator__label"><i class="fas fa-search"></i> <span
+                                            id="commitCount">0</span> changes behind</span>
                                 </div>
 
                                 <!-- Advanced: Up to date -->
-                                <div id="fppVersionCurrent" class="fpp-version-indicator fpp-version-indicator--current" style="display: none;">
+                                <div id="fppVersionCurrent" class="fpp-version-indicator fpp-version-indicator--current"
+                                    style="display: none;">
                                     <i class="fas fa-check-circle"></i>
-                                    <span class="fpp-version-indicator__current" id="localGitValue"><?= $localGitVersion ?></span>
+                                    <span class="fpp-version-indicator__current"
+                                        id="localGitValue"><?= $localGitVersion ?></span>
                                     <span class="fpp-version-indicator__label">You're up to date!</span>
                                 </div>
                             </div>
 
                             <div class="fpp-card__actions">
-                                <button class="fpp-btn fpp-btn--success" id="fppUpdateButton" onclick="HandleFPPUpdate();">
+                                <button class="fpp-btn fpp-btn--success" id="fppUpdateButton"
+                                    onclick="HandleFPPUpdate();">
                                     <i class="fas fa-download"></i> <span id="fppUpdateButtonText">Update FPP Now</span>
                                 </button>
                                 <?php
@@ -994,15 +1031,18 @@
                                 <div>
                                     <h3 class="fpp-card__title">
                                         Upgrade Operating System
-                                        <span id="osRecommendedBadge" class="fpp-badge fpp-badge--info fpp-badge--sm" style="display: none;">Recommended</span>
+                                        <span id="osRecommendedBadge" class="fpp-badge fpp-badge--info fpp-badge--sm"
+                                            style="display: none;">Recommended</span>
                                     </h3>
-                                    <p class="fpp-card__subtitle">Upgrade the entire FPP operating system with a new version</p>
+                                    <p class="fpp-card__subtitle">Upgrade the entire FPP operating system with a new
+                                        version</p>
                                 </div>
                             </div>
 
                             <div class="fpp-info-grid">
                                 <div class="fpp-info-box fpp-info-box--neutral">
-                                    <div class="fpp-info-box__title"><i class="fas fa-question-circle"></i> When to use</div>
+                                    <div class="fpp-info-box__title"><i class="fas fa-question-circle"></i> When to use
+                                    </div>
                                     <ul>
                                         <li>Moving to a new major version (e.g., v9 to v10)</li>
                                         <li>Release notes specifically recommend it</li>
@@ -1011,62 +1051,76 @@
                                     </ul>
                                 </div>
                                 <div class="fpp-info-box fpp-info-box--info">
-                                    <div class="fpp-info-box__title"><i class="fas fa-info-circle"></i> What it does</div>
-                                    <p>Downloads a complete OS image and updates your current OS. Your media files are preserved, but backing up your configuration is strongly recommended.</p>
-                                    <span class="fpp-text-info-dark fpp-note"><strong>Important:</strong> This takes 15-30+ minutes and requires a reboot. <a href="backup.php">Backup first!</a></span>
+                                    <div class="fpp-info-box__title"><i class="fas fa-info-circle"></i> What it does
+                                    </div>
+                                    <p>Downloads a complete OS image and updates your current OS. Your media files are
+                                        preserved, but backing up your configuration is strongly recommended.</p>
+                                    <span class="fpp-text-info-dark fpp-note"><strong>Important:</strong> This takes
+                                        15-30+ minutes and requires a reboot. <a href="backup.php">Backup
+                                            first!</a></span>
                                 </div>
                             </div>
 
                             <!-- Warning alert -->
                             <div class="fpp-alert fpp-alert--warning fpp-alert--compact fpp-alert--mb-lg">
                                 <i class="fas fa-exclamation-triangle"></i>
-                                <span><strong>Warning:</strong> OS upgrade will reboot your system. Ensure no shows are running.</span>
+                                <span><strong>Warning:</strong> OS upgrade will reboot your system. Ensure no shows are
+                                    running.</span>
                             </div>
 
                             <!-- Legacy OS warning (shown when checkbox is checked) -->
-                            <div id="legacyOSWarning" class="fpp-alert fpp-alert--warning fpp-alert--compact fpp-alert--mb-md" style="display: none;">
+                            <div id="legacyOSWarning"
+                                class="fpp-alert fpp-alert--warning fpp-alert--compact fpp-alert--mb-md"
+                                style="display: none;">
                                 <i class="fas fa-history"></i>
-                                <span>Installing a legacy OS is generally not recommended unless you're troubleshooting a specific issue.</span>
+                                <span>Installing a legacy OS is generally not recommended unless you're troubleshooting
+                                    a specific issue.</span>
                             </div>
 
                             <div class="fpp-card__actions">
                                 <select id="osSelect" class="form-select fpp-select" onChange="OSSelectChanged();">
                                     <option value="">-- Select OS Image --</option>
                                 </select>
-                                <button class="fpp-btn fpp-btn--warning" id="osUpgradeButton" onclick="UpgradeOS();" disabled>
+                                <button class="fpp-btn fpp-btn--warning" id="osUpgradeButton" onclick="UpgradeOS();"
+                                    disabled>
                                     <i class="fas fa-arrow-up"></i> Upgrade OS
                                 </button>
-                                <button class="fpp-btn fpp-btn--secondary" id="osDownloadButton" onclick="DownloadOS();" disabled>
+                                <button class="fpp-btn fpp-btn--secondary" id="osDownloadButton" onclick="DownloadOS();"
+                                    disabled>
                                     <i class="fas fa-cloud-download-alt"></i> Download Only
                                 </button>
-                                <button class="fpp-btn fpp-btn--outline" id="osReleaseNotesButton" onclick="ViewOSReleaseNotes();" disabled>
+                                <button class="fpp-btn fpp-btn--outline" id="osReleaseNotesButton"
+                                    onclick="ViewOSReleaseNotes();" disabled>
                                     <i class="fas fa-file-alt"></i> Release Notes
                                 </button>
                             </div>
 
                             <?php if (isset($settings['uiLevel']) && $settings['uiLevel'] >= 1) { ?>
-                            <div class="fpp-checkbox-options">
-                                <label class="fpp-checkbox-option">
-                                    <input type="checkbox" id="allPlatforms" onChange="PopulateOSSelect();">
-                                    <span class="fpp-badge fpp-badge--info">Adv</span>
-                                    Show All Platforms
-                                    <img title='Show both BBB & Pi downloads' src='images/redesign/help-icon.svg' class='icon-help'>
-                                </label>
-                                <label class="fpp-checkbox-option">
-                                    <input type="checkbox" id="LegacyOS" onChange="PopulateOSSelect();">
-                                    <span class="fpp-badge fpp-badge--info">Adv</span>
-                                    Show Legacy OS
-                                    <img title='Include historic OS releases in listing' src='images/redesign/help-icon.svg' class='icon-help'>
-                                </label>
-                                <?php if (isset($settings['uiLevel']) && $settings['uiLevel'] >= 3) { ?>
-                                <label class="fpp-checkbox-option fpp-checkbox-option--dev">
-                                    <input type="checkbox" id="keepOptFPP">
-                                    <span class="fpp-badge fpp-badge--dev">Dev</span>
-                                    Keep /opt/fpp
-                                    <img title='WARNING: This will upgrade the OS but will not upgrade the FPP version running in /opt/fpp. This is useful for developers who are developing the code in /opt/fpp and just want the underlying OS upgraded.' src='images/redesign/help-icon.svg' class='icon-help'>
-                                </label>
-                                <?php } ?>
-                            </div>
+                                <div class="fpp-checkbox-options">
+                                    <label class="fpp-checkbox-option">
+                                        <input type="checkbox" id="allPlatforms" onChange="PopulateOSSelect();">
+                                        <span class="fpp-badge fpp-badge--info">Adv</span>
+                                        Show All Platforms
+                                        <img title='Show both BBB & Pi downloads' src='images/redesign/help-icon.svg'
+                                            class='icon-help'>
+                                    </label>
+                                    <label class="fpp-checkbox-option">
+                                        <input type="checkbox" id="LegacyOS" onChange="PopulateOSSelect();">
+                                        <span class="fpp-badge fpp-badge--info">Adv</span>
+                                        Show Legacy OS
+                                        <img title='Include historic OS releases in listing'
+                                            src='images/redesign/help-icon.svg' class='icon-help'>
+                                    </label>
+                                    <?php if (isset($settings['uiLevel']) && $settings['uiLevel'] >= 3) { ?>
+                                        <label class="fpp-checkbox-option fpp-checkbox-option--dev">
+                                            <input type="checkbox" id="keepOptFPP">
+                                            <span class="fpp-badge fpp-badge--dev">Dev</span>
+                                            Keep /opt/fpp
+                                            <img title='WARNING: This will upgrade the OS but will not upgrade the FPP version running in /opt/fpp. This is useful for developers who are developing the code in /opt/fpp and just want the underlying OS upgraded.'
+                                                src='images/redesign/help-icon.svg' class='icon-help'>
+                                        </label>
+                                    <?php } ?>
+                                </div>
                             <?php } ?>
                         </div>
                     </div>
@@ -1081,7 +1135,8 @@
                                 Revert to Previous Commit
                                 <span class="fpp-badge fpp-badge--neutral">Advanced</span>
                             </h3>
-                            <p class="fpp-card__subtitle">Need to roll back changes? Use the changelog to revert to a previous git commit while keeping your configuration.</p>
+                            <p class="fpp-card__subtitle">Need to roll back changes? Use the changelog to revert to a
+                                previous git commit while keeping your configuration.</p>
                         </div>
                         <button class="fpp-btn fpp-btn--secondary" onclick="window.location.href='changelog.php';">
                             <i class="fas fa-external-link-alt"></i> View Changelog
@@ -1102,7 +1157,8 @@
                                 <div class="fpp-row">
                                     <span class="fpp-row__label">FPP Version:</span>
                                     <span class="fpp-row__value">
-                                        <span id="fppVersionStatusBadge" class="fpp-badge fpp-badge--neutral">Checking...</span>
+                                        <span id="fppVersionStatusBadge"
+                                            class="fpp-badge fpp-badge--neutral">Checking...</span>
                                         <span id="fppVersionValue"><?= $fppVersion ?></span>
                                     </span>
                                 </div>
@@ -1127,7 +1183,8 @@
                                 <div class="fpp-row">
                                     <span class="fpp-row__label">OS Version:</span>
                                     <span class="fpp-row__value">
-                                        <span id="osVersionStatusBadge" class="fpp-badge fpp-badge--success" style="display: none;">Up to Date</span>
+                                        <span id="osVersionStatusBadge" class="fpp-badge fpp-badge--success"
+                                            style="display: none;">Up to Date</span>
                                         <span id="osVersionValue">--</span>
                                     </span>
                                 </div>
@@ -1215,7 +1272,8 @@
 
                     <!-- FAQ Panel -->
                     <div class="fpp-info-panel">
-                        <h4 class="fpp-info-panel__title"><i class="fas fa-question-circle"></i> Frequently Asked Questions</h4>
+                        <h4 class="fpp-info-panel__title"><i class="fas fa-question-circle"></i> Frequently Asked
+                            Questions</h4>
                         <div class="fpp-faq" id="upgradeFaq">
                             <div class="fpp-faq__item">
                                 <div class="fpp-faq__question">
@@ -1224,7 +1282,9 @@
                                 </div>
                                 <div class="fpp-faq__answer">
                                     <div class="fpp-faq__answer-inner">
-                                        For most users, <strong>"Update FPP Software"</strong> is all you need in season. It keeps your system current with bug fixes and new features. We recommend OS and major upgrades at least once a year.
+                                        For most users, <strong>"Update FPP Software"</strong> is all you need in
+                                        season. It keeps your system current with bug fixes and new features. We
+                                        recommend OS and major upgrades at least once a year.
                                     </div>
                                 </div>
                             </div>
@@ -1235,7 +1295,9 @@
                                 </div>
                                 <div class="fpp-faq__answer">
                                     <div class="fpp-faq__answer-inner">
-                                        OS upgrades are typically only needed when moving to a new major FPP version, when release notes specifically recommend it, or if you're experiencing OS-level issues. It is recommend, at minimum, to do this once per year.
+                                        OS upgrades are typically only needed when moving to a new major FPP version,
+                                        when release notes specifically recommend it, or if you're experiencing OS-level
+                                        issues. It is recommend, at minimum, to do this once per year.
                                     </div>
                                 </div>
                             </div>
@@ -1246,7 +1308,9 @@
                                 </div>
                                 <div class="fpp-faq__answer">
                                     <div class="fpp-faq__answer-inner">
-                                        <strong>FPP</strong> is the software that runs your display. <strong>OS</strong> is the underlying operating system (Debian Linux). They can be updated independently but major FPP versions usually require an OS Upgrade.
+                                        <strong>FPP</strong> is the software that runs your display. <strong>OS</strong>
+                                        is the underlying operating system (Debian Linux). They can be updated
+                                        independently but major FPP versions usually require an OS Upgrade.
                                     </div>
                                 </div>
                             </div>
@@ -1257,7 +1321,8 @@
                                 </div>
                                 <div class="fpp-faq__answer">
                                     <div class="fpp-faq__answer-inner">
-                                        FPP updates can be rolled back via the changelog. OS upgrades are harder to reverse - always backup your configuration first!
+                                        FPP updates can be rolled back via the changelog. OS upgrades are harder to
+                                        reverse - always backup your configuration first!
                                     </div>
                                 </div>
                             </div>
@@ -1268,7 +1333,8 @@
                                 </div>
                                 <div class="fpp-faq__answer">
                                     <div class="fpp-faq__answer-inner">
-                                        Yes! All upgrades preserve your media files. However, backing up before major upgrades is always a good practice.
+                                        Yes! All upgrades preserve your media files. However, backing up before major
+                                        upgrades is always a good practice.
                                     </div>
                                 </div>
                             </div>
@@ -1279,7 +1345,11 @@
                                 </div>
                                 <div class="fpp-faq__answer">
                                     <div class="fpp-faq__answer-inner">
-                                        Yes! Both update methods preserve your configuration files, sequences, playlists, and media files. Your settings are stored in a directory which is not affected by updates. However, it's always good practice to backup before major upgrades, especially OS upgrades, as they involve more significant changes to the underlying system.
+                                        Yes! Both update methods preserve your configuration files, sequences,
+                                        playlists, and media files. Your settings are stored in a directory which is not
+                                        affected by updates. However, it's always good practice to backup before major
+                                        upgrades, especially OS upgrades, as they involve more significant changes to
+                                        the underlying system.
                                     </div>
                                 </div>
                             </div>
@@ -1291,11 +1361,17 @@
                 <div class="fpp-info-panel fpp-info-panel--wide">
                     <h4 class="fpp-info-panel__title"><i class="fas fa-link"></i> Resources</h4>
                     <ul class="fpp-resources-list fpp-resources-list--spread">
-                        <li><i class="fas fa-code-branch"></i> <a href="https://github.com/FalconChristmas/fpp" target="_blank">GitHub Repository</a></li>
-                        <li><i class="fas fa-book"></i> <a href="https://github.com/FalconChristmas/fpp/blob/master/README.md" target="_blank">Documentation</a></li>
-                        <li><i class="fas fa-users"></i> <a href="https://www.facebook.com/groups/falconplayer" target="_blank">Facebook Group</a></li>
-                        <li><i class="fas fa-comments"></i> <a href="http://www.falconchristmas.com/forum" target="_blank">Forums</a></li>
-                        <li><i class="fas fa-bug"></i> <a href="https://github.com/FalconChristmas/fpp/issues" target="_blank">Report Issues</a></li>
+                        <li><i class="fas fa-code-branch"></i> <a href="https://github.com/FalconChristmas/fpp"
+                                target="_blank">GitHub Repository</a></li>
+                        <li><i class="fas fa-book"></i> <a
+                                href="https://github.com/FalconChristmas/fpp/blob/master/README.md"
+                                target="_blank">Documentation</a></li>
+                        <li><i class="fas fa-users"></i> <a href="https://www.facebook.com/groups/falconplayer"
+                                target="_blank">Facebook Group</a></li>
+                        <li><i class="fas fa-comments"></i> <a href="http://www.falconchristmas.com/forum"
+                                target="_blank">Forums</a></li>
+                        <li><i class="fas fa-bug"></i> <a href="https://github.com/FalconChristmas/fpp/issues"
+                                target="_blank">Report Issues</a></li>
                         <li><i class="fas fa-heart"></i> <a href="system-stats.php">System Health</a></li>
                     </ul>
                 </div>
