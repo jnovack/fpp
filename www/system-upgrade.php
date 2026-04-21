@@ -264,6 +264,7 @@
                     }
                     if (data.advancedView.OSVersion) {
                         $('#osVersionValue').text(data.advancedView.OSVersion);
+                        $('#osCurrentVersionBadge').text(data.advancedView.OSVersion);
                         currentOSRelease = data.advancedView.OSVersion;
                         if ($('#osSelect option').length > 1) {
                             osUpgradeAvailable = checkForNewerOS();
@@ -1079,6 +1080,10 @@
                                     </h3>
                                     <p class="fpp-card__subtitle">Upgrade the entire FPP operating system with a new
                                         version</p>
+                                </div>
+                                <div class="fpp-card__header-status">
+                                    <span class="fpp-card__header-status-label">Current OS</span>
+                                    <span class="fpp-badge fpp-badge--neutral" id="osCurrentVersionBadge">--</span>
                                 </div>
                             </div>
 
