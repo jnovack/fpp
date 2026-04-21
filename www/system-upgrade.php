@@ -1414,6 +1414,8 @@
                         <li><i class="fas fa-book"></i> <a
                                 href="https://github.com/FalconChristmas/fpp/blob/master/README.md"
                                 target="_blank">Documentation</a></li>
+                        <li><i class="fas fa-microchip"></i> <a href="cape-info.php">Cape Info and EEPROM Signing</a>
+                        </li>
                         <li><i class="fas fa-users"></i> <a href="https://www.facebook.com/groups/falconplayer"
                                 target="_blank">Facebook Group</a></li>
                         <li><i class="fas fa-comments"></i> <a href="http://www.falconchristmas.com/forum"
