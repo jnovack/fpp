@@ -4,13 +4,13 @@ on:
   # Run when pushes to branch or create new Tag
   push:
     branches:
-      - '*'
+      - "*"
     paths-ignore:
-      - 'docs/**'
-      - '*.md'
+      - "docs/**"
+      - "*.md"
   create:
     tags:
-      - '*'
+      - "*"
 
 jobs:
   # define job to build and publish docker image
