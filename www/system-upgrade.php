@@ -1211,16 +1211,14 @@
                                     </span>
                                 </div>
                                 <div class="fpp-row">
-                                    <span class="fpp-row__label">Platform:</span>
-                                    <span class="fpp-row__value" id="platformValue">
-                                        <?php
-                                        echo $settings['Platform'];
-                                        if (($settings['Variant'] != '') && ($settings['Variant'] != $settings['Platform'])) {
-                                            echo " (" . $settings['Variant'] . ")";
-                                        }
-                                        ?>
+                                    <span class="fpp-row__label">OS Version:</span>
+                                    <span class="fpp-row__value">
+                                        <span id="osVersionStatusBadge" class="fpp-badge fpp-badge--success"
+                                            style="display: none;">Up to Date</span>
+                                        <span id="osVersionValue">--</span>
                                     </span>
                                 </div>
+
                             </div>
 
                             <div class="col-md-4 fpp-col-divider">
@@ -1229,11 +1227,14 @@
                                     <span class="fpp-row__value" id="osReleaseValue">--</span>
                                 </div>
                                 <div class="fpp-row">
-                                    <span class="fpp-row__label">OS Version:</span>
-                                    <span class="fpp-row__value">
-                                        <span id="osVersionStatusBadge" class="fpp-badge fpp-badge--success"
-                                            style="display: none;">Up to Date</span>
-                                        <span id="osVersionValue">--</span>
+                                    <span class="fpp-row__label">Platform:</span>
+                                    <span class="fpp-row__value" id="platformValue">
+                                        <?php
+                                        echo $settings['Platform'];
+                                        if (($settings['Variant'] != '') && ($settings['Variant'] != $settings['Platform'])) {
+                                            echo " (" . $settings['Variant'] . ")";
+                                        }
+                                        ?>
                                     </span>
                                 </div>
                             </div>

@@ -1006,7 +1006,7 @@
 
 .fpp-donate-banner__text {
 	color: rgba(255, 255, 255, 0.85);
-	font-size: var(--fpp-fs-sm);
+	font-size: var(--fpp-fs-base);
 	margin: 0 0 var(--fpp-sp-md) 0;
 	max-width: 550px;
 	margin-left: auto;
@@ -1055,7 +1055,7 @@
 
 .fpp-donate-banner__footer {
 	color: rgba(255, 255, 255, 0.7);
-	font-size: var(--fpp-fs-xs);
+	font-size: var(--fpp-fs-sm);
 	margin-top: var(--fpp-sp-md);
 	margin-bottom: 0;
 	font-style: italic;
@@ -1155,7 +1155,7 @@
 .fpp-info-box {
 	padding: var(--fpp-sp-lg);
 	border-radius: var(--fpp-radius-lg);
-	font-size: var(--fpp-fs-sm);
+	font-size: var(--fpp-fs-base);
 }
 
 .fpp-info-box--neutral {
@@ -1284,7 +1284,7 @@
 }
 
 .fpp-version-indicator__label {
-	font-size: var(--fpp-fs-xs);
+	font-size: var(--fpp-fs-sm);
 	font-weight: var(--fpp-fw-semibold);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
