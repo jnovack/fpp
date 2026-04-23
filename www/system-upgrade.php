@@ -1106,6 +1106,9 @@
                                     <span class="fpp-text-info-dark fpp-note"><strong>Important:</strong> This takes
                                         15-30+ minutes and requires a reboot. <a href="backup.php">Backup
                                             first!</a></span>
+                                    <span class="fpp-text-info-dark fpp-note"><strong>Architecture Note:</strong>
+                                        Switching between 32-bit and 64-bit is not supported from this screen. To
+                                        change architectures, flash a fresh image.</span>
                                 </div>
                             </div>
 
