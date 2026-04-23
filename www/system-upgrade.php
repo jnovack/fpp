@@ -1415,8 +1415,7 @@
                     <ul class="fpp-resources-list fpp-resources-list--spread">
                         <li><i class="fas fa-code-branch"></i> <a href="https://github.com/FalconChristmas/fpp"
                                 target="_blank">GitHub Repository</a></li>
-                        <li><i class="fas fa-book"></i> <a
-                                href="https://github.com/FalconChristmas/fpp/blob/master/README.md"
+                        <li><i class="fas fa-book"></i> <a href="https://falconchristmas.github.io/FPP_Manual(9.x).pdf"
                                 target="_blank">Documentation</a></li>
                         <li><i class="fas fa-microchip"></i> <a href="cape-info.php">Cape Info and EEPROM Signing</a>
                         </li>
