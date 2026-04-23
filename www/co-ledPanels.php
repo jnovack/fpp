@@ -399,6 +399,7 @@
             $values["P10Outdoor32x16HalfScan"] = "RPi18";
             $values["P10Outdoor32x16QuarterScanMapper"] = "RPi19";
             $values["P3Outdoor64x64MultiplexMapper"] = "RPi20";
+            $values["DoubleZ"] = "RPi21";
         } else {
             $values["Off"] = "0";
             $values["Stripe"] = "1";
@@ -421,6 +422,7 @@
             $values["P10Outdoor32x16HalfScan"] = "18";
             $values["P10Outdoor32x16QuarterScanMapper"] = "19";
             $values["P3Outdoor64x64MultiplexMapper"] = "20";
+            $values["DoubleZ"] = "21";
         }
         foreach ($values as $key => $value) {
             echo "<option value='$value'";
@@ -2705,17 +2707,17 @@
         if (verboseDebug) {
             console.trace("CheckForOldConfigVersion called");
         }
-        
+
         // Check if any matrix has an old config version
         let hasOldVersion = false;
         let oldVersionPanels = [];
-        
+
         if (channelOutputs && channelOutputs.channelOutputs) {
             channelOutputs.channelOutputs.forEach((output, index) => {
                 if (output.type === "LEDPanelMatrix") {
                     const cfgVersion = output.cfgVersion || 1;
                     const panelMatrixID = output.panelMatrixID || (index + 1);
-                    
+
                     if (cfgVersion < 3) {
                         hasOldVersion = true;
                         oldVersionPanels.push({
@@ -2727,11 +2729,11 @@
                 }
             });
         }
-        
+
         if (hasOldVersion) {
             const panelList = oldVersionPanels.map(p => `${p.name} (v${p.version})`).join(", ");
             const message = `Configuration upgrade detected: ${panelList}. Please review your panel settings and click Save to upgrade to config version 3.`;
-            
+
             // Show warning banner
             if ($('.configUpgradeWarning').length === 0) {
                 const warningHtml = `
@@ -2743,7 +2745,7 @@
                 `;
                 $('#divLEDPanelMatrices').prepend(warningHtml);
             }
-            
+
             // Also trigger the standard save warning
             DisplaySaveWarningIfRequired();
         }
@@ -2785,7 +2787,7 @@
             ?>
             WarnIfSlowNIC(1);
             SetupToolTips();
-            
+
             // Check for old config versions that need upgrading
             CheckForOldConfigVersion();
         <? } else { ?> //No Panel Matrices Defined
