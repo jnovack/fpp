@@ -22,18 +22,6 @@
   <script src="bootstrap-table/extensions/bootstrap-table-filter-control.min.js"></script>
 
   <style>
-    #tblEffectLibrary thead th {
-      background-color: #d9d9d9;
-    }
-
-    #tblEffectLibrary thead th:first-child {
-      border-top-left-radius: 8px;
-    }
-
-    #tblEffectLibrary thead th:last-child {
-      border-top-right-radius: 8px;
-    }
-
     #tblEffectLibrary thead th .both {
       background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512" fill="%23888"><path d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1zm0,429.3l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
     }

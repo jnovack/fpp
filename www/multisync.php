@@ -94,58 +94,7 @@
             color: #ddd;
         }
 
-        /* Bootstrap Table header styling — replaces old .tablesorter thead rules */
-        #fppSystemsTable thead th {
-            background-color: #d9d9d9;
-            padding-top: 0.4em;
-        }
-
-        #fppSystemsTable thead th .th-inner {
-            padding-top: 0.2em;
-        }
-
-        #fppSystemsTable thead th:first-child {
-            border-top-left-radius: 8px;
-        }
-
-        #fppSystemsTable thead th:last-child {
-            border-top-right-radius: 8px;
-        }
-
-        #fppSystemsTable thead td {
-            background-color: #d9d9d9;
-            padding-bottom: 1.1em;
-        }
-
-        #fppSystemsTable thead td:first-child {
-            border-bottom-left-radius: 8px;
-        }
-
-        #fppSystemsTable thead td:last-child {
-            border-bottom-right-radius: 8px;
-        }
-
-        /* Ensure the select-all checkbox in the header is not clipped by BT's th-inner */
-        #fppSystemsTable th .th-inner:has(#selectAllCheckbox) {
-            overflow: visible;
-            text-overflow: clip;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        /* Align row checkboxes to center like the header checkbox */
-        #fppSystemsTable td.centerCenter {
-            text-align: center;
-            vertical-align: middle;
-        }
-
-        #fppSystemsTable .multisyncRowCheckbox {
-            margin: 0;
-            vertical-align: middle;
-        }
-
-        /* Make the unsorted (both arrows) icon visible on the grey header */
+        /* Bootstrap Table sort icons for #fppSystemsTable — structural/theming in fpp.css/fpp-dark.css */
         #fppSystemsTable thead th .both {
             background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><path fill="%23888" d="m103.05877,41.4c9.37707,-12.5 24.60541,-12.5 33.98248,0l96.02113,128c6.90152,9.2 8.92696,22.9 5.17614,34.9s-12.45274,19.8 -22.20489,19.8l-192.04225,-0.1c-9.67713,0 -18.45406,-7.8 -22.20489,-19.8s-1.65036,-25.7 5.17614,-34.9l96.02113,-128l0.07501,0.1z"/><path fill="%23888" d="m103.05877,470.7l-96.02113,-128c-6.90152,-9.2 -8.92696,-22.9 -5.17614,-34.9s12.45274,-19.8 22.20489,-19.8l192.04225,0c9.67713,0 18.45406,7.8 22.20489,19.8s1.65036,25.7 -5.17614,34.9l-96.02113,128c-9.37707,12.5 -24.60541,12.5 -33.98248,0l-0.07501,0z"/></svg>');
         }

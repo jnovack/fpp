@@ -12,7 +12,7 @@ html {
 }
 
 
-input {
+[data-bs-theme="light"] input {
 	background: white;
 }
 
@@ -20,7 +20,7 @@ input {
 /* Fix dark border on datalist inputs (SSID fields) */
 
 
-input[list] {
+[data-bs-theme="light"] input[list] {
 	background: white !important;
 	border: 1px solid #ccc !important;
 	border-radius: 3px !important;
@@ -53,8 +53,8 @@ input[list]::-webkit-list-button {
 /* Specific styling for SSID input fields to match other inputs */
 
 
-#eth_ssid,
-#backupeth_ssid {
+[data-bs-theme="light"] #eth_ssid,
+[data-bs-theme="light"] #backupeth_ssid {
 	background: white !important;
 	border: 1px solid #ccc !important;
 	border-radius: 3px !important;
@@ -208,7 +208,7 @@ input[type='range']::-ms-track {
 }
 
 
-input[type='range']::-webkit-slider-thumb {
+[data-bs-theme="light"] input[type='range']::-webkit-slider-thumb {
 	-webkit-appearance: none;
 	box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.1);
 	border-radius: 1.5em;
@@ -221,7 +221,7 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 
-input[type='range']::-moz-range-thumb {
+[data-bs-theme="light"] input[type='range']::-moz-range-thumb {
 	-webkit-appearance: none;
 	appearance: none;
 	box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.1);
@@ -235,7 +235,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 
-input[type='range']::-ms-thumb {
+[data-bs-theme="light"] input[type='range']::-ms-thumb {
 	-webkit-appearance: none;
 	appearance: none;
 	box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.1);
@@ -362,13 +362,18 @@ input[type='color']::-moz-color-swatch {
 }
 
 
-.pageContent {
+[data-bs-theme="light"] .pageContent {
 	background: #fff;
 	border-radius: 8px;
 	color: #000;
 	padding: 2.5em 3em;
 	box-shadow: 5px 10100px 0px 10000px #20222e, -1000px 100px 0px 0px #20222e,
 		1000px 100px 0px 0px #20222e;
+}
+
+.pageContent {
+	border-radius: 8px;
+	padding: 2.5em 3em;
 }
 
 
@@ -384,7 +389,7 @@ input[type='color']::-moz-color-swatch {
 }
 
 
-body.has-touch .pageContent-tabs {
+[data-bs-theme="light"] body.has-touch .pageContent-tabs {
 	overflow: auto;
 	display: block;
 	margin-right: -20px;
@@ -497,7 +502,7 @@ body.has-touch .pageContent-tabs > .nav-item:not(.hidden) {
 }
 
 
-.pageContent .multiSelect {
+[data-bs-theme="light"] .pageContent .multiSelect {
 	background: #fff;
 	padding-right: 0.65rem;
 }
@@ -538,12 +543,12 @@ html .ui-button.ui-state-disabled:active {
 }
 
 
-.ui-state-active,
-.ui-widget-content .ui-state-active,
-.ui-widget-header .ui-state-active,
-a.ui-button:active,
-.ui-button:active,
-.ui-button.ui-state-active:hover {
+[data-bs-theme="light"] .ui-state-active,
+[data-bs-theme="light"] .ui-widget-content .ui-state-active,
+[data-bs-theme="light"] .ui-widget-header .ui-state-active,
+[data-bs-theme="light"] a.ui-button:active,
+[data-bs-theme="light"] .ui-button:active,
+[data-bs-theme="light"] .ui-button.ui-state-active:hover {
 	background: #fff;
 }
 
@@ -555,11 +560,14 @@ a.ui-button:active,
 }
 
 
-.fppMinMaxSliderRange .ui-slider-handle {
+[data-bs-theme="light"] .fppMinMaxSliderRange .ui-slider-handle {
 	background-color: lightgrey;
+	border-color: #c5c5c5;
+}
+
+.fppMinMaxSliderRange .ui-slider-handle {
 	border: 1px;
 	border-style: solid;
-	border-color: #c5c5c5;
 	border-radius: 0.5rem;
 	width: 0.75em;
 	height: 1.25em;
@@ -828,11 +836,16 @@ a.ui-button:active,
 	font-family: Helvetica, Arial, sans-serif;
 	font-weight: bold;
 	cursor: pointer;
+}
+
+[data-bs-theme="light"] .nav-open #fppMenu a:hover,
+[data-bs-theme="light"] .nav-open #fppMenu a:focus,
+[data-bs-theme="light"] .nav-open #fppMenu a:active {
 	color: #363636;
 }
 
 
-#fppMenuList .dropdown-item {
+[data-bs-theme="light"] #fppMenuList .dropdown-item {
 	color: #363636;
 }
 
@@ -873,7 +886,7 @@ a.ui-button:active,
 }
 
 
-.nav-open #fppMenuList > li.active > a {
+[data-bs-theme="light"] .nav-open #fppMenuList > li.active > a {
 	color: #363636;
 }
 
@@ -1005,17 +1018,21 @@ a.ui-button:active,
 }
 
 
-#fppMenu .dropdown-menu .disabled > a {
+[data-bs-theme="light"] #fppMenu .dropdown-menu .disabled > a {
 	color: #777;
 }
 
+
+[data-bs-theme="light"] #fppMenu .dropdown-menu .disabled > a:focus,
+[data-bs-theme="light"] #fppMenu .dropdown-menu .disabled > a:hover {
+	color: #777;
+}
 
 #fppMenu .dropdown-menu .disabled > a:focus,
 #fppMenu .dropdown-menu .disabled > a:hover {
 	text-decoration: none;
 	background-color: transparent;
 	background-image: none;
-	color: #777;
 }
 
 
@@ -1051,7 +1068,6 @@ a.ui-button:active,
 	display: flex;
 	flex-flow: nowrap;
 	align-items: center;
-	color: #333;
 	text-decoration: none;
 	font-size: 0.9rem;
 	border-radius: 5px;
@@ -1067,6 +1083,11 @@ a.ui-button:active,
 	line-height: 1.428571;
 	text-overflow: ellipsis;
 	word-wrap: break-word;
+}
+
+[data-bs-theme="light"] #fppMenu .dropdown-menu .dropdown-item,
+[data-bs-theme="light"] #fppMenu .dropdown-menu li > a {
+	color: #333;
 }
 
 
@@ -1517,9 +1538,12 @@ body.is-loading #schedulerInfo .labelValue:before {
 }
 
 
-.controlsSectionToPin.Zebra_Pin {
+[data-bs-theme="light"] .controlsSectionToPin.Zebra_Pin {
 	background-color: #fff;
 	box-shadow: 0px 5px 4px -5px rgba(0, 0, 0, 0.2), 5px 0px 0px 0px #fff;
+}
+
+.controlsSectionToPin.Zebra_Pin {
 	padding-top: 0.5em;
 	margin-left: 0%;
 }
@@ -1530,16 +1554,22 @@ body.is-loading #schedulerInfo .labelValue:before {
 }
 
 
-#playerControls.Zebra_Pin {
+[data-bs-theme="light"] #playerControls.Zebra_Pin {
 	background-color: #fff;
 	box-shadow: 0px 5px 4px -5px rgba(0, 0, 0, 0.2), 5px 0px 0px 0px #fff;
+}
+
+#playerControls.Zebra_Pin {
 	padding-top: 0.5em;
 }
 
 
-#playerTime.Zebra_Pin {
+[data-bs-theme="light"] #playerTime.Zebra_Pin {
 	background-color: #fff;
 	box-shadow: 0px 5px 4px -5px rgba(0, 0, 0, 0.2), 5px 0px 0px 0px #fff;
+}
+
+#playerTime.Zebra_Pin {
 	padding-top: 0.5em;
 }
 
@@ -1637,9 +1667,9 @@ body.is-loading #schedulerInfo .labelValue:before {
 }
 
 
-.playlistSelectedEntry:not(.unselectable),
-.playlistSelectedEntry.PlaylistRowPlaying:not(.unselectable),
-.fileDetails.selectedEntry:not(.unselectable) {
+[data-bs-theme="light"] .playlistSelectedEntry:not(.unselectable),
+[data-bs-theme="light"] .playlistSelectedEntry.PlaylistRowPlaying:not(.unselectable),
+[data-bs-theme="light"] .fileDetails.selectedEntry:not(.unselectable) {
 	color: #000;
 	background-color: #c5d6f9;
 }
@@ -1900,12 +1930,15 @@ body.is-loading #schedulerInfo .labelValue:before {
 }
 
 
-.playlistEditorBackButton {
-	appearance: none;
+[data-bs-theme="light"] .playlistEditorBackButton {
 	background-color: #fff;
 	border: 1px solid #d2d2d2;
-	font-size: 1.2em;
 	color: #707070;
+}
+
+.playlistEditorBackButton {
+	appearance: none;
+	font-size: 1.2em;
 	padding: 0.3em 1em;
 	border-radius: 1.5rem;
 	transition: 0.5s all cubic-bezier(0.075, 0.82, 0.165, 1);
@@ -2104,8 +2137,11 @@ body.is-loading #schedulerInfo .labelValue:before {
 /* = Tables & Data Display = */
 /* =========================== */
 
-.fppTableWrapper thead th {
+[data-bs-theme="light"] .fppTableWrapper thead th {
 	background-color: white;
+}
+
+.fppTableWrapper thead th {
 	font-weight: bold;
 }
 
@@ -2122,9 +2158,12 @@ body.is-loading #schedulerInfo .labelValue:before {
 }
 
 
-.tablePageHeader.Zebra_Pin {
+[data-bs-theme="light"] .tablePageHeader.Zebra_Pin {
 	background-color: #fff;
 	box-shadow: 0px 5px 4px -5px rgba(0, 0, 0, 0.2), 5px 0px 0px 0px #fff;
+}
+
+.tablePageHeader.Zebra_Pin {
 	padding-top: 0.5em;
 }
 
@@ -2141,9 +2180,12 @@ body.is-loading #schedulerInfo .labelValue:before {
 }
 
 
-.tableTabPageHeader.Zebra_Pin {
+[data-bs-theme="light"] .tableTabPageHeader.Zebra_Pin {
 	background-color: #fff;
 	box-shadow: 0px 5px 4px -5px rgba(0, 0, 0, 0.2), 5px 0px 0px 0px #fff;
+}
+
+.tableTabPageHeader.Zebra_Pin {
 	padding-top: 0.5em;
 }
 
@@ -2397,13 +2439,65 @@ select#backup\.Direction {
 }
 
 
-.table-download-existing-backups thead {
+[data-bs-theme="light"] .table-download-existing-backups thead {
 	background-color: #f5f5f5;
 }
 
-
-.table-restore-existing-backups thead {
+[data-bs-theme="light"] .table-restore-existing-backups thead {
 	background-color: #f5f5f5;
+}
+
+/* Effect library sort table header */
+#tblEffectLibrary thead th:first-child {
+	border-top-left-radius: 8px;
+}
+#tblEffectLibrary thead th:last-child {
+	border-top-right-radius: 8px;
+}
+[data-bs-theme="light"] #tblEffectLibrary thead th {
+	background-color: #d9d9d9;
+}
+
+/* Multisync systems table header */
+#fppSystemsTable thead th {
+	padding-top: 0.4em;
+}
+#fppSystemsTable thead th .th-inner {
+	padding-top: 0.2em;
+}
+#fppSystemsTable thead th:first-child {
+	border-top-left-radius: 8px;
+}
+#fppSystemsTable thead th:last-child {
+	border-top-right-radius: 8px;
+}
+#fppSystemsTable thead td {
+	padding-bottom: 1.1em;
+}
+#fppSystemsTable thead td:first-child {
+	border-bottom-left-radius: 8px;
+}
+#fppSystemsTable thead td:last-child {
+	border-bottom-right-radius: 8px;
+}
+#fppSystemsTable th .th-inner:has(#selectAllCheckbox) {
+	overflow: visible;
+	text-overflow: clip;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+#fppSystemsTable td.centerCenter {
+	text-align: center;
+	vertical-align: middle;
+}
+#fppSystemsTable .multisyncRowCheckbox {
+	margin: 0;
+	vertical-align: middle;
+}
+[data-bs-theme="light"] #fppSystemsTable thead th,
+[data-bs-theme="light"] #fppSystemsTable thead td {
+	background-color: #d9d9d9;
 }
 
 
@@ -2720,16 +2814,18 @@ table#fppSystemsTable > thead > tr:last-child > td {
 }
 
 
-#divRunningEffects table thead th {
+[data-bs-theme="light"] #divRunningEffects table thead th {
 	color: black;
 	background-color: lightgrey;
-	font: inherit;
 }
 
-
-#divOverlayEffects table thead th {
+[data-bs-theme="light"] #divOverlayEffects table thead th {
 	color: black;
 	background-color: lightgrey;
+}
+
+#divRunningEffects table thead th,
+#divOverlayEffects table thead th {
 	font: inherit;
 }
 
@@ -2934,19 +3030,25 @@ table#fppSystemsTable > thead > tr:last-child > td {
 }
 
 
+[data-bs-theme="light"] .panelMatrix-tab-content .divLEDPanelsData {
+	background-color: whitesmoke;
+}
+
 .panelMatrix-tab-content .divLEDPanelsData {
 	border-radius: 10px;
 	padding: 10px;
 	margin-top: 5px;
-	background-color: whitesmoke;
 }
 
+
+[data-bs-theme="light"] .panelMatrix-tab-content .divLEDPanelsLayoutData {
+	background-color: whitesmoke;
+}
 
 .panelMatrix-tab-content .divLEDPanelsLayoutData {
 	border-radius: 10px;
 	padding: 10px;
 	margin-top: 5px;
-	background-color: whitesmoke;
 }
 
 
@@ -2994,12 +3096,15 @@ table#fppSystemsTable > thead > tr:last-child > td {
 }
 
 
-.global-network-section {
+[data-bs-theme="light"] .global-network-section {
 	background-color: #f8f9fa;
+	border: 1px solid #e9ecef;
+}
+
+.global-network-section {
 	border-radius: 8px;
 	padding: 20px;
 	margin-bottom: 20px;
-	border: 1px solid #e9ecef;
 }
 
 
@@ -3014,12 +3119,15 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* Interface Configuration Styles */
 
 
-.interface-config-section {
+[data-bs-theme="light"] .interface-config-section {
 	background-color: #f8f9fa;
+	border: 1px solid #e9ecef;
+}
+
+.interface-config-section {
 	border-radius: 8px;
 	padding: 20px;
 	margin-bottom: 20px;
-	border: 1px solid #e9ecef;
 }
 
 
@@ -3053,21 +3161,27 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* Interface Selection Styles */
 
 
-.interface-selection {
+[data-bs-theme="light"] .interface-selection {
 	background: #ffffff !important;
 	border: 1px solid #ddd !important;
+}
+
+.interface-selection {
 	border-radius: 6px !important;
 	padding: 15px !important;
 	margin-bottom: 20px !important;
 }
 
 
+[data-bs-theme="light"] .interface-selection h3 {
+	color: #444 !important;
+	border-bottom: 1px solid #ddd !important;
+}
+
 .interface-selection h3 {
 	margin-top: 0 !important;
-	color: #444 !important;
 	font-size: 18px !important;
 	padding-bottom: 8px !important;
-	border-bottom: 1px solid #ddd !important;
 	display: flex;
 	align-items: center;
 }
@@ -3083,12 +3197,15 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* Network Utilities Section Styles */
 
 
-.network-utilities-section {
+[data-bs-theme="light"] .network-utilities-section {
 	background-color: #f8f9fa;
+	border: 1px solid #e9ecef;
+}
+
+.network-utilities-section {
 	border-radius: 8px;
 	padding: 20px;
 	margin-bottom: 20px;
-	border: 1px solid #e9ecef;
 }
 
 
@@ -3103,12 +3220,15 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* Tethering Section Styles */
 
 
-.tethering-section {
+[data-bs-theme="light"] .tethering-section {
 	background-color: #f8f9fa;
+	border: 1px solid #e9ecef;
+}
+
+.tethering-section {
 	border-radius: 8px;
 	padding: 20px;
 	margin-bottom: 20px;
-	border: 1px solid #e9ecef;
 }
 
 
@@ -3143,8 +3263,11 @@ table#fppSystemsTable > thead > tr:last-child > td {
 }
 
 
-#wifiNetworksTable thead {
+[data-bs-theme="light"] #wifiNetworksTable thead {
 	background-color: #f8f9fa;
+}
+
+#wifiNetworksTable thead {
 	position: relative;
 	z-index: auto;
 }
@@ -3171,17 +3294,17 @@ table#fppSystemsTable > thead > tr:last-child > td {
 }
 
 
-.wifi-network-row:hover {
+[data-bs-theme="light"] .wifi-network-row:hover {
 	background-color: #f8f9fa !important;
 }
 
 
-.wifi-network-row.table-primary {
+[data-bs-theme="light"] .wifi-network-row.table-primary {
 	background-color: #d1ecf1 !important;
 }
 
 
-.wifi-network-row.table-primary:hover {
+[data-bs-theme="light"] .wifi-network-row.table-primary:hover {
 	background-color: #bee5eb !important;
 }
 
@@ -3215,28 +3338,31 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* Command Preset Invalid Command Styling */
 
 
-.commandPresetInvalidCommand {
+[data-bs-theme="light"] .commandPresetInvalidCommand {
 	background-color: #fff3cd !important;
 	border-left: 3px solid #ff9800 !important;
 }
 
 
-.commandPresetInvalidCommand .cmdTmplCommand {
+[data-bs-theme="light"] .commandPresetInvalidCommand .cmdTmplCommand {
 	background-color: #ffcccc !important;
 }
 
 
-.commandPresetInvalidWarning {
+[data-bs-theme="light"] .commandPresetInvalidWarning {
 	background-color: #fff3cd;
 	border: 1px solid #ffc107;
-	border-radius: 4px;
-	padding: 10px;
-	margin-bottom: 15px;
 	color: #856404;
 }
 
+.commandPresetInvalidWarning {
+	border-radius: 4px;
+	padding: 10px;
+	margin-bottom: 15px;
+}
 
-.commandPresetInvalidWarning strong {
+
+[data-bs-theme="light"] .commandPresetInvalidWarning strong {
 	color: #dc3545;
 }
 
@@ -3245,7 +3371,7 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* = Modals & Dialogs = */
 /* ====================== */
 
-.modal thead {
+[data-bs-theme="light"] .modal thead {
 	background: white;
 }
 
@@ -3812,13 +3938,16 @@ a.api-anchor {
 		transition: all 0.5s cubic-bezier(0.685, 0.0473, 0.346, 1);
 	}
 
+	[data-bs-theme="light"] #fppMenu .navbar-collapse::after {
+		background-color: #ffffff;
+	}
+
 	#fppMenu .navbar-collapse::after {
 		top: 0;
 		left: 0;
 		height: 100%;
 		width: 100%;
 		position: absolute;
-		background-color: #ffffff;
 		display: block;
 		content: '';
 		z-index: 1;
@@ -3835,8 +3964,11 @@ a.api-anchor {
 		z-index: 3;
 	}
 
-	#fppMenu .navbar-collapse .navbar-nav .nav-item .nav-link {
+	[data-bs-theme="light"] #fppMenu .navbar-collapse .navbar-nav .nav-item .nav-link {
 		color: #000000;
+	}
+
+	#fppMenu .navbar-collapse .navbar-nav .nav-item .nav-link {
 		margin: 5px 15px;
 	}
 
@@ -3971,6 +4103,10 @@ a.api-anchor {
 		}
 	}
 
+	[data-bs-theme="light"] #bodyClick {
+		background-color: #ffffff;
+	}
+
 	#bodyClick {
 		height: 100%;
 		width: 100%;
@@ -3982,7 +4118,6 @@ a.api-anchor {
 		content: '';
 		z-index: 1029;
 		overflow-x: hidden;
-		background-color: #ffffff;
 		-webkit-animation: fadeIn ease 1s;
 		animation: fadeIn ease 1s;
 	}

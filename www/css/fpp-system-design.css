@@ -1263,7 +1263,7 @@
 .fpp-version-indicator__to,
 .fpp-version-indicator__current {
 	padding: 4px 10px;
-	background: #fff;
+	background: var(--fpp-bg-card);
 	border-radius: var(--fpp-radius-md);
 }
 
@@ -1382,7 +1382,7 @@
 	border-radius: var(--fpp-radius-lg);
 	overflow: hidden;
 	transition: all var(--fpp-transition-normal);
-	background: #fff;
+	background: var(--fpp-bg-card);
 }
 
 .fpp-faq__item:hover {
@@ -1987,7 +1987,7 @@
 	font-family: var(--fpp-font-mono);
 	font-size: var(--fpp-fs-base);
 	padding: var(--fpp-sp-sm) var(--fpp-sp-md);
-	background: #fff;
+	background: var(--fpp-bg-card);
 	border: 1px solid var(--fpp-border);
 	border-radius: var(--fpp-radius-lg);
 	color: var(--fpp-text-secondary);

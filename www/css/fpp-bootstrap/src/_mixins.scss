@@ -1,12 +1,12 @@
 @mixin backdrop(){
-    background-color: $gray-lighter;
+    background-color: var(--bs-secondary-bg);
     border-radius: 12px;
     .backdrop{
         border-radius: 8px;
     }
 }
 @mixin backdrop-dark(){
-    background-color: $gray-light;
+    background-color: var(--bs-tertiary-bg);
     border-radius: 8px;
 }
 @function img($filename) {

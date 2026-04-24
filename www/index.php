@@ -554,7 +554,7 @@
 
                             <!-- Controls / Elapsed and Volume section --->
 
-                            <div id="controlsSection" class="container-fluid bg-white">
+                            <div id="controlsSection" class="container-fluid">
                                 <div class="row gx-0">
                                     <div class="col-xs-12 col-md-6 col-lg-8 col-xxl-7">
                                         <div id="playerControls"
