@@ -25,6 +25,9 @@
     --fpp-border-light: #343a40;
     --fpp-border-medium: #495057;
     --fpp-border-dark: #6c757d;
+    /* Component token dark overrides */
+    --fpp-thead-bg: #737373;
+    --fpp-selected-row-bg: #495057;
     /* Bootstrap variable overrides for dark mode */
     --bs-secondary-color: rgba(222, 226, 230, 0.9);
     --bs-link-color: #adb5bd;
@@ -92,9 +95,8 @@
 /* ------------------------------------------------------------- */
 
 [data-bs-theme="dark"] .pageContent {
-    background: var(--bs-body-bg);
+    background-color: #171720;
     color: var(--bs-body-color);
-    /* no box-shadow: body bg is already dark, no fill paint needed */
 }
 
 /* Touch scroll-fade gradient for tab bars */
@@ -139,16 +141,8 @@
 /* Tables                                                        */
 /* ------------------------------------------------------------- */
 
-[data-bs-theme="dark"] .fppTableWrapper thead th {
-    background-color: var(--bs-secondary-bg);
-    color: var(--bs-body-color);
-    border-color: var(--bs-border-color);
-}
-
-[data-bs-theme="dark"] .modal thead {
-    background: var(--bs-secondary-bg);
-    color: var(--bs-body-color);
-}
+/* .fppTableWrapper thead + .modal thead now inherit via unified thead rule in fpp.css
+   + --fpp-thead-bg; dark override is handled by the component token, not per-selector. */
 
 [data-bs-theme="dark"] .playlistRow td {
     border-top-color: var(--bs-border-color);
@@ -227,10 +221,6 @@
 
 [data-bs-theme="dark"] #wifiNetworksTable {
     border-color: var(--bs-border-color);
-}
-
-[data-bs-theme="dark"] #wifiNetworksTable thead {
-    background-color: var(--bs-secondary-bg);
 }
 
 [data-bs-theme="dark"] #wifiNetworksTable th {
@@ -520,11 +510,5 @@
     background: var(--bs-border-color);
 }
 
-/* Table sort headers (bootstrap-table plugin) */
-[data-bs-theme="dark"] #tblEffectLibrary thead th,
-[data-bs-theme="dark"] #fppSystemsTable thead th,
-[data-bs-theme="dark"] #fppSystemsTable thead td,
-[data-bs-theme="dark"] .table-download-existing-backups thead,
-[data-bs-theme="dark"] .table-restore-existing-backups thead {
-    background-color: #737373;
-}
+/* Table sort headers — bg handled by unified thead rule in fpp.css + --fpp-thead-bg
+   token (dark value set at top of this file). Per-id dark tweaks go here if ever needed. */

@@ -1,6 +1,37 @@
 /* ==========================================================================
    FPP Standard Design System
    Standard reusable design tokens and components
+
+   Light-mode token values live in :root below.
+   Dark-mode overrides live in fpp-dark.css under [data-bs-theme="dark"].
+   See www/css/THEME_INCONSISTENCIES.md for unresolved semantic conflicts.
+
+   Canonical token index (search by name below):
+
+   Colors — semantic:
+     --fpp-primary, --fpp-primary-hover
+     --fpp-success, --fpp-success-dark, --fpp-success-light, --fpp-success-text
+     --fpp-warning, --fpp-warning-dark, --fpp-warning-light, --fpp-warning-text
+     --fpp-danger,  --fpp-danger-dark,  --fpp-danger-light
+     --fpp-info,    --fpp-info-light,   --fpp-info-text
+     --fpp-gray
+
+   Colors — text / backgrounds / borders:
+     --fpp-text-primary, --fpp-text-secondary, --fpp-text-muted, --fpp-text-light
+     --fpp-bg-page, --fpp-bg-card, --fpp-bg-hover, --fpp-bg-disabled
+     --fpp-border, --fpp-border-light, --fpp-border-medium, --fpp-border-dark
+
+   Spacing:       --fpp-spacing-1..5, --fpp-sp-{xs,icon,sm,md,lg,xl,2xl}
+   Typography:    --fpp-fs-{xs,sm,base,md,lg,xl,2xl,3xl}, --fpp-fw-{normal,medium,semibold,bold},
+                  --fpp-font-sans, --fpp-font-mono
+   Radii:         --fpp-radius-{sm,md,lg,xl,pill}
+   Shadows:       --fpp-shadow-{sm,md,lg}
+   Transitions:   --fpp-transition-{fast,normal,slow}
+   Z-index:       --fpp-z-{dropdown,sticky,fixed,modal-backdrop,modal,popover,tooltip}
+   Component:     --fpp-progress-*, --fpp-card-*, --fpp-gauge-*, --fpp-btn-*, --fpp-alert-*
+
+   When adding a new raw color to fpp.css or a PHP file, check this list first —
+   if a token already represents the role, use var(--fpp-*) instead.
    ========================================================================== */
 
 :root {
@@ -8,23 +39,19 @@
        COLOR TOKENS: Extracted from FPP Bootstrap theme and inline styles
        ========================================================================== */
 
-	/* Primary Colors - FPP actual color palette from fpp.css */
+	/* Primary Colors - semantic tokens resolve through Bootstrap (auto-adapt to dark via variables-dark) */
 	--fpp-primary: #007bff;
 	--fpp-primary-hover: #0056b3;
-	--fpp-success: #56b760;
-	/* FPP green (playlist playing, installed plugins) */
+	--fpp-success: var(--bs-success);
 	--fpp-success-dark: #449c4d;
 	--fpp-success-light: #e8f5e9;
-	--fpp-warning: #f2bc5f;
-	/* FPP amber (untested plugins) */
+	--fpp-warning: var(--bs-warning);
 	--fpp-warning-dark: #d9a84e;
 	--fpp-warning-light: #fef8e8;
-	--fpp-danger: #f63939;
-	/* FPP red (menu hover, incompatible) */
+	--fpp-danger: var(--bs-danger);
 	--fpp-danger-dark: #d92d2d;
 	--fpp-danger-light: #fde8e8;
 	--fpp-info: #6b95ec;
-	/* FPP blue (available plugins) */
 	--fpp-info-light: #e8f0fd;
 
 	/* Neutral Colors - Text */
@@ -53,6 +80,21 @@
 	--fpp-success-text: #155724;
 	--fpp-warning-text: #856404;
 	--fpp-info-text: #0c5460;
+
+	/* ==========================================================================
+       COMPONENT TOKENS: one knob per repeated UI role.
+       Change here to re-theme every consumer at once.
+       Dark overrides live in fpp-dark.css under [data-bs-theme="dark"].
+       ========================================================================== */
+
+	/* Table header row (used by systems, effects, backup, wifi, running/overlay effects tables,
+	   and the shared .tblheader class) */
+	--fpp-thead-bg: #d9d9d9;
+	--fpp-thead-color: inherit;
+
+	/* Selected-row highlight for list tables (.selectedEntry class used by scheduler,
+	   co-pixelStrings, co-universes, commandPresets, pixeloverlaymodels, channelinputs, ...) */
+	--fpp-selected-row-bg: #cccccc;
 
 	/* ==========================================================================
        SPACING TOKENS: Bootstrap-compatible spacing scale

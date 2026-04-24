@@ -36,11 +36,11 @@
         }
 
         .channel-io-icon-input {
-            color: #17a2b8;
+            color: var(--bs-info);
         }
 
         .channel-io-icon-output {
-            color: #28a745;
+            color: var(--bs-success);
         }
 
         .channel-io-icon-output[data-ip],
@@ -91,7 +91,7 @@
         }
 
         #popover-target .disabled {
-            color: #ddd;
+            color: var(--fpp-text-light);
         }
 
         /* Bootstrap Table sort icons for #fppSystemsTable — structural/theming in fpp.css/fpp-dark.css */
@@ -114,7 +114,7 @@
         }
 
         #columnSelector label:first-of-type {
-            border-bottom: 2px dotted #000;
+            border-bottom: 2px dotted var(--bs-body-color);
             /* Adjust thickness and color as needed */
             padding-bottom: 1px;
             /* Adds spacing between the label and the border */
@@ -150,8 +150,8 @@
         }
 
         .reorder-mode .ui-sortable-placeholder {
-            background-color: #f0f0f0;
-            border: 2px dashed #ccc;
+            background-color: var(--bs-tertiary-bg);
+            border: 2px dashed var(--fpp-border);
             visibility: visible !important;
             height: 2.5em;
         }

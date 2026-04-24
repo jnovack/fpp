@@ -235,7 +235,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -260,7 +260,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -285,7 +285,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -310,7 +310,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -336,7 +336,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -361,7 +361,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -386,7 +386,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -411,7 +411,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -463,7 +463,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -488,7 +488,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -513,7 +513,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -538,7 +538,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -564,7 +564,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -589,7 +589,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -614,7 +614,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>
@@ -639,7 +639,7 @@
                                                 </div>
                                             </div>
                                             <div class="col-10">
-                                                <img src="images/3P-phoenix-cad.svg" style="--color_fill: red;"
+                                                <img src="images/3P-phoenix-cad.svg" class="svg-fault-fill"
                                                     alt="Port-img-1" width="70%" />
                                             </div>
                                         </div>

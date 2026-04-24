@@ -986,13 +986,9 @@ error_reporting(E_ALL);
 
         .items {
             width: 40%;
-            background: rgb#FFF;
+            background: var(--fpp-bg-card);
             float: right;
-            margin: 0, auto;
-        }
-
-        .selectedEntry {
-            background: #CCC;
+            margin: 0 auto;
         }
 
         .pl_title {
@@ -1003,11 +999,6 @@ error_reporting(E_ALL);
         h3 {
             padding: 0;
             margin: 0;
-        }
-
-        .tblheader {
-            background-color: #CCC;
-            text-align: center;
         }
 
         .dayMaskTable {

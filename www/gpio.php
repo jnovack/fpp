@@ -314,22 +314,22 @@ foreach ($gpiojson as $gpio) {
                 if ($isGpioInUse) {
                     // Pin is in use - show read-only information
                     ?>
-                    <td><span style="color: #888;">N/A</span></td>
+                    <td><span class="text-muted">N/A</span></td>
                     <td><?=$pinName?></td>
                     <td><?=$gpio['gpioChip']?>/<?=$gpio['gpioLine']?></td>
                     <?php
                     if ($gpio['supportsPullUp'] || $gpio['supportsPullDown']) {
                         ?>
-                        <td><span style="color: #888;">Cape Controlled</span></td>
-                        <td><span style="color: #888;">N/A</span></td>
-                        <td><span style="color: #888;">N/A</span></td>
+                        <td><span class="text-muted">Cape Controlled</span></td>
+                        <td><span class="text-muted">N/A</span></td>
+                        <td><span class="text-muted">N/A</span></td>
                         <?php
                     } else if ($pCount > 0) {
                         echo "<td></td><td></td><td></td>";
                     }
                     ?>
                     <td><strong style="color: #0066cc;">In Use: <?=htmlspecialchars($usedGpioPins[$pinName])?></strong></td>
-                    <td colspan="2" style="color: #888; font-style: italic;">GPIO pin reserved by cape configuration</td>
+                    <td colspan="2" class="text-muted fst-italic">GPIO pin reserved by cape configuration</td>
                     <?php
                 } else {
                     // Pin is available - show normal configuration options
