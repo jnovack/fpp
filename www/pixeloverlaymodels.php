@@ -56,6 +56,58 @@ if (($settings['Platform'] == "Linux") && (file_exists('/usr/include/X11/Xlib.h'
 
         ?>
 
+        var modelPreviewData = {};
+        var modelPreviewDataNormalized = {};
+        <?
+        $mapFile = $settings['configDirectory'] . '/virtualdisplaymap';
+        if (file_exists($mapFile)) {
+            $f = fopen($mapFile, 'r');
+            if ($f) {
+                $currentModel = null;
+                $previewPixels = [];
+                while (!feof($f)) {
+                    $line = fgets($f);
+                    $line = trim($line);
+                    if ($line == '')
+                        continue;
+                    if (preg_match("/^#\s*Model:\s*'([^']+)'/", $line, $matches)) {
+                        if ($currentModel !== null) {
+                            echo "modelPreviewData[" . json_encode($currentModel) . "] = " . json_encode($previewPixels) . ";\n";
+                        }
+                        $currentModel = $matches[1];
+                        $previewPixels = [];
+                        continue;
+                    }
+                    if (preg_match('/^#/', $line))
+                        continue;
+                    $parts = explode(',', $line);
+                    if (count($parts) >= 3 && $currentModel !== null) {
+                        $previewPixels[] = [(int) $parts[0], (int) $parts[1], isset($parts[2]) ? (int) $parts[2] : 0];
+                    }
+                }
+                if ($currentModel !== null) {
+                    echo "modelPreviewData[" . json_encode($currentModel) . "] = " . json_encode($previewPixels) . ";\n";
+                }
+                fclose($f);
+            }
+        }
+        ?>
+
+        function normalizeModelName(name) {
+            return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function getModelPreviewPixels(modelName) {
+            if (modelPreviewData.hasOwnProperty(modelName)) {
+                return modelPreviewData[modelName];
+            }
+            return modelPreviewDataNormalized[normalizeModelName(modelName)] || null;
+        }
+
+        Object.keys(modelPreviewData).forEach(function (key) {
+            modelPreviewDataNormalized[normalizeModelName(key)] = modelPreviewData[key];
+        });
+
         function GetOrientationInput(currentValue, attr) {
 
             var options = {
@@ -193,7 +245,12 @@ if (($settings['Platform'] == "Linux") && (file_exists('/usr/include/X11/Xlib.h'
                         if (model.xLights) {
                             xlchecked = " checked";
                         }
-                        postr += "<td><input class='xlights' type='checkbox'" + xlchecked + " disabled></td><td>"
+                        postr += "<td><input class='xlights' type='checkbox'" + xlchecked + " disabled>";
+                        var previewPixels = getModelPreviewPixels(model.Name);
+                        if (model.xLights && previewPixels && previewPixels.length > 0) {
+                            postr += " <i class='fas fa-eye' style='cursor:pointer; color:#5bc0de;' title='Preview model layout' onclick='showModelPreview(" + JSON.stringify(model.Name) + ")'></i>";
+                        }
+                        postr += "</td><td>"
                         break;
                     case "FB":
                         var pWidth = parseInt(model.Width / model.PixelSize);
@@ -475,6 +532,65 @@ if (($settings['Platform'] == "Linux") && (file_exists('/usr/include/X11/Xlib.h'
                 }
             });
             common_ViewPortChange();
+        }
+
+        function showModelPreview(modelName) {
+            $('#modelPreviewModal').remove();
+
+            var pixels = getModelPreviewPixels(modelName);
+            if (!pixels || pixels.length === 0) {
+                alert('No preview data available for model: ' + modelName);
+                return;
+            }
+
+            var minX = Infinity, maxX = -Infinity;
+            var minY = Infinity, maxY = -Infinity;
+            pixels.forEach(function (p) {
+                minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
+                minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
+            });
+
+            var rangeX = maxX - minX || 1;
+            var rangeY = maxY - minY || 1;
+
+            var canvasW = 560;
+            var canvasH = Math.round(canvasW * rangeY / rangeX);
+            if (canvasH > 420) {
+                canvasH = 420;
+                canvasW = Math.round(canvasH * rangeX / rangeY);
+            }
+            if (canvasH < 80) canvasH = 80;
+            if (canvasW < 80) canvasW = 80;
+
+            var $canvas = $('<canvas></canvas>').attr({ width: canvasW, height: canvasH }).css({ background: '#111', display: 'block', margin: '0 auto' });
+            var $info = $('<p>').css({ 'text-align': 'center', 'margin-bottom': '8px' }).text(pixels.length + ' pixels  |  W: ' + rangeX + '  H: ' + rangeY);
+            var $body = $('<div>').append($info).append($canvas);
+
+            DoModalDialog({
+                id: 'modelPreviewModal',
+                title: 'Model Preview: ' + modelName,
+                body: $body,
+                class: 'modal-lg',
+                backdrop: true,
+                keyboard: true,
+                open: function () {
+                    var canvas = $canvas[0];
+                    var ctx = canvas.getContext('2d');
+                    var margin = 8;
+                    var scaleX = (canvasW - 2 * margin) / rangeX;
+                    var scaleY = (canvasH - 2 * margin) / rangeY;
+                    var dotSize = Math.max(1, Math.min(6, Math.floor(Math.min(scaleX, scaleY) * 0.8)));
+                    ctx.fillStyle = '#00aaff';
+                    pixels.forEach(function (p) {
+                        var cx = margin + (p[0] - minX) * scaleX;
+                        var cy = canvasH - margin - (p[1] - minY) * scaleY;
+                        ctx.fillRect(cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
+                    });
+                },
+                buttons: {
+                    Close: function () { CloseModalDialog('modelPreviewModal'); }
+                }
+            });
         }
 
         function pageSpecific_PageLoad_DOM_Setup() {
