@@ -247,28 +247,9 @@
     border-color: var(--bs-border-color);
 }
 
-/* ------------------------------------------------------------- */
-/* Command preset warnings (keep legible in dark)               */
-/* ------------------------------------------------------------- */
-
-[data-bs-theme="dark"] .commandPresetInvalidCommand {
-    background-color: #3d2e00 !important;
-    border-color: #cc7a00 !important;
-}
-
-[data-bs-theme="dark"] .commandPresetInvalidCommand .cmdTmplCommand {
-    background-color: #4a1a1a !important;
-}
-
-[data-bs-theme="dark"] .commandPresetInvalidWarning {
-    background-color: #3d2e00;
-    border-color: #cc7a00;
-    color: #ffd166;
-}
-
-[data-bs-theme="dark"] .commandPresetInvalidWarning strong {
-    color: #ff6b6b;
-}
+/* Command preset warning rules removed — auto-adapt via Bootstrap subtle tokens
+   (var(--bs-warning-bg-subtle), --bs-warning, --bs-danger-bg-subtle, --bs-danger)
+   in fpp.css. No theme-specific override needed. */
 
 /* ------------------------------------------------------------- */
 /* LED Panel matrix                                              */

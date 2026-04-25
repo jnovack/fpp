@@ -3370,34 +3370,27 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* = Command Presets = */
 /* ===================== */
 
-/* Command Preset Invalid Command Styling */
-
-
-[data-bs-theme="light"] .commandPresetInvalidCommand {
+/* Command Preset Invalid Command Styling — fully driven by Bootstrap subtle tokens
+   so light/dark adapt automatically. No fpp-dark.css override needed. */
+.commandPresetInvalidCommand {
 	background-color: var(--bs-warning-bg-subtle) !important;
-	border-left: 3px solid #ff9800 !important;
+	border-left: 3px solid var(--bs-warning) !important;
 }
 
-
-[data-bs-theme="light"] .commandPresetInvalidCommand .cmdTmplCommand {
-	background-color: #ffcccc !important;
-}
-
-
-[data-bs-theme="light"] .commandPresetInvalidWarning {
-	background-color: var(--bs-warning-bg-subtle);
-	border: 1px solid var(--bs-warning);
-	color: var(--bs-warning-text-emphasis);
+.commandPresetInvalidCommand .cmdTmplCommand {
+	background-color: var(--bs-danger-bg-subtle) !important;
 }
 
 .commandPresetInvalidWarning {
+	background-color: var(--bs-warning-bg-subtle);
+	border: 1px solid var(--bs-warning);
+	color: var(--bs-warning-text-emphasis);
 	border-radius: 4px;
 	padding: 10px;
 	margin-bottom: 15px;
 }
 
-
-[data-bs-theme="light"] .commandPresetInvalidWarning strong {
+.commandPresetInvalidWarning strong {
 	color: var(--bs-danger);
 }
 
