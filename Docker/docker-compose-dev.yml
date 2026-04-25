@@ -1,5 +1,3 @@
-version: "3.8"
-
 # This docker-compose-dev.yml file is suited for developers wishing to
 # build or develop FPP without using the docker container image on
 # dockerhub.  docker-compose-dev.yml is run directly from the cloned
@@ -13,13 +11,15 @@ version: "3.8"
 # Additionally, you should NOT have a node_modules folder under www/ as the
 # node_nodules binaries need to be from the container.
 #
-# fpp> docker-compose -f Docker/docker-compose-dev.yml up
+# fpp> FPPBRANCH="$(git rev-parse --abbrev-ref HEAD)" \
+#      docker-compose -f Docker/docker-compose-dev.yml up --build
 
 services:
   fpp:
     build:
       args:
-        - "EXTRA_INSTALL_FLAG=--skip-clone"
+        EXTRA_INSTALL_FLAG: --skip-clone
+        FPPBRANCH: ${FPPBRANCH}
       context: ../
       dockerfile: ./Docker/Dockerfile
     hostname: fpp-docker
@@ -31,7 +31,7 @@ services:
       - "4048:4048/udp"
       - "5568:5568/udp"
       - "32320:32320/udp"
-    #devices:
+      #devices:
       # To pass through an audio card, entries similar to the following
       # should work.  The device names may be different depending on
       # how many sound cards are present in the host system.  The 'C0'
@@ -49,7 +49,8 @@ services:
     build:
       context: ../
       dockerfile: ./Docker/Dockerfile.node
-    command: /bin/sh -c "( /bin/ln -f -s /opt/node_modules /opt/fpp/www/; /opt/node_modules/.bin/gulp -f /opt/fpp/www/gulpfile.js watch-bs; )"
+    command: /bin/sh -c "( /bin/ln -f -s /opt/node_modules /opt/fpp/www/;
+      /opt/node_modules/.bin/gulp -f /opt/fpp/www/gulpfile.js watch-bs; )"
     restart: always
     volumes:
       - ../:/opt/fpp

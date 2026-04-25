@@ -1,4 +1,4 @@
-FROM node:18-bullseye
+FROM node:24-bullseye
 
 EXPOSE 3180 3181
 
@@ -15,5 +15,5 @@ RUN npm cache clean --force
 RUN npm install
 
 # Set environment variables
-ENV PATH /opt/node_modules/.bin:$PATH
+ENV PATH=/opt/node_modules/.bin:$PATH
 WORKDIR /opt/fpp
