@@ -1,0 +1,493 @@
+/* =============================================================
+ * fpp-dark.css — FPP Dark Mode Overrides
+ *
+ * Supplements Bootstrap 5.3 data-bs-theme="dark".
+ * All rules are scoped to [data-bs-theme="dark"] so they only
+ * fire when the theme is active (set by system preference via
+ * the inline script in htmlMeta.inc).
+ * ============================================================= */
+
+/* ------------------------------------------------------------- */
+/* FPP design-system custom variables — override for dark mode  */
+/* fpp-system-design.css defines these in :root with light vals */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] {
+    --bs-primary: #dee2e6;
+    --bs-secondary: #a6acb2;
+    --fpp-text-muted: #83898f;
+    --fpp-text-light: #a1a1a1;
+    --fpp-bg-page: #212529;
+    --fpp-bg-card: #2c3034;
+    --fpp-bg-hover: #343a40;
+    --fpp-bg-disabled: #343a40;
+    --fpp-border: #495057;
+    --fpp-border-light: #343a40;
+    --fpp-border-medium: #495057;
+    --fpp-border-dark: #6c757d;
+    /* Component token dark overrides */
+    --fpp-selected-row-bg: #495057;
+    /* Bootstrap variable overrides for dark mode */
+    --bs-secondary-color: rgba(222, 226, 230, 0.9);
+    --bs-link-color: #adb5bd;
+    --bs-link-hover-color: #ced4da;
+}
+
+/* ------------------------------------------------------------- */
+/* Raw form elements — Bootstrap covers .form-control /          */
+/* .form-select but bare <input>, <select>, <textarea>, and      */
+/* custom-classed elements are not auto-themed                   */
+/* ------------------------------------------------------------- */
+
+/* [data-bs-theme="dark"] input:not([type=checkbox]),
+[data-bs-theme="dark"] input[list],
+[data-bs-theme="dark"] select,
+[data-bs-theme="dark"] textarea,
+[data-bs-theme="dark"] #eth_ssid,
+[data-bs-theme="dark"] #backupeth_ssid {
+    background: var(--bs-body-bg) !important;
+    color: var(--bs-body-color) !important;
+    border-color: var(--bs-border-color) !important;
+} */
+[data-bs-theme="dark"] input[type=checkbox]:not(:checked) {
+    background-color: var(--bs-secondary-bg) !important;
+    border-color: var(--bs-border-color) !important;
+}
+[data-bs-theme="dark"] input[type=checkbox]:checked {
+    background: #56B760 url(/images/redesign/check-white.svg) no-repeat center center !important;
+    border-color: #56B760 !important;
+}
+[data-bs-theme="dark"] input[type=checkbox][disabled=""]:checked {
+    background: #bdd3bf url(/images/redesign/check-white.svg) no-repeat center center !important;
+    border-color: #969996 !important;
+}
+
+[data-bs-theme="dark"] .fpp-select {
+    background: var(--bs-body-bg) !important;
+    color: var(--bs-body-color) !important;
+    border-color: var(--bs-border-color) !important;
+}
+
+[data-bs-theme="dark"] input[list]:focus,
+[data-bs-theme="dark"] #eth_ssid:focus,
+[data-bs-theme="dark"] #backupeth_ssid:focus {
+    border-color: #6ea8fe !important;
+    box-shadow: 0 0 3px rgba(110, 168, 254, 0.3) !important;
+}
+
+[data-bs-theme="dark"] input[type='range']::-webkit-slider-thumb,
+[data-bs-theme="dark"] input[type='range']::-moz-range-thumb,
+[data-bs-theme="dark"] input[type='range']::-ms-thumb {
+    background-color: var(--bs-secondary-bg);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] input[type='range']::-webkit-slider-runnable-track,
+[data-bs-theme="dark"] input[type='range']::-moz-range-track,
+[data-bs-theme="dark"] input[type='range']::-ms-track {
+    background: var(--bs-border-color);
+}
+
+/* ------------------------------------------------------------- */
+/* Main page content area                                        */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .pageContent {
+    background-color: #171720;
+    color: var(--bs-body-color);
+}
+
+/* Touch scroll-fade gradient for tab bars */
+[data-bs-theme="dark"] body.has-touch .pageContent-tabs {
+    background: linear-gradient(
+            to left,
+            var(--bs-body-bg),
+            var(--bs-body-bg),
+            rgba(33, 37, 41, 0) 1.5em
+        ),
+        radial-gradient(
+                farthest-side at 100% 50%,
+                rgba(0, 0, 0, 0.5),
+                rgba(33, 37, 41, 0)
+            )
+            100%;
+    background-color: var(--bs-body-bg);
+    background-repeat: no-repeat;
+    background-attachment: local, scroll;
+    background-size: 100% 100%, 0.75em 100%;
+}
+
+[data-bs-theme="dark"] .pageContent-tabs {
+    border-color: var(--bs-border-color);
+}
+
+/* ------------------------------------------------------------- */
+/* Sticky / pinned bars (Zebra_Pin)                              */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .controlsSectionToPin.Zebra_Pin,
+[data-bs-theme="dark"] #playerControls.Zebra_Pin,
+[data-bs-theme="dark"] #playerTime.Zebra_Pin,
+[data-bs-theme="dark"] .tablePageHeader.Zebra_Pin,
+[data-bs-theme="dark"] .tableTabPageHeader.Zebra_Pin {
+    background-color: var(--bs-body-bg);
+    box-shadow: 0px 5px 4px -5px rgba(0, 0, 0, 0.5),
+        5px 0px 0px 0px var(--bs-body-bg);
+}
+
+/* ------------------------------------------------------------- */
+/* Tables                                                        */
+/* ------------------------------------------------------------- */
+
+/* .fppTableWrapper thead + .modal thead now inherit via unified thead rule in fpp.css
+   + --fpp-thead-bg; dark override is handled by the component token, not per-selector. */
+
+[data-bs-theme="dark"] .playlistRow td {
+    border-top-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .fileDetails td {
+    border-top-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] hr {
+    border-top-color: var(--bs-border-color);
+}
+
+/* ------------------------------------------------------------- */
+/* Playlist & file manager panels                                */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .tblPlaylistWrap {
+    background-color: var(--bs-secondary-bg);
+}
+
+[data-bs-theme="dark"] .playlistEntriesBody {
+    background-color: var(--bs-secondary-bg);
+}
+
+[data-bs-theme="dark"] .fileManagerDivData {
+    background-color: var(--bs-secondary-bg);
+}
+
+[data-bs-theme="dark"] .playlistSelectedEntry:not(.unselectable),
+[data-bs-theme="dark"] .playlistSelectedEntry.PlaylistRowPlaying:not(.unselectable),
+[data-bs-theme="dark"] .fileDetails.selectedEntry:not(.unselectable) {
+    color: #dee2e6;
+    background-color: #1c3a6e;
+}
+
+/* ------------------------------------------------------------- */
+/* Settings section headings                                     */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .settingsGroupTable h2,
+[data-bs-theme="dark"] .settingsTable h2,
+[data-bs-theme="dark"] .network-subsection + .settingsGroupTable h2 {
+    color: var(--bs-secondary-color) !important;
+    border-color: var(--bs-border-color) !important;
+}
+
+/* ------------------------------------------------------------- */
+/* Network configuration sections                               */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .global-network-section,
+[data-bs-theme="dark"] .interface-config-section,
+[data-bs-theme="dark"] .network-utilities-section,
+[data-bs-theme="dark"] .tethering-section {
+    background-color: var(--bs-secondary-bg);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .global-network-section h2,
+[data-bs-theme="dark"] .interface-config-section h2,
+[data-bs-theme="dark"] .network-utilities-section h2,
+[data-bs-theme="dark"] .tethering-section h2 {
+    color: var(--bs-body-color);
+}
+
+[data-bs-theme="dark"] .interface-selection {
+    background: var(--bs-body-bg) !important;
+    border-color: var(--bs-border-color) !important;
+}
+
+[data-bs-theme="dark"] .interface-selection h3 {
+    color: var(--bs-body-color) !important;
+    border-color: var(--bs-border-color) !important;
+}
+
+[data-bs-theme="dark"] #wifiNetworksTable {
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] #wifiNetworksTable th {
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] #wifiNetworksTable td {
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .wifi-network-row:hover {
+    background-color: var(--bs-tertiary-bg) !important;
+}
+
+[data-bs-theme="dark"] .wifi-network-row.table-primary {
+    background-color: #1c3a6e !important;
+}
+
+[data-bs-theme="dark"] .wifi-network-row.table-primary:hover {
+    background-color: #254d8f !important;
+}
+
+[data-bs-theme="dark"] .network-subsection {
+    border-color: var(--bs-border-color);
+}
+
+/* Command preset warning rules removed — auto-adapt via Bootstrap subtle tokens
+   (var(--bs-warning-bg-subtle), --bs-warning, --bs-danger-bg-subtle, --bs-danger)
+   in fpp.css. No theme-specific override needed. */
+
+/* ------------------------------------------------------------- */
+/* LED Panel matrix                                              */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .panelMatrix-tab-content .divLEDPanelsData,
+[data-bs-theme="dark"] .panelMatrix-tab-content .divLEDPanelsLayoutData {
+    background-color: var(--bs-secondary-bg);
+}
+
+[data-bs-theme="dark"] .LEDPanelTable table {
+    background-color: var(--bs-secondary-bg);
+    border-color: var(--bs-border-color);
+}
+
+/* ------------------------------------------------------------- */
+/* Min/max slider range widget                                   */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .fppMinMaxSliderRange {
+    background-color: var(--bs-body-bg) !important;
+    border-color: var(--bs-border-color) !important;
+    color: var(--bs-body-color) !important;
+}
+
+/* ------------------------------------------------------------- */
+/* Mobile (< 991px) slide-out navigation                        */
+/* ------------------------------------------------------------- */
+
+@media (max-width: 990px) {
+    [data-bs-theme="dark"] #fppMenu .navbar-collapse {
+        background-color: var(--bs-secondary-bg);
+    }
+
+    [data-bs-theme="dark"] #fppMenu .navbar-collapse::after {
+        background-color: var(--bs-secondary-bg);
+    }
+
+    [data-bs-theme="dark"] #fppMenu .navbar-collapse .navbar-nav .nav-item .nav-link {
+        color: var(--bs-body-color);
+    }
+
+    [data-bs-theme="dark"] #fppMenu .navbar-collapse .navbar-nav .nav-item:after {
+        background-color: var(--bs-border-color);
+    }
+
+    [data-bs-theme="dark"] #bodyClick {
+        background-color: #000;
+    }
+}
+
+/* ------------------------------------------------------------- */
+/* jQuery UI widgets                                             */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .ui-widget-content {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-widget-content a {
+    color: var(--bs-body-color);
+}
+
+[data-bs-theme="dark"] .ui-widget.ui-widget-content {
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-widget-header {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-state-default,
+[data-bs-theme="dark"] .ui-widget-content .ui-state-default,
+[data-bs-theme="dark"] .ui-widget-header .ui-state-default {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-state-hover,
+[data-bs-theme="dark"] .ui-widget-content .ui-state-hover,
+[data-bs-theme="dark"] .ui-widget-header .ui-state-hover,
+[data-bs-theme="dark"] .ui-state-focus,
+[data-bs-theme="dark"] .ui-widget-content .ui-state-focus {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-tooltip {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-dialog {
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-dialog .ui-dialog-titlebar {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .ui-state-highlight,
+[data-bs-theme="dark"] .ui-widget-content .ui-state-highlight {
+    background: #3a3500;
+    border-color: #6b5f00;
+    color: #ffe066;
+}
+
+[data-bs-theme="dark"] .ui-state-error,
+[data-bs-theme="dark"] .ui-widget-content .ui-state-error {
+    background: #4a1a1a;
+    border-color: #8b3030;
+    color: #ffaaaa;
+}
+
+/* ------------------------------------------------------------- */
+/* Misc: tooltip, disable state, badge-light                     */
+/* ------------------------------------------------------------- */
+
+[data-bs-theme="dark"] .pageContent .disableButtons {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+}
+
+[data-bs-theme="dark"] .badge-light {
+    color: var(--bs-body-color);
+    background-color: var(--bs-secondary-bg);
+}
+
+/* ------------------------------------------------------------- */
+/* fpp-system-design.css hardcoded-light component overrides     */
+/* ------------------------------------------------------------- */
+
+/* Version indicator — default (update available) */
+[data-bs-theme="dark"] .fpp-version-indicator {
+    background: linear-gradient(135deg, #0d2b1a 0%, #1a3a2a 100%);
+    border-color: #2d6a4f;
+}
+
+[data-bs-theme="dark"] .fpp-version-indicator__from,
+[data-bs-theme="dark"] .fpp-version-indicator__to,
+[data-bs-theme="dark"] .fpp-version-indicator__current {
+    background: var(--bs-secondary-bg);
+}
+
+/* Version indicator hover */
+[data-bs-theme="dark"] .fpp-version-indicator--clickable:hover {
+    background: linear-gradient(135deg, #1a3a2a 0%, #2d5a3d 100%);
+    border-color: #4ade80;
+    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.15);
+}
+
+/* Version indicator — up-to-date */
+[data-bs-theme="dark"] .fpp-version-indicator--current {
+    background: linear-gradient(135deg, #2c3034 0%, #343a40 100%);
+    border-color: var(--bs-border-color);
+}
+
+/* Version indicator — OS upgrade warning */
+[data-bs-theme="dark"] .fpp-version-indicator--upgrade {
+    background: linear-gradient(135deg, #2b2000 0%, #3d2e00 100%);
+    border-color: #b45309;
+}
+
+[data-bs-theme="dark"] .fpp-version-indicator--upgrade .fpp-version-indicator__to {
+    color: #fcd34d;
+    border-color: #b45309;
+}
+
+[data-bs-theme="dark"] .fpp-version-indicator--upgrade .fpp-version-indicator__label {
+    color: #fcd34d;
+}
+
+[data-bs-theme="dark"] .fpp-version-indicator--upgrade.fpp-version-indicator--clickable:hover {
+    background: linear-gradient(135deg, #3d2e00 0%, #4a3800 100%);
+    border-color: #d97706;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+[data-bs-theme="dark"] .fpp-version-indicator--upgrade.fpp-version-indicator--clickable:hover
+    .fpp-version-indicator__label {
+    color: #fbbf24;
+}
+
+/* FAQ accordion */
+[data-bs-theme="dark"] .fpp-faq__item {
+    background: var(--bs-secondary-bg);
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .fpp-faq__item--open {
+    border-color: var(--bs-primary);
+    background: var(--bs-tertiary-bg);
+}
+
+/* ------------------------------------------------------------- */
+/* fpp.css hardcoded-light component overrides                   */
+/* ------------------------------------------------------------- */
+
+/* Multi-select widget */
+[data-bs-theme="dark"] .pageContent .multiSelect {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+/* jQuery UI active/selected state (e.g. selected tab) */
+[data-bs-theme="dark"] .ui-state-active,
+[data-bs-theme="dark"] .ui-widget-content .ui-state-active,
+[data-bs-theme="dark"] .ui-widget-header .ui-state-active,
+[data-bs-theme="dark"] a.ui-button:active,
+[data-bs-theme="dark"] .ui-button:active,
+[data-bs-theme="dark"] .ui-button.ui-state-active:hover {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+    border-color: var(--bs-border-color);
+}
+
+/* Playlist back button */
+[data-bs-theme="dark"] .playlistEditorBackButton {
+    background-color: var(--bs-secondary-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+
+/* minimal.css slider range track */
+[data-bs-theme="dark"] .ui-slider-range {
+    background: var(--bs-border-color);
+}
+
+/* Table sort headers — bg handled by unified thead rule in fpp.css + --fpp-thead-bg
+   token (dark value set at top of this file). Per-id dark tweaks go here if ever needed. */

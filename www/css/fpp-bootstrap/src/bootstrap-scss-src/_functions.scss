@@ -37,15 +37,16 @@
   @return red($value), green($value), blue($value);
 }
 
-// stylelint-disable scss/dollar-variable-pattern
-@function rgba-css-var($identifier, $target) {
-  @if $identifier == "body" and $target == "bg" {
-    @return rgba(var(--#{$prefix}#{$identifier}-bg-rgb), var(--#{$prefix}#{$target}-opacity));
-  } @if $identifier == "body" and $target == "text" {
-    @return rgba(var(--#{$prefix}#{$identifier}-color-rgb), var(--#{$prefix}#{$target}-opacity));
-  } @else {
-    @return rgba(var(--#{$prefix}#{$identifier}-rgb), var(--#{$prefix}#{$target}-opacity));
-  }
+@function css-var($identifier) {
+  @return unquote("var(--#{$prefix}#{$identifier})");
+}
+
+@function css-color-mix($color, $opacity-variable, $fallback: 1) {
+  @return unquote("color-mix(in srgb, #{$color} calc(var(--#{$prefix}#{$opacity-variable}, #{$fallback}) * 100%), transparent)");
+}
+
+@function css-color-mix-static($color, $opacity) {
+  @return unquote("color-mix(in srgb, #{$color} #{percentage($opacity)}, transparent)");
 }
 
 @function map-loop($map, $func, $args...) {
@@ -63,8 +64,6 @@
 
   @return $_map;
 }
-// stylelint-enable scss/dollar-variable-pattern
-
 @function varify($list) {
   $result: null;
   @each $entry in $list {

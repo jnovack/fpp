@@ -2,7 +2,26 @@
 
 .buttons {
   @extend .btn;
-  @include fpp-btn-outline-variant($black);
+  color: var(--bs-body-color);
+  background-color: transparent;
+  background-image: none;
+  border-color: var(--bs-body-color);
+
+  &:hover {
+    color: var(--bs-body-bg);
+    background-color: var(--bs-body-color);
+    border-color: var(--bs-body-color);
+  }
+
+  &:focus, &.focus {
+    box-shadow: 0 0 0 $btn-focus-width rgba(0,0,0,.25);
+  }
+
+  &.disabled, &:disabled {
+    color: var(--bs-body-color);
+    background-color: transparent;
+  }
+
   .fppTableContents &{
     padding-top: $btn-padding-y-sm;
     padding-bottom: $btn-padding-y-sm;

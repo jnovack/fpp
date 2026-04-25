@@ -268,8 +268,8 @@
             }
 
             html += '</div>';
-            html += '<div class="col-lg-2 text-muted"><div class="labelHeading">Author:</div>' + data.author + '</div>';
-            html += '<div class="col-lg text-muted"><div class="labelHeading">Description:</div><div class="fppPluginEntryDescription">' + data.description + '</div>';
+            html += '<div class="col-lg-2"><div class="labelHeading text-secondary">Author:</div><div class="text-primary">' + data.author + '</div></div>';
+            html += '<div class="col-lg"><div class="labelHeading text-secondary">Description:</div><div class="text-primary">' + data.description + '</div>';
 
             html += '</div>';
             html += '<div class="col-lg-auto fppPluginEntryActions">';

@@ -1,6 +1,37 @@
 /* ==========================================================================
    FPP Standard Design System
    Standard reusable design tokens and components
+
+   Light-mode token values live in :root below.
+   Dark-mode overrides live in fpp-dark.css under [data-bs-theme="dark"].
+   See www/css/THEME_INCONSISTENCIES.md for unresolved semantic conflicts.
+
+   Canonical token index (search by name below):
+
+   Colors — semantic:
+     --fpp-primary, --fpp-primary-hover
+     --fpp-success-dark, --fpp-success-light, --fpp-success-text   (use var(--bs-success) for the base)
+     --fpp-warning-dark, --fpp-warning-light, --fpp-warning-text   (use var(--bs-warning) for the base)
+     --fpp-danger-dark,  --fpp-danger-light                        (use var(--bs-danger)  for the base)
+     --fpp-info,    --fpp-info-light,   --fpp-info-text
+     --fpp-gray
+
+   Colors — text / backgrounds / borders:
+     --fpp-text-primary, --fpp-text-secondary, --fpp-text-muted, --fpp-text-light
+     --fpp-bg-page, --fpp-bg-card, --fpp-bg-hover, --fpp-bg-disabled
+     --fpp-border, --fpp-border-light, --fpp-border-medium, --fpp-border-dark
+
+   Spacing:       --fpp-spacing-1..5, --fpp-sp-{xs,icon,sm,md,lg,xl,2xl}
+   Typography:    --fpp-fs-{xs,sm,base,md,lg,xl,2xl,3xl}, --fpp-fw-{normal,medium,semibold,bold},
+                  --fpp-font-sans, --fpp-font-mono
+   Radii:         --fpp-radius-{sm,md,lg,xl,pill}
+   Shadows:       --fpp-shadow-{sm,md,lg}
+   Transitions:   --fpp-transition-{fast,normal,slow}
+   Z-index:       --fpp-z-{dropdown,sticky,fixed,modal-backdrop,modal,popover,tooltip}
+   Component:     --fpp-progress-*, --fpp-card-*, --fpp-gauge-*, --fpp-btn-*, --fpp-alert-*
+
+   When adding a new raw color to fpp.css or a PHP file, check this list first —
+   if a token already represents the role, use var(--fpp-*) instead.
    ========================================================================== */
 
 :root {
@@ -8,23 +39,18 @@
        COLOR TOKENS: Extracted from FPP Bootstrap theme and inline styles
        ========================================================================== */
 
-	/* Primary Colors - FPP actual color palette from fpp.css */
+	/* Primary semantic colors resolve through Bootstrap (--bs-success/danger/warning) directly.
+	   The bare --fpp-success/-danger/-warning aliases were removed — use var(--bs-*) directly.
+	   The -dark / -light / -text variants below are FPP-specific shades not in Bootstrap. */
 	--fpp-primary: #007bff;
 	--fpp-primary-hover: #0056b3;
-	--fpp-success: #56b760;
-	/* FPP green (playlist playing, installed plugins) */
 	--fpp-success-dark: #449c4d;
 	--fpp-success-light: #e8f5e9;
-	--fpp-warning: #f2bc5f;
-	/* FPP amber (untested plugins) */
 	--fpp-warning-dark: #d9a84e;
 	--fpp-warning-light: #fef8e8;
-	--fpp-danger: #f63939;
-	/* FPP red (menu hover, incompatible) */
 	--fpp-danger-dark: #d92d2d;
 	--fpp-danger-light: #fde8e8;
 	--fpp-info: #6b95ec;
-	/* FPP blue (available plugins) */
 	--fpp-info-light: #e8f0fd;
 
 	/* Neutral Colors - Text */
@@ -53,6 +79,21 @@
 	--fpp-success-text: #155724;
 	--fpp-warning-text: #856404;
 	--fpp-info-text: #0c5460;
+
+	/* ==========================================================================
+       COMPONENT TOKENS: one knob per repeated UI role.
+       Change here to re-theme every consumer at once.
+       Dark overrides live in fpp-dark.css under [data-bs-theme="dark"].
+       ========================================================================== */
+
+	/* Table header row (used by systems, effects, backup, wifi, running/overlay effects tables,
+	   and the shared .tblheader class) */
+	--fpp-thead-bg: #d9d9d9;
+	--fpp-thead-color: inherit;
+
+	/* Selected-row highlight for list tables (.selectedEntry class used by scheduler,
+	   co-pixelStrings, co-universes, commandPresets, pixeloverlaymodels, channelinputs, ...) */
+	--fpp-selected-row-bg: #cccccc;
 
 	/* ==========================================================================
        SPACING TOKENS: Bootstrap-compatible spacing scale
@@ -196,15 +237,15 @@
 }
 
 .fpp-text-success {
-	color: var(--fpp-success) !important;
+	color: var(--bs-success) !important;
 }
 
 .fpp-text-warning {
-	color: var(--fpp-warning) !important;
+	color: var(--bs-warning) !important;
 }
 
 .fpp-text-danger {
-	color: var(--fpp-danger) !important;
+	color: var(--bs-danger) !important;
 }
 
 .fpp-text-info {
@@ -234,15 +275,15 @@
 }
 
 .fpp-bg-success {
-	background-color: var(--fpp-success) !important;
+	background-color: var(--bs-success) !important;
 }
 
 .fpp-bg-warning {
-	background-color: var(--fpp-warning) !important;
+	background-color: var(--bs-warning) !important;
 }
 
 .fpp-bg-danger {
-	background-color: var(--fpp-danger) !important;
+	background-color: var(--bs-danger) !important;
 }
 
 .fpp-bg-info {
@@ -529,8 +570,8 @@
 /* Danger/Warning variant, uses FPP red #f63939 */
 .fpp-alert--danger {
 	color: #fff;
-	background-color: var(--fpp-danger);
-	border-color: var(--fpp-danger);
+	background-color: var(--bs-danger);
+	border-color: var(--bs-danger);
 }
 
 .fpp-alert--danger a,
@@ -549,14 +590,14 @@
 .fpp-alert--warning {
 	color: var(--fpp-warning-text);
 	background-color: var(--fpp-warning-light);
-	border-color: var(--fpp-warning);
+	border-color: var(--bs-warning);
 }
 
 /* Success variant */
 .fpp-alert--success {
 	color: var(--fpp-success-text);
 	background-color: var(--fpp-success-light);
-	border-color: var(--fpp-success);
+	border-color: var(--bs-success);
 }
 
 /* Info variant */
@@ -612,15 +653,15 @@
 }
 
 .fpp-health-summary__count--success {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 }
 
 .fpp-health-summary__count--warning {
-	color: var(--fpp-warning);
+	color: var(--bs-warning);
 }
 
 .fpp-health-summary__count--danger {
-	color: var(--fpp-danger);
+	color: var(--bs-danger);
 }
 
 .fpp-health-summary__label {
@@ -709,15 +750,15 @@
 
 /* Status Color Classes */
 .fpp-status--pass {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 }
 
 .fpp-status--warn {
-	color: var(--fpp-warning);
+	color: var(--bs-warning);
 }
 
 .fpp-status--fail {
-	color: var(--fpp-danger);
+	color: var(--bs-danger);
 }
 
 .fpp-status--loading {
@@ -786,7 +827,7 @@
 .fpp-health-check__details {
 	display: none;
 	background: var(--fpp-warning-light);
-	border-left: 3px solid var(--fpp-warning);
+	border-left: 3px solid var(--bs-warning);
 	margin: 0 0 var(--fpp-spacing-2) 0;
 	padding: var(--fpp-spacing-2) var(--fpp-sp-sm);
 	border-radius: 0 var(--fpp-radius-sm) var(--fpp-radius-sm) 0;
@@ -853,7 +894,7 @@
 
 .fpp-gauge__fill {
 	fill: none;
-	stroke: var(--fpp-success);
+	stroke: var(--bs-success);
 	stroke-width: 8;
 	stroke-linecap: round;
 	transition: stroke-dasharray var(--fpp-transition-slow),
@@ -861,15 +902,15 @@
 }
 
 .fpp-gauge__fill--success {
-	stroke: var(--fpp-success);
+	stroke: var(--bs-success);
 }
 
 .fpp-gauge__fill--warning {
-	stroke: var(--fpp-warning);
+	stroke: var(--bs-warning);
 }
 
 .fpp-gauge__fill--danger {
-	stroke: var(--fpp-danger);
+	stroke: var(--bs-danger);
 }
 
 .fpp-gauge__value {
@@ -946,7 +987,7 @@
 }
 
 .fpp-help-swatch--success {
-	background: var(--fpp-success);
+	background: var(--bs-success);
 }
 
 .fpp-help-swatch--info {
@@ -954,11 +995,11 @@
 }
 
 .fpp-help-swatch--warning {
-	background: var(--fpp-warning);
+	background: var(--bs-warning);
 }
 
 .fpp-help-swatch--danger {
-	background: var(--fpp-danger);
+	background: var(--bs-danger);
 }
 
 .fpp-help-swatch--muted {
@@ -989,7 +1030,7 @@
 }
 
 .fpp-donate-banner__title i {
-	color: var(--fpp-danger);
+	color: var(--bs-danger);
 	animation: pulse-heart 2s ease-in-out infinite;
 }
 
@@ -1081,7 +1122,7 @@
 .fpp-banner--success {
 	background: linear-gradient(
 		135deg,
-		var(--fpp-success) 0%,
+		var(--bs-success) 0%,
 		var(--fpp-success-dark) 100%
 	);
 	color: white;
@@ -1090,7 +1131,7 @@
 .fpp-banner--warning {
 	background: linear-gradient(
 		135deg,
-		var(--fpp-danger) 0%,
+		var(--bs-danger) 0%,
 		var(--fpp-danger-dark) 100%
 	);
 	color: white;
@@ -1098,7 +1139,7 @@
 
 .fpp-banner--info {
 	background: var(--fpp-success-light);
-	border: 1px solid var(--fpp-success);
+	border: 1px solid var(--bs-success);
 	color: var(--fpp-text-primary);
 }
 
@@ -1219,15 +1260,15 @@
 }
 
 .fpp-badge--success {
-	background: var(--fpp-success);
+	background: var(--bs-success);
 }
 
 .fpp-badge--warning {
-	background: var(--fpp-warning);
+	background: var(--bs-warning);
 }
 
 .fpp-badge--danger {
-	background: var(--fpp-danger);
+	background: var(--bs-danger);
 }
 
 .fpp-badge--info {
@@ -1263,7 +1304,7 @@
 .fpp-version-indicator__to,
 .fpp-version-indicator__current {
 	padding: 4px 10px;
-	background: #fff;
+	background: var(--fpp-bg-card);
 	border-radius: var(--fpp-radius-md);
 }
 
@@ -1273,13 +1314,13 @@
 }
 
 .fpp-version-indicator__to {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 	font-weight: var(--fpp-fw-semibold);
 	border: 1px solid #86efac;
 }
 
 .fpp-version-indicator__arrow {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 	font-size: 1.1rem;
 }
 
@@ -1310,7 +1351,7 @@
 }
 
 .fpp-version-indicator--clickable:hover .fpp-version-indicator__label {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 }
 
 .fpp-version-indicator--clickable:active {
@@ -1324,7 +1365,7 @@
 }
 
 .fpp-version-indicator--current > i {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 	font-size: 1.1rem;
 }
 
@@ -1334,7 +1375,7 @@
 }
 
 .fpp-version-indicator--current .fpp-version-indicator__label {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 }
 
 /* Warning/upgrade theme (for OS upgrades) */
@@ -1344,7 +1385,7 @@
 }
 
 .fpp-version-indicator--upgrade .fpp-version-indicator__arrow {
-	color: var(--fpp-warning);
+	color: var(--bs-warning);
 }
 
 .fpp-version-indicator--upgrade .fpp-version-indicator__to {
@@ -1382,7 +1423,7 @@
 	border-radius: var(--fpp-radius-lg);
 	overflow: hidden;
 	transition: all var(--fpp-transition-normal);
-	background: #fff;
+	background: var(--fpp-bg-card);
 }
 
 .fpp-faq__item:hover {
@@ -1487,17 +1528,17 @@
 
 .fpp-comparison-table .text-success,
 .fpp-comparison-table .fpp-text-success {
-	color: var(--fpp-success);
+	color: var(--bs-success);
 }
 
 .fpp-comparison-table .text-warning,
 .fpp-comparison-table .fpp-text-warning {
-	color: var(--fpp-warning);
+	color: var(--bs-warning);
 }
 
 .fpp-comparison-table .text-danger,
 .fpp-comparison-table .fpp-text-danger {
-	color: var(--fpp-danger);
+	color: var(--bs-danger);
 }
 
 .fpp-comparison-note {
@@ -1568,17 +1609,17 @@
 
 .fpp-card__icon--success {
 	background: var(--fpp-success-light);
-	color: var(--fpp-success);
+	color: var(--bs-success);
 }
 
 .fpp-card__icon--warning {
 	background: var(--fpp-warning-light);
-	color: var(--fpp-warning);
+	color: var(--bs-warning);
 }
 
 .fpp-card__icon--danger {
 	background: var(--fpp-danger-light);
-	color: var(--fpp-danger);
+	color: var(--bs-danger);
 }
 
 .fpp-card__icon--neutral {
@@ -1638,15 +1679,15 @@
 }
 
 .fpp-card--accent-success::before {
-	background: var(--fpp-success);
+	background: var(--bs-success);
 }
 
 .fpp-card--accent-warning::before {
-	background: var(--fpp-warning);
+	background: var(--bs-warning);
 }
 
 .fpp-card--accent-danger::before {
-	background: var(--fpp-danger);
+	background: var(--bs-danger);
 }
 
 .fpp-card--accent-neutral::before {
@@ -1770,7 +1811,7 @@
 }
 
 .fpp-btn--success {
-	background: var(--fpp-success);
+	background: var(--bs-success);
 	color: white;
 	box-shadow: 0 2px 4px rgba(86, 183, 96, 0.25);
 }
@@ -1781,7 +1822,7 @@
 }
 
 .fpp-btn--warning {
-	background: var(--fpp-warning);
+	background: var(--bs-warning);
 	color: #000;
 }
 
@@ -1987,7 +2028,7 @@
 	font-family: var(--fpp-font-mono);
 	font-size: var(--fpp-fs-base);
 	padding: var(--fpp-sp-sm) var(--fpp-sp-md);
-	background: #fff;
+	background: var(--fpp-bg-card);
 	border: 1px solid var(--fpp-border);
 	border-radius: var(--fpp-radius-lg);
 	color: var(--fpp-text-secondary);
@@ -2089,7 +2130,7 @@
 	padding: var(--fpp-sp-md);
 	background: var(--fpp-success-light);
 	border-radius: var(--fpp-radius-md);
-	border-left: 4px solid var(--fpp-success);
+	border-left: 4px solid var(--bs-success);
 }
 
 .fpp-changelog-group {

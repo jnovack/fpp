@@ -51,9 +51,10 @@ if ((!isset($settings['disableUIPopoverAlerts'])) || ($settings['disableUIPopove
     customElements.define('zero-md', class extends ZeroMd {
         async load() {
             await super.load()
+            const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
             this.template = `
 <style>:host { display: block; }</style>
-<link rel="stylesheet" href="/js/zero-md/css/github-markdown-light.min.css">
+<link rel="stylesheet" href="/js/zero-md/css/${isDark ? 'github-markdown-dark' : 'github-markdown-light'}.min.css">
 <link rel="stylesheet" href="/js/zero-md/css/github-markdown.min.css">
 <link rel="stylesheet" href="/js/zero-md/css/katex.min.css">`
             //this.template = STYLES.preset('light') // or STYLES.preset('dark')
@@ -80,6 +81,7 @@ if (isset($themeInfo["preFPPStyleSheet"])) {
 <link rel="stylesheet"
     href="css/fpp-bootstrap/dist/fpp-bootstrap-5-3.css?ref=<?php echo filemtime('css/fpp-bootstrap/dist/fpp-bootstrap-5-3.css'); ?>">
 <link rel="stylesheet" href="css/fpp.css?ref=<?php echo filemtime('css/fpp.css'); ?>">
+<link rel="stylesheet" href="css/fpp-dark.css?ref=<?php echo filemtime('css/fpp-dark.css'); ?>">
 
 <?
 if (isset($themeInfo["postFPPStyleSheet"])) {

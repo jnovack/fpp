@@ -89,7 +89,7 @@ $utilities: map-merge(
       css-var: true,
       css-variable-name: focus-ring-color,
       class: focus-ring,
-      values: map-loop($theme-colors-rgb, rgba-css-var, "$key", "focus-ring")
+      values: map-loop($utilities-colors, css-color-mix, "$value", "focus-ring-opacity", 1)
     ),
     // scss-docs-end utils-focus-ring
     // scss-docs-start utils-position
@@ -640,7 +640,7 @@ $utilities: map-merge(
       values: map-merge(
         $utilities-links-underline,
         (
-          null: rgba(var(--#{$prefix}link-color-rgb), var(--#{$prefix}link-underline-opacity, 1)),
+          null: css-color-mix(var(--#{$prefix}link-color), "link-underline-opacity", 1),
         )
       )
     ),
@@ -669,8 +669,8 @@ $utilities: map-merge(
         $utilities-bg-colors,
         (
           "transparent": transparent,
-          "body-secondary": rgba(var(--#{$prefix}secondary-bg-rgb), var(--#{$prefix}bg-opacity)),
-          "body-tertiary": rgba(var(--#{$prefix}tertiary-bg-rgb), var(--#{$prefix}bg-opacity)),
+          "body-secondary": css-color-mix(var(--#{$prefix}secondary-bg), "bg-opacity", 1),
+          "body-tertiary": css-color-mix(var(--#{$prefix}tertiary-bg), "bg-opacity", 1),
         )
       )
     ),

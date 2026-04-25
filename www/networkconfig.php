@@ -66,19 +66,19 @@
 
         /* WiFi Signal Strength Styling */
         .wifi-signal.excellent {
-            color: #28a745;
+            color: var(--bs-success);
         }
 
         .wifi-signal.good {
-            color: #fd7e14;
+            color: var(--bs-orange);
         }
 
         .wifi-signal.fair {
-            color: #dc3545;
+            color: var(--bs-danger);
         }
 
         .wifi-signal.poor {
-            color: #6c757d;
+            color: var(--fpp-text-muted);
         }
 
         /* Security Badge Styling */
@@ -92,37 +92,36 @@
         }
 
         .security-none {
-            background-color: #dc3545;
+            background-color: var(--bs-danger);
             color: white;
         }
 
         .security-wep {
-            background-color: #fd7e14;
+            background-color: var(--bs-orange);
             color: white;
         }
 
         .security-wpa {
-            background-color: #198754;
+            background-color: var(--bs-success);
             color: white;
         }
 
         .security-wpa2 {
-            background-color: #0d6efd;
+            background-color: var(--bs-blue);
             color: white;
         }
 
         .security-wpa3 {
-            background-color: #6f42c1;
+            background-color: var(--bs-purple);
             color: white;
         }
 
-        /* WiFi Network Row Hover Effects */
-        .wifi-network-row:hover {
-            background-color: #f5f5f5;
-        }
+        /* WiFi Network Row :hover/:active handled in fpp.css + fpp-dark.css */
 
-        .wifi-network-row:active {
-            background-color: #e9ecef;
+        .description-text {
+            font-size: 0.9em;
+            color: var(--fpp-text-muted);
+            margin-top: 5px;
         }
     </style>
 </head>
@@ -361,7 +360,7 @@
                     $('#global_gateway').next('.buttons').prop('disabled', true); // Disable ping button
                     $('#global_gateway').siblings('.btn-success').prop('disabled', true); // Disable update button
                     $('#globalGatewayRow .description-text').html(
-                        '<span style="color: #666;">Gateway disabled because all interfaces use DHCP. DHCP will provide default routing.</span>'
+                        '<span class="text-muted">Gateway disabled because all interfaces use DHCP. DHCP will provide default routing.</span>'
                     );
                 } else {
                     $('#global_gateway').prop('disabled', false);
@@ -576,13 +575,13 @@
                     $("#wifiNetworksList").html(networksHtml.join(''));
                     $("#wifiNetworksRow").show();
                 } else {
-                    $("#wifiNetworksList").html('<tr><td colspan="3" style="padding: 8px; text-align: center; color: #666;">No WiFi networks found</td></tr>');
+                    $("#wifiNetworksList").html('<tr><td colspan="3" class="p-2 text-center text-muted">No WiFi networks found</td></tr>');
                     $("#wifiNetworksRow").show();
                 }
 
             }).fail(function () {
                 DialogError("Scan Failed", "Failed to Scan for wifi networks");
-                $("#wifiNetworksList").html('<tr><td colspan="3" style="padding: 8px; text-align: center; color: #666;">Scan failed</td></tr>');
+                $("#wifiNetworksList").html('<tr><td colspan="3" class="p-2 text-center text-muted">Scan failed</td></tr>');
                 $("#wifiNetworksRow").show();
             }).always(function () {
                 $("#wifisearch").hide();
@@ -1391,7 +1390,7 @@
                 }
                 wifiTableBody.html(html);
             }).fail(function () {
-                wifiTableBody.html('<tr><td colspan="3" style="padding: 8px; text-align: center; color: #666;">Scan failed</td></tr>');
+                wifiTableBody.html('<tr><td colspan="3" class="p-2 text-center text-muted">Scan failed</td></tr>');
             });
         }
 
@@ -1708,9 +1707,9 @@
                                                     Scanning
                                                     for WiFi networks...</div>
                                                 <div id="wifiNetworksTable"
-                                                    style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px;">
+                                                    style="max-height: 200px; overflow-y: auto; border: 1px solid var(--fpp-border); border-radius: 4px; margin-bottom: 10px;">
                                                     <table class="table table-sm table-hover" style="margin: 0;">
-                                                        <thead style="background-color: #f8f9fa;">
+                                                        <thead style="background-color: var(--bs-tertiary-bg);">
                                                             <tr>
                                                                 <th style="padding: 8px;">Network Name (SSID)</th>
                                                                 <th style="padding: 8px; width: 100px;">Signal</th>
@@ -2035,8 +2034,7 @@
                                                 value="Create Persistent Names" onClick="CreatePersistentNames();">
                                             <input id="btnConfigNetworkPersistClear" type="button" class="buttons"
                                                 value="Clear Persistent Names" onClick="ClearPersistentNames();">
-                                            <div class="description-text"
-                                                style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                                            <div class="description-text">
                                                 Create or clear persistent network interface names to ensure consistent
                                                 interface naming across reboots.
                                             </div>
@@ -2085,8 +2083,7 @@
                                             onClick='PingIP($("#global_gateway").val(), 3);' value='Ping'>
                                         <input type="button" class="buttons btn-success" onClick='SaveGlobalGateway();'
                                             value='Update Gateway'>
-                                        <div class="description-text"
-                                            style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                                        <div class="description-text">
                                             Global gateway for all interfaces. Leave blank if using DHCP on any
                                             interface for routing.
                                         </div>
@@ -2133,8 +2130,7 @@
                                     <div class="printSettingFieldCol col-md">
                                         <input type="button" class="buttons btn-success" onClick='SaveDNSConfig();'
                                             value='Update DNS'>
-                                        <div class="description-text"
-                                            style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                                        <div class="description-text">
                                             Global DNS configuration for all interfaces. This is how FPP resolves
                                             hostnames back to IP addresses
                                         </div>

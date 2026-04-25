@@ -432,64 +432,6 @@ $freeSpace = disk_free_space($uploadDirectory);
     <title>
         <? echo $pageTitle; ?>
     </title>
-    <style>
-        .no-close .ui-dialog-titlebar-close {
-            display: none
-        }
-
-        .clear {
-            clear: both;
-        }
-
-        .items {
-            width: 40%;
-            background: rgb#FFF;
-            float: right;
-            margin: 0, auto;
-        }
-
-        .selectedEntry {
-            background: #CCC;
-        }
-
-        .pl_title {
-            font-size: larger;
-        }
-
-        h4,
-        h3 {
-            padding: 0;
-            margin: 0;
-        }
-
-        .tblheader {
-            background-color: #CCC;
-            text-align: center;
-        }
-
-        tr.rowScheduleDetails {
-            border: thin solid;
-            border-color: #CCC;
-        }
-
-        tr.rowScheduleDetails td {
-            padding: 1px 5px;
-        }
-
-        #tblSchedule {
-            border: thin;
-            border-color: #333;
-            border-collapse: collapse;
-        }
-
-        .time {
-            width: 100%;
-        }
-
-        .center {
-            text-align: center;
-        }
-    </style>
 </head>
 
 <body>
