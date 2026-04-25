@@ -62,11 +62,12 @@
             var filteredSettings = {};
             $.each(pendingSettings, function (key, value) {
                 if (key !== 'passwordVerify' && key !== 'osPasswordVerify') {
-                    // Don't save the value if user does not want passwords enabled.
-                    if (key === 'password' && passwordEnable !== '1') {
+                    // During initial setup, disabled password auth should not try to
+                    // persist password-related fields at all.
+                    if (key === 'passwordEnable' && passwordEnable !== '1') {
                         return;
                     }
-                    if (key === 'osPassword' && osPasswordEnable !== '1') {
+                    if (key === 'osPasswordEnable' && osPasswordEnable !== '1') {
                         return;
                     }
                     filteredSettings[key] = value;
