@@ -18,7 +18,8 @@
   --#{$prefix}btn-hover-border-color: transparent;
   --#{$prefix}btn-box-shadow: #{$btn-box-shadow};
   --#{$prefix}btn-disabled-opacity: #{$btn-disabled-opacity};
-  --#{$prefix}btn-focus-box-shadow: 0 0 0 #{$btn-focus-width} rgba(var(--#{$prefix}btn-focus-shadow-rgb), .5);
+  --#{$prefix}btn-focus-shadow-color: var(--#{$prefix}body-color);
+  --#{$prefix}btn-focus-box-shadow: 0 0 0 #{$btn-focus-width} color-mix(in srgb, var(--#{$prefix}btn-focus-shadow-color) 50%, transparent);
   // scss-docs-end btn-css-vars
 
   display: inline-block;
@@ -179,7 +180,7 @@
   --#{$prefix}btn-disabled-color: #{$btn-link-disabled-color};
   --#{$prefix}btn-disabled-border-color: transparent;
   --#{$prefix}btn-box-shadow: 0 0 0 #000; // Can't use `none` as keyword negates all values when used with multiple shadows
-  --#{$prefix}btn-focus-shadow-rgb: #{$btn-link-focus-shadow-rgb};
+  --#{$prefix}btn-focus-shadow-color: #{$btn-link-focus-shadow-color};
 
   text-decoration: $link-decoration;
   @if $enable-gradients {
