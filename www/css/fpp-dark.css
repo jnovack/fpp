@@ -13,10 +13,10 @@
 /* ------------------------------------------------------------- */
 
 [data-bs-theme="dark"] {
-    --fpp-text-primary: #dee2e6;
-    --fpp-text-secondary: #adb5bd;
-    --fpp-text-muted: #6c757d;
-    --fpp-text-light: #6c757d;
+    --bs-primary: #dee2e6;
+    --bs-secondary: #a6acb2;
+    --fpp-text-muted: #83898f;
+    --fpp-text-light: #a1a1a1;
     --fpp-bg-page: #212529;
     --fpp-bg-card: #2c3034;
     --fpp-bg-hover: #343a40;
@@ -26,13 +26,11 @@
     --fpp-border-medium: #495057;
     --fpp-border-dark: #6c757d;
     /* Component token dark overrides */
-    --fpp-thead-bg: #737373;
     --fpp-selected-row-bg: #495057;
     /* Bootstrap variable overrides for dark mode */
     --bs-secondary-color: rgba(222, 226, 230, 0.9);
     --bs-link-color: #adb5bd;
     --bs-link-hover-color: #ced4da;
-    --bs-link-color-rgb: 173, 181, 189;
 }
 
 /* ------------------------------------------------------------- */
@@ -41,7 +39,7 @@
 /* custom-classed elements are not auto-themed                   */
 /* ------------------------------------------------------------- */
 
-[data-bs-theme="dark"] input:not([type=checkbox]),
+/* [data-bs-theme="dark"] input:not([type=checkbox]),
 [data-bs-theme="dark"] input[list],
 [data-bs-theme="dark"] select,
 [data-bs-theme="dark"] textarea,
@@ -50,7 +48,7 @@
     background: var(--bs-body-bg) !important;
     color: var(--bs-body-color) !important;
     border-color: var(--bs-border-color) !important;
-}
+} */
 [data-bs-theme="dark"] input[type=checkbox]:not(:checked) {
     background-color: var(--bs-secondary-bg) !important;
     border-color: var(--bs-border-color) !important;

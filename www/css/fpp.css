@@ -16,7 +16,6 @@ html {
 	background: white;
 }
 
-
 /* Fix dark border on datalist inputs (SSID fields) */
 
 
@@ -48,6 +47,7 @@ input[list]::-webkit-calendar-picker-indicator {
 input[list]::-webkit-list-button {
 	display: none;
 }
+
 
 
 /* Specific styling for SSID input fields to match other inputs */
@@ -2652,7 +2652,7 @@ table#fppSystemsTable > thead > tr:last-child > td {
 
 
 #fppSystems > tr > td {
-	border-top: 1px solid #dee2e6;
+	border-top: 1px solid var(--bs-border-color);
 }
 
 
@@ -2666,9 +2666,9 @@ table#fppSystemsTable > thead > tr:last-child > td {
 }
 
 
-#fppSystems > tr > td:last-child {
+/* #fppSystems > tr > td:last-child {
 	padding-right: 1em;
-}
+} */
 
 
 #multisyncViewOptions .settingsTable {
@@ -2716,13 +2716,7 @@ table#fppSystemsTable > thead > tr:last-child > td {
 	margin-left: 0.5em;
 }
 
-
-#selectAllCheckbox {
-	transform: translateY(37px);
-}
-
-
-#fppSystemsTable {
+#fppSystemsTable, #syncStatsTable {
 	width: 100%;
 }
 
@@ -2740,11 +2734,6 @@ table#fppSystemsTable > thead > tr:last-child > td {
 
 .txtDesc {
 	width: 150px;
-}
-
-
-#syncStatsTable {
-	width: 100%;
 }
 
 
