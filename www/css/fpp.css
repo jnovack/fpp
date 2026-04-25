@@ -208,7 +208,7 @@ input[type='range']::-ms-track {
 }
 
 
-[data-bs-theme="light"] input[type='range']::-webkit-slider-thumb {
+input[type='range']::-webkit-slider-thumb {
 	-webkit-appearance: none;
 	box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.1);
 	border-radius: 1.5em;
@@ -221,7 +221,7 @@ input[type='range']::-ms-track {
 }
 
 
-[data-bs-theme="light"] input[type='range']::-moz-range-thumb {
+input[type='range']::-moz-range-thumb {
 	-webkit-appearance: none;
 	appearance: none;
 	box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.1);
@@ -235,7 +235,7 @@ input[type='range']::-ms-track {
 }
 
 
-[data-bs-theme="light"] input[type='range']::-ms-thumb {
+input[type='range']::-ms-thumb {
 	-webkit-appearance: none;
 	appearance: none;
 	box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.1);
