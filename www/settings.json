@@ -118,7 +118,6 @@
 				"temperatureInF",
 				"Latitude",
 				"Longitude"
-
 			]
 		},
 		"generalAudio": {
@@ -306,6 +305,7 @@
 			"description": "User Interface",
 			"settings": [
 				"uiLevel",
+				"themeOverride",
 				"showAllOptions",
 				"disableUIWarnings",
 				"disableUIPopoverAlerts",
@@ -2337,22 +2337,22 @@
 				"!MacOS"
 			]
 		},
-                "KioskRotate": {
-                        "name": "KioskRotate",
-                        "description": "Rotate Kiosk if using Raspberry Pi Touch Display 2 7inch",
-                        "tip": "Click here if you have Raspberry Pi Touch Display 2",
-                        "level": 1,
-                        "gatherStats": true,
-                        "restart": 0,
-                        "reboot": 0,
-                        "checkedValue": "1",
-                        "uncheckedValue": "0",
-                        "default": "0",
-                        "type": "checkbox",
-                        "platforms": [
-                            "Raspberry Pi"
-                        ]
-                },
+		"KioskRotate": {
+			"name": "KioskRotate",
+			"description": "Rotate Kiosk if using Raspberry Pi Touch Display 2 7inch",
+			"tip": "Click here if you have Raspberry Pi Touch Display 2",
+			"level": 1,
+			"gatherStats": true,
+			"restart": 0,
+			"reboot": 0,
+			"checkedValue": "1",
+			"uncheckedValue": "0",
+			"default": "0",
+			"type": "checkbox",
+			"platforms": [
+				"Raspberry Pi"
+			]
+		},
 		"Service_rsync": {
 			"name": "Service_rsync",
 			"description": "Enable rsync",
@@ -2604,6 +2604,25 @@
 			"size": 32,
 			"maxlength": 32,
 			"default": "FPP"
+		},
+		"themeOverride": {
+			"name": "themeOverride",
+			"description": "Theme",
+			"tip": "Controls the FPP user interface theme.  'System Default' follows the browser/OS dark mode preference.  Selecting 'Light' or 'Dark' overrides the browser/OS preference and forces FPP to always use that theme.",
+			"gatherStats": true,
+			"reboot": 0,
+			"restart": 0,
+			"reloadUI": 1,
+			"default": "",
+			"type": "select",
+			"options": {
+				"System Default": "",
+				"Light": "light",
+				"Dark": "dark"
+			},
+			"exposedAsJSToPages": [
+				"all"
+			]
 		},
 		"TimeFormat": {
 			"name": "TimeFormat",
