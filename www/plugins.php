@@ -15,6 +15,7 @@
         var installedPlugins = [];
         var pluginInfos = [];
         var pluginInfoURLs = [];
+        var pluginInfoUseCredentials = {};
 
         function PluginIsInstalled(plugin) {
             for (var i = 0; i < installedPlugins.length; i++) {
@@ -155,6 +156,10 @@
             pluginInfo['branch'] = branch;
             pluginInfo['sha'] = sha;
             pluginInfo['infoURL'] = pluginInfoURLs[plugin];
+            // Automatically use the configured GitHub credentials for plugins
+            // whose pluginInfo.json is flagged as private, or which were
+            // manually loaded via the credentialed proxy.
+            pluginInfo['useCredentials'] = (pluginInfo.private || pluginInfoUseCredentials[plugin]) ? 1 : 0;
 
             var postData = JSON.stringify(pluginInfo);
             DisplayProgressDialog("pluginsProgressPopup", "Install Plugin");
@@ -265,6 +270,10 @@
 
             if (installed) {
                 html += '<div class="text-success fppPluginEntryInstallStatus"><i class="far fa-check-circle"></i> <b>Installed</b></div>';
+            }
+
+            if (data.private || pluginInfoUseCredentials[data.repoName]) {
+                html += '<div class="text-warning fppPluginEntryPrivateStatus" title="This plugin is hosted in a private GitHub repository. The GitHub user name and Personal Access Token configured on the Developer settings page will be used to clone it."><i class="fas fa-lock"></i> <b>Private</b></div>';
             }
 
             html += '</div>';
@@ -462,23 +471,51 @@
                 }
 
                 $('html,body').css('cursor', 'wait');
+
+                var onSuccess = function (data, viaProxy) {
+                    $('html,body').css('cursor', 'auto');
+                    pluginInfoURLs[data.repoName] = url;
+                    if (viaProxy) {
+                        // Loaded via the credentialed proxy => treat as private
+                        // for subsequent install/upgrade operations.
+                        pluginInfoUseCredentials[data.repoName] = 1;
+                    }
+                    LoadPlugin(data, true);
+                    $('#pluginInput').val('');
+                    FilterPlugins();
+                    $('#row-' + data.repoName)[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                };
+
+                // First try a direct anonymous fetch. If that fails (404/401/403
+                // are typical for private repos), retry through the server-side
+                // proxy which injects the configured GitHub credentials.
                 $.ajax({
                     url: url,
                     dataType: 'json',
-                    success: function (data) {
-                        $('html,body').css('cursor', 'auto');
-                        pluginInfoURLs[data.repoName] = url;
-                        LoadPlugin(data, true);
-                        $('#pluginInput').val('');
-                        FilterPlugins();
-                        $('#row-' + data.repoName)[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    },
-                    error: function (d) {
-                        $('html,body').css('cursor', 'auto');
-                        if (d.statusText !== undefined) {
-                            d = d.statusText;
-                        }
-                        alert('Error, failed to fetch ' + pluginInfos[i] + " - " + d);
+                    success: function (data) { onSuccess(data, false); },
+                    error: function () {
+                        $.ajax({
+                            url: 'api/plugin/fetchInfo',
+                            type: 'POST',
+                            contentType: 'application/json',
+                            data: JSON.stringify({ url: url, useCredentials: 1 }),
+                            dataType: 'json',
+                            success: function (data) {
+                                if (data && data.Status === 'Error') {
+                                    $('html,body').css('cursor', 'auto');
+                                    alert('Error fetching plugin info: ' + data.Message + '\n\nIf this is a private repository, configure the GitHub user name and Personal Access Token on the Developer settings page.');
+                                    return;
+                                }
+                                onSuccess(data, true);
+                            },
+                            error: function (d) {
+                                $('html,body').css('cursor', 'auto');
+                                if (d.statusText !== undefined) {
+                                    d = d.statusText;
+                                }
+                                alert('Error, failed to fetch ' + url + " - " + d);
+                            }
+                        });
                     }
                 });
             }

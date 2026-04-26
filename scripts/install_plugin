@@ -13,12 +13,17 @@ fi
 
 teeOutput
 
+# Sanitize the URL for display/logging in case it contains embedded GitHub
+# credentials (https://user:token@host/...). The original $2 is still passed
+# to git clone unmodified so authentication still works.
+SAFE_URL=$(echo "$2" | sed -E 's#(https?://)[^/@[:space:]]+@#\1#')
+
 echo "Installing plugin $1"
 cd ${PLUGINDIR} && $SUDO git clone --single-branch --branch $3 $2 $1
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "======================================================================================="
-	echo "Failed to fetch $1 using $2 -- aborting"
+	echo "Failed to fetch $1 using $SAFE_URL -- aborting"
     echo ""
     echo "The most common reason plugin installs fail is the lack of functioning Internet Access"
     echo ""

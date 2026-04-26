@@ -46,6 +46,16 @@ function InstallPlugin()
 	$branch = escapeshellcmd($pluginInfo['branch']);
 	$sha = $pluginInfo['sha'];
 	$infoURL = $pluginInfo['infoURL'];
+	$useCredentials = isset($pluginInfo['useCredentials']) && $pluginInfo['useCredentials'];
+
+	if ($useCredentials) {
+		$srcURL = InjectGitHubCredentials($srcURL);
+		if ($srcURL === false) {
+			$result['Status'] = 'Error';
+			$result['Message'] = 'Use Credentials was selected but GitHub user name and/or Personal Access Token are not configured on the Developer settings page.';
+			return json($result);
+		}
+	}
 
     $stream = $_REQUEST['stream'];
     
@@ -67,7 +77,7 @@ function InstallPlugin()
 			{
 				// no pluginInfo.json in repository, install the one we
 				// installed the plugin from
-				$info = file_get_contents($infoURL);
+				$info = $useCredentials ? FetchURLWithGitHubCredentials($infoURL) : file_get_contents($infoURL);
 				file_put_contents($infoFile, $info);
 
 				$data = json_decode($info, true);
@@ -268,6 +278,98 @@ function UpgradePlugin()
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 // Helper functions
+
+// Inject GitHub credentials (user + Personal Access Token) into a GitHub
+// HTTPS URL so git clone / curl can authenticate against private repositories.
+// Returns the modified URL on success, or false if credentials are not
+// configured or the URL is not a recognized GitHub URL.
+function InjectGitHubCredentials($url)
+{
+	global $settings;
+
+	$user = isset($settings['gitHubUser']) ? trim($settings['gitHubUser']) : '';
+	$pat = isset($settings['gitHubPAT']) ? trim($settings['gitHubPAT']) : '';
+
+	if ($user === '' || $pat === '')
+		return false;
+
+	// Only inject into github.com / raw.githubusercontent.com URLs to avoid
+	// leaking credentials to unrelated hosts.
+	if (!preg_match('#^https://(github\.com|raw\.githubusercontent\.com|api\.github\.com)/#i', $url))
+		return $url;
+
+	return preg_replace('#^https://#i', 'https://' . rawurlencode($user) . ':' . rawurlencode($pat) . '@', $url, 1);
+}
+
+// Fetch the contents of a URL with GitHub credentials. Falls back to
+// file_get_contents when credentials are not configured.
+function FetchURLWithGitHubCredentials($url)
+{
+	$authUrl = InjectGitHubCredentials($url);
+	if ($authUrl === false)
+		return file_get_contents($url);
+
+	if (function_exists('curl_init')) {
+		global $settings;
+		$ch = curl_init($url);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+		curl_setopt($ch, CURLOPT_USERPWD, $settings['gitHubUser'] . ':' . $settings['gitHubPAT']);
+		curl_setopt($ch, CURLOPT_USERAGENT, 'FPP-PluginManager');
+		curl_setopt($ch, CURLOPT_HTTPHEADER, array('Accept: application/vnd.github.raw, application/json, */*'));
+		$data = curl_exec($ch);
+		curl_close($ch);
+		return $data;
+	}
+
+	return file_get_contents($authUrl);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// POST /api/plugin/fetchInfo
+// Server-side proxy for fetching a pluginInfo.json from a private GitHub
+// repository using the credentials configured on the Developer settings page.
+// Body: { "url": "<raw pluginInfo.json URL>", "useCredentials": 1 }
+function FetchPluginInfoProxy()
+{
+	$body = '';
+	$fp = fopen('php://input', 'r');
+	while ($d = fread($fp, 1024 * 16)) {
+		$body .= $d;
+	}
+	fclose($fp);
+
+	$req = json_decode($body, true);
+	$url = isset($req['url']) ? $req['url'] : '';
+	$useCreds = isset($req['useCredentials']) && $req['useCredentials'];
+
+	if ($url === '' || !preg_match('#^https://#i', $url)) {
+		return json(array('Status' => 'Error', 'Message' => 'Invalid URL'));
+	}
+
+	if ($useCreds) {
+		$user = isset($GLOBALS['settings']['gitHubUser']) ? trim($GLOBALS['settings']['gitHubUser']) : '';
+		$pat = isset($GLOBALS['settings']['gitHubPAT']) ? trim($GLOBALS['settings']['gitHubPAT']) : '';
+		if ($user === '' || $pat === '') {
+			return json(array('Status' => 'Error', 'Message' => 'GitHub user name and/or Personal Access Token are not configured on the Developer settings page.'));
+		}
+		$data = FetchURLWithGitHubCredentials($url);
+	} else {
+		$data = file_get_contents($url);
+	}
+
+	if ($data === false || $data === null || $data === '') {
+		return json(array('Status' => 'Error', 'Message' => 'Failed to fetch pluginInfo.json from ' . $url));
+	}
+
+	$decoded = json_decode($data, true);
+	if (!is_array($decoded)) {
+		return json(array('Status' => 'Error', 'Message' => 'Response from ' . $url . ' was not valid JSON'));
+	}
+
+	return json($decoded);
+}
+
 function PluginHasUpdates($plugin)
 {
 	global $settings;

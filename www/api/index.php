@@ -118,6 +118,7 @@ dispatch_post('/playlist/:PlaylistName/:SectionName/item', 'PlaylistSectionInser
 dispatch_get('/plugin/headerIndicators', 'GetPluginHeaderIndicators');
 dispatch_get('/plugin', 'GetInstalledPlugins');
 dispatch_post('/plugin', 'InstallPlugin');
+dispatch_post('/plugin/fetchInfo', 'FetchPluginInfoProxy');
 dispatch_get('/plugin/:RepoName', 'GetPluginInfo');
 dispatch_delete('/plugin/:RepoName', 'UninstallPlugin');
 dispatch_get('/plugin/:RepoName/settings/:SettingName', 'PluginGetSetting');

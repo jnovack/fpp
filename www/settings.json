@@ -1363,6 +1363,24 @@
 			},
 			"level": 3
 		},
+		"gitHubUser": {
+			"name": "gitHubUser",
+			"description": "GitHub User Name",
+			"tip": "GitHub user name used together with the GitHub Personal Access Token below to install/upgrade plugins hosted in private GitHub repositories. Only used when 'Use Credentials' is selected on the Plugin Manager page.",
+			"level": 3,
+			"type": "text",
+			"size": 32,
+			"maxlength": 64
+		},
+		"gitHubPAT": {
+			"name": "gitHubPAT",
+			"description": "GitHub Personal Access Token",
+			"tip": "GitHub Personal Access Token (classic or fine-grained) with read access to the private repositories you wish to install plugins from. Stored locally in /home/fpp/media/settings. Only used when 'Use Credentials' is selected on the Plugin Manager page.",
+			"level": 3,
+			"type": "password",
+			"size": 48,
+			"maxlength": 256
+		},
 		"gitBranch": {
 			"name": "gitBranch",
 			"description": "Git Branch",
