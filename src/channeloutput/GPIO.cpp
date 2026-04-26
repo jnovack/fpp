@@ -64,16 +64,23 @@ int GPIOOutput::Init(Json::Value config) {
     }
 
     if (config.isMember("pin")) {
-        m_GPIOPin = PinCapabilities::getPinByName(config["pin"].asString()).ptr();
-        m_usedGPIOS.push_back(config["pin"].asString());
+        std::string pinName = config["pin"].asString();
+        m_GPIOPin = PinCapabilities::getPinByName(pinName).ptr();
+        if (m_GPIOPin == nullptr) {
+            LogErr(VB_CHANNELOUT, "GPIO Pin '%s' not found\n", pinName.c_str());
+            WarningHolder::AddWarning("GPIO Pin '" + pinName + "' not found");
+            return 0;
+        }
+        m_usedGPIOS.push_back(pinName);
     } else {
         int gpio = config["gpio"].asInt();
         m_GPIOPin = PinCapabilities::getPinByGPIO(0, gpio).ptr();
+        if (m_GPIOPin == nullptr) {
+            LogErr(VB_CHANNELOUT, "GPIO %d not found\n", gpio);
+            WarningHolder::AddWarning("GPIO " + std::to_string(gpio) + " not found");
+            return 0;
+        }
         m_usedGPIOS.push_back(m_GPIOPin->name);
-    }
-    if (m_GPIOPin == nullptr) {
-        LogErr(VB_CHANNELOUT, "GPIO Pin not configured\n");
-        return 0;
     }
 
     if (m_pwm) {
