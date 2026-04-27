@@ -5,7 +5,11 @@ require_once "common.php";
 ?>
 
 <head>
-    <?php include 'common/menuHead.inc'; ?>
+    <?php
+    include 'common/htmlMeta.inc';
+    require_once 'common.php';
+    include 'common/menuHead.inc'; ?>
+
     <script language="Javascript">
 
         function outputOption(val, def) {
