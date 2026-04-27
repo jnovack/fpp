@@ -1,76 +1,77 @@
 name: Build and Publish Docker
 
 on:
-  # Run when pushes to branch or create new Tag
   push:
     branches:
-      - '*'
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-  create:
+      - "**"
     tags:
-      - '*'
+      - "*"
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  workflow_dispatch:
 
 jobs:
-  # define job to build and publish docker image
   build-and-push-docker-image:
-    name: Build Docker image and push to repositories
-    # run only when code is compiling and tests are passing
+    name: Build Docker image and push to Docker Hub
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
-    # steps to perform in job
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Prepare build variables
+        id: build
+        run: |
+          echo "release_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "${GITHUB_OUTPUT}"
+          echo "image_repository=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_OUTPUT}"
+          echo "image_name=fpp" >> "${GITHUB_OUTPUT}"
 
       - name: Set up QEMU
-        run: sudo apt-get update && sudo apt-get install qemu-user-static -y
-        
-      # setup Docker buld action
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-qemu-action@v4
 
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract branch name
-        shell: bash
-        run: |
-          TAG="latest"
-          case $GITHUB_REF in refs/heads/*)
-          TAG=${GITHUB_REF#refs/heads/};;
-          esac
-
-          case $GITHUB_REF in refs/tags/*)
-          TAG=${GITHUB_REF#refs/tags/};
-          esac
-
-          echo "##[set-output name=branch;]$TAG"
-        id: extract_branch
-
-      - name: PrepareReg Names
-        shell: bash
-        run: echo IMAGE_REPOSITORY=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]') >> $GITHUB_ENV
-        id: extract_repository
-
-      - name: Build image and push to Docker Hub 
-        uses: docker/build-push-action@v6
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v6
         with:
-          # relative path to the place where source code with Dockerfile is located
+          flavor: |
+            latest=false
+          images: ${{ steps.build.outputs.image_repository }}/${{ steps.build.outputs.image_name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch,enable={{is_not_default_branch}}
+            type=ref,event=tag
+          labels: |
+            org.opencontainers.image.created=${{ steps.build.outputs.release_date }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+
+      - name: Build image and push to Docker Hub
+        id: docker-build
+        uses: docker/build-push-action@v7
+        with:
           context: .
           file: ./Docker/Dockerfile
-          build-args: "FPPBRANCH=${{ steps.extract_branch.outputs.branch }}"
-          # Note: tags has to be all lower-case
+          build-args: |
+            FPPBRANCH=${{ github.ref_name }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: ${{ env.IMAGE_REPOSITORY }}/fpp:${{ steps.extract_branch.outputs.branch }},${{ env.IMAGE_REPOSITORY }}/fpp:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           push: true
           cache-from: type=gha,scope=fpp-build-docker
           cache-to: type=gha,scope=fpp-build-docker,mode=max
 
       - name: Image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+        run: echo "${{ steps.docker-build.outputs.digest }}"
