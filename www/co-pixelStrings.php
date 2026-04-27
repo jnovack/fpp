@@ -246,7 +246,7 @@ function readCapes($cd, $capes)
         var result = "";
 
         result += "<td>";
-        result += "<select class='vsReverse'>";
+        result += "<select class='form-select fvsReverse'>";
         result += "<option value='0'>Forward</option>";
         result += "<option value='1'";
         if (reverse)
@@ -279,7 +279,7 @@ function readCapes($cd, $capes)
         <? } ?>
 
         result += "<td>";
-        result += "<select class='vsColorOrder' onChange='updateItemEndChannel(this);'>";
+        result += "<select class='form-select vsColorOrder' onChange='updateItemEndChannel(this);'>";
         result += pixelOutputTableInputOrderOption('RGB', colorOrder);
         result += pixelOutputTableInputOrderOption('RBG', colorOrder);
         result += pixelOutputTableInputOrderOption('GBR', colorOrder);
@@ -313,7 +313,7 @@ function readCapes($cd, $capes)
         var result = "";
 
         result += "<td>";
-        result += "<select class='vsBrightness'>";
+        result += "<select class='form-select vsBrightness'>";
 
         var i = 100;
         for (i = 100; i >= 5; i -= 5) {
@@ -2491,7 +2491,7 @@ function readCapes($cd, $capes)
                 <div class="col-md-auto form-inline">
                     <div id="PixelTestPatternDiv">
                         <b>Testing:</b>
-                        <select id='PixelTestPatternType' onchange='SetPixelTestPattern();'>
+                        <select id='PixelTestPatternType' class='form-select' onchange='SetPixelTestPattern();'>
                             <option value='0'>Off</option>
                             <option value='1'>Port Number</option>
                             <option value='2'>Pixel Count by Port</option>

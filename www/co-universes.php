@@ -158,13 +158,14 @@ if (file_exists(__DIR__ . "/fppdefines.php")) {
 						</div>
 						<div class="col-md-auto form-inline" style='display: none;' id="sourceInterfaceDiv">
 							<div><b>Source Interface:</b></div>
-							<div><select id="selE131interfaces"><? PopulateInterfaces(); ?></select></div>
+							<div><select class='form-select' id="selE131interfaces"><? PopulateInterfaces(); ?></select>
+							</div>
 
 						</div>
 						<div class="col-md-auto form-inline" <? if ($uiLevel < 1) { ?> style="display:none;" <? } ?>>
 							<div><i class="fas fa-fw fa-graduation-cap ui-level-1"></i><b> Sending:</b></div>
 							<div>
-								<select id="E131ThreadedOutput">
+								<select class='form-select' id="E131ThreadedOutput">
 									<option value="0">Single-Threaded Blocking</option>
 									<option value="1" selected>Multi-Threaded Blocking</option>
 									<option value="2">Single-Threaded Non-Blocking</option>
@@ -202,9 +203,11 @@ if (file_exists(__DIR__ . "/fppdefines.php")) {
 									<th aria-label='Universe Number'>Universe #</th>
 									<th aria-label='Universe Count for this controller'>Universe <br>Count</th>
 									<th aria-label='Universe size'>Universe <br>Size</th>
-									<th aria-label='Universe Priority' <? if ($uiLevel < 1) { ?> style="display:none;" <? } ?>>Universe <br>Priority</th>
-									<th aria-label='E1.31 Synchronization Universe' <? if ($uiLevel < 1) { ?> style="display:none;" <? } ?>>Sync <br>Universe <span
-											data-bs-toggle='tooltip' data-bs-html='true' data-bs-placement='auto'
+									<th aria-label='Universe Priority' <? if ($uiLevel < 1) { ?> style="display:none;"
+										<? } ?>>Universe <br>Priority</th>
+									<th aria-label='E1.31 Synchronization Universe' <? if ($uiLevel < 1) { ?>
+											style="display:none;" <? } ?>>Sync <br>Universe <span data-bs-toggle='tooltip'
+											data-bs-html='true' data-bs-placement='auto'
 											data-bs-title='Optional E1.31 sync universe. When set, data packets reference this sync universe and a sync packet is sent on it at the end of each frame. Set to 0 to disable.'><i
 												class="fas fa-clock"></i></span></th>
 									<th aria-label='Monitor controller'>Monitor <span data-bs-toggle='tooltip'
