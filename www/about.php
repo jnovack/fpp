@@ -473,7 +473,8 @@ $freeSpace = disk_free_space($uploadDirectory);
                                         <tr>
                                             <td>FPP OS Build:</td>
                                             <td id='osVersion'>
-                                                <? echo $os_build; ?><?
+                                                <? echo $os_build; ?>
+                                                <?
                                                 // Append a (64bit)/(32bit) tag based on the
                                                 // running PHP binary's word size. Same axis as
                                                 // $settings['Is64Bit']; we use PHP_INT_SIZE here
@@ -594,7 +595,8 @@ $freeSpace = disk_free_space($uploadDirectory);
 
                                     <tr id='osSelectRow'>
                                         <td style='vertical-align: top;'>Upgrade OS:</td>
-                                        <td><select class='OSSelect' id='OSSelect' onChange='OSSelectChanged();'>
+                                        <td><select class='form-select OSSelect' id='OSSelect'
+                                                onChange='OSSelectChanged();'>
                                                 <option value=''>-- Choose an OS Version --</option>
                                             </select>
 

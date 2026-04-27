@@ -341,7 +341,7 @@ foreach ($gpiojson as $gpio) {
                     if ($gpio['supportsPullUp'] || $gpio['supportsPullDown']) {
                         ?>
                         <td>
-                        <select id='gpio_<?=$pinNameClean?>_PullUpDown' <?if (!$gpio['supportsPullUp'] && !$gpio['supportsPullDown']) {
+                        <select class='form-select' id='gpio_<?=$pinNameClean?>_PullUpDown' <?if (!$gpio['supportsPullUp'] && !$gpio['supportsPullDown']) {
                 echo "style='display:none;'";
             }
             ?> >
@@ -357,10 +357,10 @@ foreach ($gpiojson as $gpio) {
                     </select>
                 </td>
                 <td>
-                    <input type="number" min="10" max="60000" id="gpio_<?=$pinNameClean?>_debounce" value="100">
+                    <input class='form-control' type="number" min="10" max="60000" id="gpio_<?=$pinNameClean?>_debounce" value="100">
                 </td>
                 <td>
-                    <select id='gpio_<?=$pinNameClean?>_debounceEdge'>
+                    <select class='form-select' id='gpio_<?=$pinNameClean?>_debounceEdge'>
                         <option value='both'>Both</option>
                         <option value='rising'>Rising</option>
                         <option value='falling'>Falling</option>
@@ -371,11 +371,11 @@ foreach ($gpiojson as $gpio) {
                         echo "<td></td><td></td><td></td>";
                     }
                     ?>
-                    <td><input id='gpio_<?=$pinNameClean?>_Desc' type='text' size=30 maxlength=128 style='width: 6em'/></td>
+                    <td><input class='form-control' id='gpio_<?=$pinNameClean?>_Desc' type='text' size=30 maxlength=128 style='width: 6em'/></td>
                     <td>
                     <table border=0 class='fppTable' id='tableRisingGPIO<?=$pinNameClean?>'>
                     <tr>
-        <td>Command:</td><td><select id='gpio_<?=$pinNameClean?>_RisingCommand' onChange='CommandSelectChanged("gpio_<?=$pinNameClean?>_RisingCommand", "tableRisingGPIO<?=$pinNameClean?>", false);'><option value=""></option></select></td>
+        <td>Command:</td><td><select class='form-select' id='gpio_<?=$pinNameClean?>_RisingCommand' onChange='CommandSelectChanged("gpio_<?=$pinNameClean?>_RisingCommand", "tableRisingGPIO<?=$pinNameClean?>", false);'><option value=""></option></select></td>
                     </tr>
                     </table>
                 </td>
@@ -384,7 +384,7 @@ foreach ($gpiojson as $gpio) {
                         <tr>
                             <td>Command:</td>
                             <td>
-                                <select id='gpio_<?=$pinNameClean?>_FallingCommand' onChange='CommandSelectChanged("gpio_<?=$pinNameClean?>_FallingCommand", "tableFallingGPIO<?=$pinNameClean?>", false);'><option value=""></option></select>
+                                <select class='form-select' id='gpio_<?=$pinNameClean?>_FallingCommand' onChange='CommandSelectChanged("gpio_<?=$pinNameClean?>_FallingCommand", "tableFallingGPIO<?=$pinNameClean?>", false);'><option value=""></option></select>
                                 <script>
                                     LoadCommandList($('#gpio_<?=$pinNameClean?>_RisingCommand'));
                                     LoadCommandList($('#gpio_<?=$pinNameClean?>_FallingCommand'));

@@ -119,7 +119,7 @@ if (($settings['Platform'] == "Linux") && (file_exists('/usr/include/X11/Xlib.h'
             if (is_custom) {
                 str = "<b>" + currentValue + "</b>"; //allow descriptive text following
             }
-            str += "<select class='orientation'";
+            str += "<select class='form-select orientation'";
             str += attr;
             if (is_custom) {
                 str += " style='visibility: hidden;'><option value='custom' selected>Custom</option";
@@ -145,7 +145,7 @@ if (($settings['Platform'] == "Linux") && (file_exists('/usr/include/X11/Xlib.h'
                 BL: "Bottom Left",
                 BR: "Bottom Right"
             };
-            var str = "<select class='corner'" + attr + ">";
+            var str = "<select class='form-select corner'" + attr + ">";
 
             for (var key in options) {
                 str += "<option value='" + key + "'";
