@@ -1223,7 +1223,7 @@
         var newRow =
             "<tr class='rowUniverseDetails'><td style='vertical-align:top'>" + (currentRows + 1) + "</td>" +
             "<td style='vertical-align:top'><input class='act' type=checkbox></td>" +
-            "<td style='vertical-align:top' class='type'><select id='" + selectId + "' class='type' onChange='OtherTypeSelected(this);'>" +
+            "<td style='vertical-align:top' class='type'><select id='" + selectId + "' class='form-select type' onChange='OtherTypeSelected(this);'>" +
             "<option value=''>Select a type</option>";
 
         for (var i = 0; i < types.length; i++) {

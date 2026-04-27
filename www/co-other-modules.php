@@ -997,7 +997,7 @@
             }
             result += "Description:<input class='description' type='text' size=30 maxlength=128 style='width: 6em' value='" + description + "'/>";
             result += "&nbsp;";
-            result += CreateSelect(GPIOPins, gpio, "GPIO", "", "gpio", "GPIOHeaderPinChanged(this)");
+            result += CreateSelect(GPIOPins, gpio, "GPIO", "", "form-select gpio", "GPIOHeaderPinChanged(this)");
             result += "\n";
             result += " Inverted: <input type=checkbox class='inverted'";
             if (inverted)
