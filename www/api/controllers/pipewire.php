@@ -1001,27 +1001,73 @@ function UpdatePipeWireDelayRealtime()
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// Helper: resolve the PipeWire combine-sink node name for an audio group
+// by index (as ordered in pipewire-audio-groups.json).
+function GetSyncCalibrationSinkForGroup($groupIndex)
+{
+    global $settings;
+
+    $configFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+    if (!file_exists($configFile)) {
+        return null;
+    }
+    $data = json_decode(file_get_contents($configFile), true);
+    if (!is_array($data) || !isset($data['groups']) || !is_array($data['groups'])) {
+        return null;
+    }
+    if (!isset($data['groups'][$groupIndex])) {
+        return null;
+    }
+    $group = $data['groups'][$groupIndex];
+    if (!isset($group['name']) || trim($group['name']) === '') {
+        return null;
+    }
+    // Mirror the JS EscapeNodeName(): lowercase, non [a-z0-9_] -> _
+    $norm = preg_replace('/[^a-z0-9_]/', '_', strtolower($group['name']));
+    return "fpp_group_" . $norm;
+}
+
+/////////////////////////////////////////////////////////////////////////////
 // POST /api/pipewire/audio/sync/start
 // Start sync calibration mode: generate a click track and play it on loop
+// directly to the selected group's combine sink (bypassing fppd routing).
 function StartSyncCalibration()
 {
-    global $SUDO, $settings;
+    global $settings;
 
     $data = json_decode(file_get_contents('php://input'), true);
     $groupIndex = isset($data['groupIndex']) ? intval($data['groupIndex']) : 0;
+    $mediaFile = isset($data['mediaFile']) ? trim($data['mediaFile']) : '';
 
-    // Generate click track in the music directory (where "Play Media" can find it)
+    $sinkName = GetSyncCalibrationSinkForGroup($groupIndex);
+    if (!$sinkName) {
+        return json(array("status" => "ERROR", "message" => "Could not resolve target sink for group index " . $groupIndex . " — make sure the group has been saved/applied."));
+    }
+
+    // Stop any existing calibration playback first
+    StopSyncCalibrationInternal();
+
+    // If the user picked a media file, play that to the group sink; otherwise
+    // generate (if needed) and loop the click track.
+    if ($mediaFile !== '') {
+        // Resolve the file under the music directory; reject anything escaping it.
+        $musicDir = $settings['mediaDirectory'] . "/music";
+        $resolved = realpath($musicDir . "/" . $mediaFile);
+        if ($resolved === false || strpos($resolved, realpath($musicDir)) !== 0 || !is_file($resolved)) {
+            return json(array("status" => "ERROR", "message" => "Media file not found: " . $mediaFile));
+        }
+        return StartSyncCalibrationPlayback($sinkName, $resolved, false);
+    }
+
     $clickFile = $settings['mediaDirectory'] . "/music/fpp_sync_click.wav";
     if (!file_exists($clickFile)) {
         // Generate a 60-second WAV with alternating high/low clicks for easier sync matching
-        // 1000Hz beep (20ms) + 980ms silence, then 600Hz beep (20ms) + 980ms silence, looped 30x = 60s
         $cmd = "ffmpeg -y -f lavfi -i \"sine=frequency=1000:duration=0.02,apad=pad_dur=0.98\""
             . " -f lavfi -i \"sine=frequency=600:duration=0.02,apad=pad_dur=0.98\""
             . " -filter_complex \"[0][1]concat=n=2:v=0:a=1,aloop=loop=29:size=88200\""
             . " -t 60 " . escapeshellarg($clickFile) . " 2>&1";
         exec($cmd, $genOutput, $genRet);
         if ($genRet !== 0) {
-            // Try sox as fallback
             $cmd = "sox -n " . escapeshellarg($clickFile) . " synth 60 sine 1000 pad 0 0.98 repeat 59 2>&1";
             exec($cmd, $genOutput2, $genRet2);
             if ($genRet2 !== 0) {
@@ -1030,16 +1076,49 @@ function StartSyncCalibration()
         }
     }
 
-    // Stop any existing calibration playback first
-    StopSyncCalibrationInternal();
+    return StartSyncCalibrationPlayback($sinkName, $clickFile, true);
+}
 
-    // Play the click track on loop via the "Play Media" command API (VLC-based)
-    // Loop count 99 = ~99 minutes — more than enough for calibration
-    $url = 'http://localhost/api/command/Play%20Media/fpp_sync_click.wav/99';
-    $ctx = stream_context_create(array('http' => array('method' => 'GET', 'timeout' => 5)));
-    $result = @file_get_contents($url, false, $ctx);
+// Spawn pw-cat (fed by ffmpeg for non-WAV files) targeted at the group sink.
+// $loop: if true, restart playback indefinitely until stopped.
+function StartSyncCalibrationPlayback($sinkName, $absFile, $loop)
+{
+    global $SUDO;
 
-    return json(array("status" => "OK", "message" => "Sync calibration started — click track playing on loop"));
+    $pidFile = "/tmp/fpp_sync_cal.pid";
+    $logFile = "/tmp/fpp_sync_cal.log";
+
+    $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp";
+    $sinkArg = escapeshellarg($sinkName);
+    $fileArg = escapeshellarg($absFile);
+
+    // Decode any container/codec via ffmpeg, pipe raw WAV into pw-cat targeted
+    // at the group's combine sink.  Wrap in a shell loop for indefinite repeat.
+    $playOnce = "ffmpeg -hide_banner -loglevel error -nostdin -i $fileArg -f wav - 2>>" . escapeshellarg($logFile)
+        . " | $env pw-cat --playback --target $sinkArg - 2>>" . escapeshellarg($logFile);
+
+    if ($loop) {
+        $inner = "while [ -f " . escapeshellarg($pidFile) . " ]; do $playOnce; sleep 0.1; done";
+    } else {
+        $inner = $playOnce;
+    }
+
+    // Launch via setsid in background; record the supervisor PID so Stop can kill the whole group.
+    $shell = "setsid sh -c " . escapeshellarg($inner) . " >/dev/null 2>>" . escapeshellarg($logFile) . " & echo \$!";
+    $cmd = $SUDO . " $env sh -c " . escapeshellarg($shell);
+
+    $pid = trim(shell_exec($cmd));
+    if (!ctype_digit($pid)) {
+        return json(array("status" => "ERROR", "message" => "Failed to start playback to sink '$sinkName'"));
+    }
+    @file_put_contents($pidFile, $pid);
+
+    return json(array(
+        "status" => "OK",
+        "message" => "Sync calibration started on sink $sinkName",
+        "sink" => $sinkName,
+        "pid" => intval($pid),
+    ));
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1053,7 +1132,30 @@ function StopSyncCalibration()
 
 function StopSyncCalibrationInternal()
 {
-    // Stop the click track via the "Stop Media" command API
+    global $SUDO;
+
+    $pidFile = "/tmp/fpp_sync_cal.pid";
+
+    // Remove PID file first so the loop script exits its `while` after the
+    // current iteration even if signals race.
+    $pid = null;
+    if (file_exists($pidFile)) {
+        $pid = intval(trim(@file_get_contents($pidFile)));
+        @unlink($pidFile);
+    }
+
+    if ($pid > 0) {
+        // Kill the entire process group (setsid'd) — supervisor + ffmpeg + pw-cat.
+        @exec($SUDO . " kill -TERM -" . $pid . " 2>/dev/null");
+        usleep(150000);
+        @exec($SUDO . " kill -KILL -" . $pid . " 2>/dev/null");
+    }
+
+    // Belt-and-suspenders: nuke any straggler pw-cat/ffmpeg fed by us.
+    @exec($SUDO . " pkill -f 'pw-cat --playback --target fpp_group_' 2>/dev/null");
+
+    // Also stop any legacy fppd-driven click track in case an older session
+    // started one before this fix shipped.
     $url = 'http://localhost/api/command/Stop%20Media/fpp_sync_click.wav';
     $ctx = stream_context_create(array('http' => array('method' => 'GET', 'timeout' => 5)));
     @file_get_contents($url, false, $ctx);

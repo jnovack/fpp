@@ -1420,12 +1420,26 @@
             mediaBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
             syncCalActive[groupIndex] = file;
 
-            $.get('api/command/Play%20Media/' + encodeURIComponent(file) + '/99', function () {
-                mediaBtn.prop('disabled', false).html('<i class="fas fa-music"></i> Playing...');
-                $.jGrowl('Playing: ' + file, { themeState: 'highlight' });
-            }).fail(function () {
-                mediaBtn.prop('disabled', false).html('<i class="fas fa-music"></i> Play');
-                DialogError('Playback Error', 'Failed to play: ' + file);
+            // Route through our group-aware backend so the audio actually
+            // plays out of THIS group's combine sink (not fppd's default).
+            $.ajax({
+                url: 'api/pipewire/audio/sync/start',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ groupIndex: groupIndex, mediaFile: file }),
+                success: function (resp) {
+                    if (resp && resp.status === 'OK') {
+                        mediaBtn.prop('disabled', false).html('<i class="fas fa-music"></i> Playing...');
+                        $.jGrowl('Playing on this group: ' + file, { themeState: 'highlight' });
+                    } else {
+                        mediaBtn.prop('disabled', false).html('<i class="fas fa-music"></i> Play');
+                        DialogError('Playback Error', (resp && resp.message) ? resp.message : 'Failed to play media');
+                    }
+                },
+                error: function (xhr) {
+                    mediaBtn.prop('disabled', false).html('<i class="fas fa-music"></i> Play');
+                    DialogError('Playback Error', 'Failed to play: ' + file + ' — ' + (xhr.responseText || 'Unknown error'));
+                }
             });
         }
 
@@ -1435,17 +1449,13 @@
         }
 
         function StopCalibrationPlaybackSilent(groupIndex) {
-            // Stop click track via our API
+            // Stop click track / media playback via our group-aware API
             $.ajax({
                 url: 'api/pipewire/audio/sync/stop',
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify({})
             });
-            // Stop media file if one was playing
-            if (syncCalActive[groupIndex] && syncCalActive[groupIndex] !== true) {
-                $.get('api/command/Stop%20Media/' + encodeURIComponent(syncCalActive[groupIndex]));
-            }
             syncCalActive[groupIndex] = false;
             $('#sync-play-btn-' + groupIndex).html('<i class="fas fa-play"></i> Play Click Track');
             $('#sync-media-btn-' + groupIndex).html('<i class="fas fa-music"></i> Play');
