@@ -3,6 +3,7 @@
 
 <head>
     <?php
+    include 'common/htmlMeta.inc';
     require_once('config.php');
     require_once('common.php');
     include('common/menuHead.inc');
@@ -105,7 +106,7 @@
                                 <button class='btn btn-sm btn-outline-danger' onClick='UninstallPackage("${pkg}")'>
                                     Uninstall
                                 </button>`
-                            : `
+                                : `
                                 <button class='btn btn-sm btn-outline-warning' onClick='InstallPackage("${pkg}")'>
                                     Reinstall Required
                                 </button>
@@ -231,7 +232,8 @@
 
 
                     <h2>Please Note:</h2>
-                    Installing additional packages can break your FPP installation requiring complete reinstallation of FPP.  Continue at your own risk.
+                    Installing additional packages can break your FPP installation requiring complete reinstallation of
+                    FPP. Continue at your own risk.
                     <p>
                     <h2>Installed User Packages</h2>
                     <ul id="userPackagesList"></ul>
@@ -243,10 +245,13 @@
                     <div id="packageInputContainer">
                         <div class="row">
                             <div class="col">
-                                <input type="text" id="packageInput" class="form-control form-control-lg form-control-rounded has-shadow" placeholder="Enter package name" />
+                                <input type="text" id="packageInput"
+                                    class="form-control form-control-lg form-control-rounded has-shadow"
+                                    placeholder="Enter package name" />
                             </div>
                             <div class="col-auto">
-                                <div class="buttons btn-lg btn-rounded btn-outline-info" onClick='GetPackageInfo($("#packageInput").val().trim());'>
+                                <div class="buttons btn-lg btn-rounded btn-outline-info"
+                                    onClick='GetPackageInfo($("#packageInput").val().trim());'>
                                     <i class="fas fa-info-circle"></i> Get Info
                                 </div>
                             </div>
@@ -264,13 +269,15 @@
                         <div class="modal-content">
                             <div class="modal-header">
                                 <h5 class="modal-title">Installing Package</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                    aria-label="Close"></button>
                             </div>
                             <div class="modal-body">
                                 <pre id="packageProgressPopupText" style="white-space: pre-wrap;"></pre>
                             </div>
                             <div class="modal-footer">
-                                <button id="packageProgressPopupCloseButton" type="button" class="btn btn-secondary" data-bs-dismiss="modal" disabled>Close</button>
+                                <button id="packageProgressPopupCloseButton" type="button" class="btn btn-secondary"
+                                    data-bs-dismiss="modal" disabled>Close</button>
                             </div>
                         </div>
                     </div>
@@ -283,4 +290,3 @@
 </body>
 
 </html>
-

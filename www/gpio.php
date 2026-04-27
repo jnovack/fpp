@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <?php
-include 'common/htmlMeta.inc';
-require_once 'config.php';
-require_once "common.php";
 
 // Check for cape-inputs.json file to determine which GPIO pins are already in use
 $capeInputsFile = $mediaDirectory . '/tmp/cape-inputs.json';
@@ -57,6 +54,9 @@ if (is_dir($stringsDir)) {
 ?>
 <head>
 <?php
+include 'common/htmlMeta.inc';
+require_once 'config.php';
+require_once "common.php";
 include 'common/menuHead.inc';
 
 $data = file_get_contents('http://127.0.0.1:32322/gpio');
