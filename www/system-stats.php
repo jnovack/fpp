@@ -13,6 +13,7 @@ if (isset($_GET['cpu'])) {
 
 <head>
     <?php
+    include 'common/htmlMeta.inc';
     require_once 'config.php';
     require_once 'common.php';
 
