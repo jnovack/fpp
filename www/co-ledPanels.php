@@ -867,7 +867,7 @@
 
                 const targetPanel = mp.panels.find(p => p.row === r && p.col === c);
 
-                htmlClassKey = "LEDPanelOutputNumber_" + r + "_" + c;
+                htmlClassKey = "form-select LEDPanelOutputNumber_" + r + "_" + c;
                 if (typeof targetPanel !== 'undefined') {
                     html += GetLEDPanelNumberSetting("O", htmlClassKey, mp.ledPanelsOutputs, targetPanel.outputNumber);
                 } else {
@@ -905,7 +905,7 @@
 
                 html += ".png' height=17 width=17 class='LEDPanelOrientation_" + r + "_" + c + "' onClick='LEDPanelOrientationClicked(\"LEDPanelOrientation_" + r + "_" + c + "\");'><br>";
 
-                htmlClassKey = "LEDPanelPanelNumber_" + r + "_" + c;
+                htmlClassKey = "form-select LEDPanelPanelNumber_" + r + "_" + c;
                 if (typeof targetPanel !== 'undefined' && typeof targetPanel.panelNumber !== 'undefined') {
                     html += GetLEDPanelNumberSetting("P", htmlClassKey, mp.ledPanelsPanelsPerOutput, targetPanel.panelNumber);
                 } else {
@@ -913,7 +913,7 @@
                 }
                 html += "<br>";
 
-                htmlClassKey = "LEDPanelColorOrder_" + r + "_" + c;
+                htmlClassKey = "form-select LEDPanelColorOrder_" + r + "_" + c;
                 if (typeof targetPanel !== 'undefined' && typeof targetPanel.colorOrder !== 'undefined') {
                     html += GetLEDPanelColorOrder(htmlClassKey, targetPanel.colorOrder);
                 } else {
@@ -2082,7 +2082,7 @@
         var select = document.getElementById("panelMatrix" + panelMatrixID).getElementsByClassName("printSettingFieldCola col-md-4 col-lg-4");
         var html = "";
 
-        html += "<select class='LEDPanelsSize' onchange='LEDPanelsSizeChanged(GetCurrentActiveMatrixPanelID());'>"
+        html += "<select class='form-select LEDPanelsSize' onchange='LEDPanelsSizeChanged(GetCurrentActiveMatrixPanelID());'>"
 
         <? if ($settings['BeaglePlatform']) { ?>
             html += "<option value='32x16x8'>32x16 1/8 Scan</option>"
@@ -3054,7 +3054,7 @@
                 <div class="col-md-auto form-inline">
                     <div class='LEDPanelsConnectionLabel col-md-auto form-inline'><b>Connection Type:</b>
 
-                        <select class='LEDPanelsConnectionSelect' onChange='LEDPanelsConnectionChanged();'>
+                        <select class='form-select LEDPanelsConnectionSelect' onChange='LEDPanelsConnectionChanged();'>
                             <?
                             if (
                                 in_array('all', $currentCapeInfo["provides"])
@@ -3080,13 +3080,13 @@
                     </div>
                     <div class="LEDPanelsConnectionInterface col-md-auto form-inline">
                         <b>Interface:</b>
-                        <select class='LEDPanelsInterface' type='hidden' onChange='WarnIfSlowNIC();'>
+                        <select class='form-select LEDPanelsInterface' type='hidden' onChange='WarnIfSlowNIC();'>
                             <? PopulateEthernetInterfaces(); ?>
                         </select>
                     </div>
                     <div class="LEDPanelsWiringPinoutLabel col-md-auto form-inline">
                         <b>Wiring Pinout:</b>
-                        <select class='LEDPanelsWiringPinout'>
+                        <select class='form-select LEDPanelsWiringPinout'>
                             <? if ($settings['Platform'] == "Raspberry Pi") { ?>
                                 <option value='regular'>Standard</option>
                                 <option value='adafruit-hat'>Adafruit</option>
@@ -3172,7 +3172,7 @@
                     <div class="row">
                         <div class="printSettingLabelCol col-md-2 col-lg-2"><b>Model Start Corner:</b></div>
                         <div class="printSettingFieldCol col-md-4 col-lg-4">
-                            <select class='LEDPanelsStartCorner'>
+                            <select class='form-select LEDPanelsStartCorner'>
                                 <option value='0'>Top Left</option>
                                 <option value='1'>Bottom Left</option>
                             </select>
@@ -3180,7 +3180,7 @@
                         <div class="printSettingLabelCol col-md-2 col-lg-2"><b>Default Panel Color Order (C-Def):</b>
                         </div>
                         <div class="printSettingFieldCol col-md-4 col-lg-4">
-                            <select class='LEDPanelsColorOrder'>
+                            <select class='form-select LEDPanelsColorOrder'>
                                 <option value='RGB'>RGB</option>
                                 <option value='RBG'>RBG</option>
                                 <option value='GRB'>GRB</option>
@@ -3209,7 +3209,7 @@
                         <div class="printSettingLabelCol col-md-2 col-lg-2"><span
                                 class='LEDPanelsBrightnessLabel'><b>Brightness:</b></span></div>
                         <div class="printSettingFieldCol col-md-4 col-lg-4">
-                            <select class='LEDPanelsBrightness'>
+                            <select class='form-select LEDPanelsBrightness'>
                                 <?
                                 if ($settings['Platform'] == "Raspberry Pi") {
                                     for ($x = 100; $x >= 5; $x -= 5) {
@@ -3229,7 +3229,7 @@
                             <div class="printSettingLabelCol col-md-2 col-lg-2"><span
                                     class='LEDPanelsGPIOSlowdownLabel'><b>GPIO Slowdown:</b></span></div>
                             <div class="printSettingFieldCol col-md-4 col-lg-4">
-                                <select class='LEDPanelsGPIOSlowdown'>
+                                <select class='form-select LEDPanelsGPIOSlowdown'>
                                     <option value='0'>0 (Pi Zero and other single-core)</option>
                                     <option value='1' selected>1 (multi-core Pi)</option>
                                     <option value='2'>2 (slow panels)</option>
@@ -3275,7 +3275,7 @@
                         <div class="printSettingLabelCol col-md-2 col-lg-2"><span
                                 class='LEDPanelsColorDepthLabel'><b>Color Depth:</b></span></div>
                         <div class="printSettingFieldCol col-md-4 col-lg-4">
-                            <select class='LEDPanelsColorDepth'>
+                            <select class='form-select LEDPanelsColorDepth'>
                                 <? if ($settings['BeaglePlatform']) { ?>
                                     <option value='12'>12 Bit</option>
                                 <? } ?>
@@ -3301,7 +3301,7 @@
                                     class='LEDPanelsRowAddressTypeLabel'><b>Panel
                                         Row Address Type:</b></span></div>
                             <div class="printSettingFieldCol col-md-4 col-lg-4">
-                                <select class='LEDPanelsRowAddressType'>
+                                <select class='form-select LEDPanelsRowAddressType'>
                                     <option value='0' selected>Standard</option>
                                     <option value='1'>AB-Addressed Panels</option>
                                     <option value='2'>Direct Row Select</option>
@@ -3313,7 +3313,7 @@
                                 <div class="printSettingLabelCol col-md-2 col-lg-2"><span
                                         class='LEDPanelsRowAddressTypeLabel'><b>Panel Addressing Type:</b></span></div>
                                 <div class="printSettingFieldCol col-md-4 col-lg-4">
-                                    <select class="LEDPanelsRowAddressType" onchange="RowAddressTypeChanged();">
+                                    <select class="form-select LEDPanelsRowAddressType" onchange="RowAddressTypeChanged();">
                                         <option value='0' selected>Standard</option>
                                         <option value='2'>Direct Row Select</option>
                                         <?
@@ -3337,7 +3337,7 @@
                                         Panel
                                         Type:</b></span></div>
                             <div class="printSettingFieldCol col-md-4 col-lg-4">
-                                <select class='LEDPanelsType'>
+                                <select class='form-select LEDPanelsType'>
                                     <option value='0' selected>Standard</option>
                                     <option value='1'>FM6126A</option>
                                     <option value='2'>FM6127</option>
@@ -3399,7 +3399,8 @@
                                         <tr>
                                             <td>Color:</td>
                                             <td>
-                                                <select class='cpColorOrder' onChange='cpColorOrderChanged();'>
+                                                <select class='form-select cpColorOrder'
+                                                    onChange='cpColorOrderChanged();'>
                                                     <option value=''>Def</option>
                                                     <option value='RGB'>RGB</option>
                                                     <option value='RBG'>RBG</option>

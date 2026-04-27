@@ -3479,14 +3479,11 @@ function SetUniverseCount (input) {
 				startAddress;
 
 			if (!input) {
-				var pingBtn = document.getElementById('tblUniversesBody').rows[
-					UniverseCount
-				].querySelector('input.pingButton');
+				var pingBtn = document
+					.getElementById('tblUniversesBody')
+					.rows[UniverseCount].querySelector('input.pingButton');
 				if (pingBtn) {
-					pingBtn.setAttribute(
-						'onClick',
-						'PingE131IP(' + UniverseCount + ');'
-					);
+					pingBtn.setAttribute('onClick', 'PingE131IP(' + UniverseCount + ');');
 				}
 			}
 			updateUniverseEndChannel(
@@ -3701,7 +3698,7 @@ function populateUniverseData (data, reload, input) {
 			"<td><input class='txtDesc' type='text' size='24' maxlength='64' value='" +
 			desc +
 			"'/></td>";
-		bodyHTML += "<td><select class='universeType'";
+		bodyHTML += "<td><select class='form-select universeType'";
 
 		if (input) {
 			bodyHTML +=
@@ -3790,7 +3787,8 @@ function populateUniverseData (data, reload, input) {
 			"' value='" +
 			size.toString() +
 			"' onChange='updateUniverseEndChannel($(this).parent().parent());' onkeypress='this.onchange();' onpaste='this.onchange();' oninput='this.onchange();'></td>";
-		var priorityStyle = settings['uiLevel'] < 1 ? "style='display: none;'" : inputStyle;
+		var priorityStyle =
+			settings['uiLevel'] < 1 ? "style='display: none;'" : inputStyle;
 		bodyHTML +=
 			'<td ' +
 			priorityStyle +
@@ -3802,7 +3800,8 @@ function populateUniverseData (data, reload, input) {
 			bodyHTML += ' disabled';
 		}
 		bodyHTML += '/></td>';
-		var syncStyle = (input || settings['uiLevel'] < 1) ? "style='display: none;'" : inputStyle;
+		var syncStyle =
+			input || settings['uiLevel'] < 1 ? "style='display: none;'" : inputStyle;
 		bodyHTML +=
 			'<td ' +
 			syncStyle +
@@ -3935,8 +3934,9 @@ function DeleteUniverse (input) {
 			var universeType = document.getElementById(
 				'universeType[' + selectedIndex + ']'
 			).value;
-			document.getElementById('txtIP[' + selectedIndex + ']').disabled =
-				!(universeType == '1' || universeType == '3');
+			document.getElementById('txtIP[' + selectedIndex + ']').disabled = !(
+				universeType == '1' || universeType == '3'
+			);
 			updateUniverseEndChannel(
 				document.getElementById('tblUniversesBody').rows[selectedIndex]
 			);
@@ -3983,12 +3983,14 @@ function CloneUniverses (cloneNumber) {
 		}
 		// Per-clone overrides: each successive clone bumps the universe number
 		// and start channel by the source row's universe span.
-		document.getElementById('txtUniverse[' + i + ']').value = universe.toString();
+		document.getElementById('txtUniverse[' + i + ']').value =
+			universe.toString();
 		document.getElementById('txtStartAddress[' + i + ']').value =
 			startAddress.toString();
 
-		document.getElementById('txtIP[' + i + ']').disabled =
-			!(universeType == '1' || universeType == '3');
+		document.getElementById('txtIP[' + i + ']').disabled = !(
+			universeType == '1' || universeType == '3'
+		);
 		updateUniverseEndChannel(
 			document.getElementById('tblUniversesBody').rows[i]
 		);
@@ -4192,7 +4194,9 @@ function validateUniverseData () {
 
 		// sync universe (E1.31 only, 0 = disabled)
 		if (universeType == 0 || universeType == 1) {
-			var txtSyncUniverse = document.getElementById('txtSyncUniverse[' + i + ']');
+			var txtSyncUniverse = document.getElementById(
+				'txtSyncUniverse[' + i + ']'
+			);
 			if (txtSyncUniverse && !validateNumber(txtSyncUniverse, 0, 63999)) {
 				returnValue = false;
 			}
@@ -9286,7 +9290,8 @@ function checkForFppUpdate () {
 			FPP_UPDATE_STATE.branchUpgradeAvailable = data.branchUpgradeAvailable;
 			FPP_UPDATE_STATE.branchUpgradeTarget = data.branchUpgradeTarget;
 			FPP_UPDATE_STATE.branchUpgradeVersion = data.branchUpgradeVersion;
-			FPP_UPDATE_STATE.isMajorVersionUpgrade = data.isMajorVersionUpgrade || false;
+			FPP_UPDATE_STATE.isMajorVersionUpgrade =
+				data.isMajorVersionUpgrade || false;
 			FPP_UPDATE_STATE.commitUpdateAvailable = data.commitUpdateAvailable;
 			FPP_UPDATE_STATE.remoteCommit = data.remoteCommit;
 			FPP_UPDATE_STATE.currentBranch = data.currentBranch;
@@ -9332,16 +9337,24 @@ function checkForFppUpdate () {
 					});
 
 					// Update global state from legacy data
-					if (FPP_BRANCH != 'master' && FPP_BRANCH != latest_non_master && latest_non_master) {
+					if (
+						FPP_BRANCH != 'master' &&
+						FPP_BRANCH != latest_non_master &&
+						latest_non_master
+					) {
 						FPP_UPDATE_STATE.branchUpgradeAvailable = true;
 						FPP_UPDATE_STATE.branchUpgradeTarget = latest_non_master;
-						FPP_UPDATE_STATE.branchUpgradeVersion = latest_non_master.replace(/^v/, '');
+						FPP_UPDATE_STATE.branchUpgradeVersion = latest_non_master.replace(
+							/^v/,
+							''
+						);
 
 						// Check if this is a major version upgrade
 						var currentMatch = FPP_BRANCH.match(/^v?(\d+)/);
 						var targetMatch = latest_non_master.match(/^v?(\d+)/);
 						if (currentMatch && targetMatch) {
-							FPP_UPDATE_STATE.isMajorVersionUpgrade = parseInt(targetMatch[1]) > parseInt(currentMatch[1]);
+							FPP_UPDATE_STATE.isMajorVersionUpgrade =
+								parseInt(targetMatch[1]) > parseInt(currentMatch[1]);
 						}
 					}
 					if (remote_commit && !remote_commit.startsWith(FPP_LOCAL_COMMIT)) {
@@ -9356,7 +9369,9 @@ function checkForFppUpdate () {
 					$(document).trigger('fpp:updateStatusChanged', [FPP_UPDATE_STATE]);
 				})
 				.fail(function () {
-					console.log('Failed to check for updates. Assuming no internet access');
+					console.log(
+						'Failed to check for updates. Assuming no internet access'
+					);
 				});
 		});
 }
