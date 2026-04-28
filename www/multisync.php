@@ -1378,7 +1378,13 @@
                             if (data.advancedView.hasOwnProperty('Platform')) {
                                 $('#' + rowID + '_platform').html(data.advancedView.Platform);
                             }
-                            if (data.advancedView.hasOwnProperty('Variant') && (data.advancedView.Variant != '')) {
+                            // Prefer SubPlatform (verbose hardware model string, e.g.
+                            // "Raspberry Pi Zero 2 W Rev 1.0") over Variant (short label,
+                            // e.g. "PiZero 2") so the platform column keeps the detail
+                            // shown by the initial multiSyncSystems render. See issue #2614.
+                            if (data.advancedView.hasOwnProperty('SubPlatform') && (data.advancedView.SubPlatform != '')) {
+                                $('#' + rowID + '_variant').html(data.advancedView.SubPlatform);
+                            } else if (data.advancedView.hasOwnProperty('Variant') && (data.advancedView.Variant != '')) {
                                 $('#' + rowID + '_variant').html(data.advancedView.Variant);
                             }
 
@@ -1521,7 +1527,7 @@
                             }
                             u += "</table>";
 
-                            $('#advancedViewUtilization_' + rowID).html(u);
+                            $('#advancedViewUtilization_'             + rowID).html(u);
                             SetupToolTips();
                         }
                     });
@@ -1537,9 +1543,9 @@
 
         function ipLink(ip) {
             <? if ($settings['hideExternalURLs']) { ?>
-                return ip;
+                    return ip;
             <? } else { ?>
-                return "<a target='host_" + ip + "' href='" + wrapUrlWithProxy(ip, "/") + "' data-ip='" + ip + "'>" + ip + "</a>";
+                    return "<a target='host_" + ip + "' href='" + wrapUrlWithProxy(ip, "/") + "' data-ip='" + ip + "'>" + ip + "</a>";
             <? } ?>
         }
 
@@ -1691,12 +1697,12 @@
                         ipTxt = "<small>Select IPs for Unicast Sync</small><br>" + ipTxt + star;
 
                     <? if ($settings['hideExternalURLs']) { ?>
-                        var hostTxt = hostname;
+                            var hostTxt = hostname;
                     <? } else { ?>
-                        var hostTxt = data[i].local ? hostname : "<a target='host_" + data[i].address + "' href='" + wrapUrlWithProxy(data[i].address, "/") + "'>" + hostname + "</a>";
-                        if (data[i].address == hostname) {
-                            hostTxt = hostname;
-                        }
+                            var hostTxt = data[i].local ? hostname : "<a target='host_" + data[i].address + "' href='" + wrapUrlWithProxy(data[i].address, "/") + "'>" + hostname + "</a>";
+                            if (data[i].address == hostname) {
+                                hostTxt = hostname;
+                            }
                     <? } ?>
 
 
@@ -1807,11 +1813,11 @@
                 <?php
                 if ($uiLevel >= 1) {
                     ?>
-                    var inp = document.getElementById("MultiSyncExtraRemotes");
-                    if (inp) {
-                        $('#MultiSyncExtraRemotes').val(extras);
-                    }
-                    <?
+                        var inp = document.getElementById("MultiSyncExtraRemotes");
+                        if (inp) {
+                            $('#MultiSyncExtraRemotes').val(extras);
+                        }
+                        <?
                 }
                 ?>
                 SetSetting("MultiSyncExtraRemotes", extras, 0, 0);
@@ -2164,12 +2170,12 @@
 
         function wrapUrlWithProxy(ip, path) {
             <? if (!$settings['hideExternalURLs']) { ?>
-                if (isProxied(ip)) {
-                    return 'proxy/' + ip + path;
-                }
-                return 'http://' + ip + path;
+                    if (isProxied(ip)) {
+                        return 'proxy/' + ip + path;
+                    }
+                    return 'http://' + ip + path;
             <? } else { ?>
-                return "";
+                    return "";
             <? } ?>
         }
 
@@ -2623,14 +2629,14 @@
         }
         function ipOrHostnameFromRowID(id) {
             <? if ($_SERVER['SERVER_NAME'] != $_SERVER['SERVER_ADDR']) { ?>
-                // Hitting the FPP instance via Hostname, not Ip address.  Thus, we need to use
-                // hostnames for the remotes as well or CORS will trigger
-                var ip = $('#' + id + "_hostname").html();
-                if (ip == "") {
-                    ip = $('#' + id).attr('data-ip');
-                }
+                    // Hitting the FPP instance via Hostname, not Ip address.  Thus, we need to use
+                    // hostnames for the remotes as well or CORS will trigger
+                    var ip = $('#' + id + "_hostname").html();
+                    if (ip == "") {
+                        ip = $('#' + id).attr('data-ip');
+                    }
             <? } else { ?>
-                var ip = $('#' + id).attr('data-ip');
+                    var ip = $('#' + id).attr('data-ip');
             <? } ?>
             return ip;
         }
@@ -3374,7 +3380,7 @@
                                     <option value='remoteMode'>Set to Remote</option>
                                     <option value='addProxy'>Add as Proxy</option>
                                     <? if ($uiLevel > 0) { ?>
-                                        <option value='changeBranch'>Change Branch</option>
+                                            <option value='changeBranch'>Change Branch</option>
                                     <? } ?>
                                 </select>
                                 <button id='performActionButton' type='button' class='buttons btn-success' value='Run'
@@ -3402,14 +3408,14 @@
                                         $defaultRemote = 'origin';
                                     }
                                     ?>
-                                    Remote:
-                                    <select id="branchRemoteSelect" onChange="reloadBranchSelect();">
-                                        <option value="origin" <?= $defaultRemote === 'origin' ? ' selected' : '' ?>>FPP
-                                            Releases (origin)</option>
-                                        <option value="newfeatures" <?= $defaultRemote === 'newfeatures' ? ' selected' : '' ?>>
-                                            FPP New Feature Testing (newfeatures)</option>
-                                    </select>
-                                    &nbsp;
+                                        Remote:
+                                        <select id="branchRemoteSelect" onChange="reloadBranchSelect();">
+                                            <option value="origin" <?= $defaultRemote === 'origin' ? ' selected' : '' ?>>FPP
+                                                Releases (origin)</option>
+                                            <option value="newfeatures" <?= $defaultRemote === 'newfeatures' ? ' selected' : '' ?>>
+                                                FPP New Feature Testing (newfeatures)</option>
+                                        </select>
+                                        &nbsp;
                                 <? } ?>
                                 Change to branch:
                                 <select id="branchSelect">
