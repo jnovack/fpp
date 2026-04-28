@@ -18,6 +18,38 @@ for ($i = 1; $i < $argc; $i++) {
 
 $fppcapedetectFlags = $resetDefaults ? " -force-defaults" : "";
 
+// Walk the EEPROM data sections and locate the signature section (code 99)
+// and the end-of-data terminator.  Returns:
+//   sig_offset: byte offset of the code 99 length tag, or null if no signature
+//   end_offset: byte offset right after the trailing 0-length terminator
+function find_eeprom_offsets($data)
+{
+    $dataLen = strlen($data);
+    if ($dataLen < 64) {
+        return ['sig_offset' => null, 'end_offset' => $dataLen];
+    }
+
+    $pos = 58; // skip fixed header (format + capeName + capeVersion + capeSerial)
+    $sigOffset = null;
+    while ($pos + 8 <= $dataLen) {
+        $len = intval(substr($data, $pos, 6));
+        if ($len == 0) {
+            return ['sig_offset' => $sigOffset, 'end_offset' => $pos + 6];
+        }
+        $flag = intval(substr($data, $pos + 6, 2));
+        if ($sigOffset === null && $flag == 99) {
+            $sigOffset = $pos;
+        }
+        $advance = 8 + $len;
+        if ($flag < 50) {
+            // file sections include a 64-byte filename in addition to $len bytes of data
+            $advance += 64;
+        }
+        $pos += $advance;
+    }
+
+    return ['sig_offset' => $sigOffset, 'end_offset' => $dataLen];
+}
 
 $eepromFile = "/sys/bus/i2c/devices/1-0050/eeprom";
 if (file_exists("/home/fpp/media/tmp/eeprom_location.txt")) {
@@ -171,6 +203,44 @@ fwrite($olddata, pack("a6", "0"));
 
 fclose($newdata);
 fclose($olddata);
+
+// Issue #1314: If the previous EEPROM was signed and the new EEPROM image does
+// not contain its own signature, inherit the signature section from the
+// previous EEPROM so that the user does not need to re-sign their cape after
+// every EEPROM upgrade.  The signature only covers the bytes within the signed
+// section itself, so splicing those bytes verbatim into the new EEPROM keeps
+// the signature cryptographically valid.
+if (file_exists($backupFile)) {
+    $origData = file_get_contents($backupFile);
+    if ($origData !== false && strlen($origData) >= 64 && substr($origData, 0, 5) === 'FPP02') {
+        $origInfo = find_eeprom_offsets($origData);
+        if ($origInfo['sig_offset'] !== null) {
+            $upgradedData = file_get_contents($eepromFile);
+            if ($upgradedData !== false) {
+                $upgInfo = find_eeprom_offsets($upgradedData);
+                if ($upgInfo['sig_offset'] === null && $upgInfo['end_offset'] >= 6) {
+                    // Splice in the previous signature section in place of the
+                    // upgraded EEPROM's terminator (which sits at end_offset - 6).
+                    $insertPos = $upgInfo['end_offset'] - 6;
+                    $signedTail = substr(
+                        $origData,
+                        $origInfo['sig_offset'],
+                        $origInfo['end_offset'] - $origInfo['sig_offset']
+                    );
+                    $sfh = fopen($eepromFile, 'r+b');
+                    if ($sfh) {
+                        set_file_buffer($sfh, 32768);
+                        fseek($sfh, $insertPos, SEEK_SET);
+                        fwrite($sfh, $signedTail);
+                        fflush($sfh);
+                        fclose($sfh);
+                        echo "Preserved signature section from previous EEPROM.\n";
+                    }
+                }
+            }
+        }
+    }
+}
 
 echo "Upgrade Complete\n\n";
 echo "======================\n";
