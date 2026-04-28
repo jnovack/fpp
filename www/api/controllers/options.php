@@ -144,6 +144,9 @@ function GetOptions_AudioOutputDevice($fulllist = false)
                 }
             }
 
+            // User-defined sound card aliases (issue #2586)
+            $audioCardAliases = LoadAudioCardAliases();
+
             foreach ($output as $card) {
                 $values = explode(':', $card);
 
@@ -167,6 +170,9 @@ function GetOptions_AudioOutputDevice($fulllist = false)
                     } else if ($cardName == "CD002") {
                         $displayName = $cardName . " (FM Transmitter)";
                     }
+                    // Apply user-defined alias (issue #2586) keyed by ALSA card ID
+                    $thisCardId = isset($cardIdMap[$cardNum]) ? $cardIdMap[$cardNum] : '';
+                    $displayName = ApplyAudioCardAlias($thisCardId, $displayName, $audioCardAliases);
                     $AlsaCards[$displayName] = $cardNum;
                 }
             }
@@ -232,6 +238,9 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
                     $descCounts[$d] = isset($descCounts[$d]) ? $descCounts[$d] + 1 : 1;
                 }
 
+                // User-defined sound card aliases (issue #2586)
+                $aliases = LoadAudioCardAliases();
+
                 // Build labels: always append nick (ALSA card ID) so users
                 // can identify identical hardware across different naming
                 // sources (WirePlumber SPA database vs USB product string).
@@ -240,6 +249,11 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
                     $nick = $src['nodeNick'];
                     if ($nick && strpos($label, $nick) === false) {
                         $label .= ' (' . $nick . ')';
+                    }
+                    // Apply user-defined alias (issue #2586). The PipeWire
+                    // node.nick is the ALSA card ID, which is our alias key.
+                    if ($nick) {
+                        $label = ApplyAudioCardAlias($nick, $label, $aliases);
                     }
                     $AlsaCards[$label] = $src['nodeName'];
                 }
@@ -272,6 +286,16 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
     if ($return_val) {
         error_log("Error getting alsa cards for input!");
     } else {
+        // User-defined sound card aliases (issue #2586) keyed by ALSA card ID
+        $audioCardAliases = LoadAudioCardAliases();
+        $cardIdMap = array(); // cardNum -> ALSA card ID
+        $cardsFile = @file_get_contents('/proc/asound/cards');
+        if ($cardsFile && preg_match_all('/^\s*(\d+)\s*\[([^\]]+)\]/m', $cardsFile, $cm, PREG_SET_ORDER)) {
+            foreach ($cm as $row) {
+                $cardIdMap[$row[1]] = trim($row[2]);
+            }
+        }
+
         foreach ($output as $card) {
             if ($fulllist) {
                 $AlsaCards[] = $card;
@@ -279,6 +303,8 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
                 $values = explode(':', $card);
                 $cardNum = $values[0];
                 $cardName = $values[1];
+                $thisCardId = isset($cardIdMap[$cardNum]) ? $cardIdMap[$cardNum] : '';
+                $cardName = ApplyAudioCardAlias($thisCardId, $cardName, $audioCardAliases);
                 if (isset($AlsaCards[$cardName])) {
                     // Duplicate name — rename the existing entry to include its card number
                     $existingNum = $AlsaCards[$cardName];

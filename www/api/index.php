@@ -103,6 +103,9 @@ dispatch_get('/network/wifi/strength', 'network_wifi_strength');
 
 dispatch_get('/options/:SettingName', 'GetOptions');
 
+dispatch_get('/audio/cardaliases', 'GetAudioCardAliases');
+dispatch_post('/audio/cardaliases', 'SaveAudioCardAliases');
+
 dispatch_get('/pipewire/audio/groups', 'GetPipeWireAudioGroups');
 dispatch_post('/pipewire/audio/groups', 'SavePipeWireAudioGroups');
 dispatch_post('/pipewire/audio/groups/apply', 'ApplyPipeWireAudioGroups');

@@ -839,6 +839,8 @@
                 var sel = (card.cardId === selectedCardId) ? ' selected' : '';
                 var label = EscapeHtml(card.cardName) + ' [' + EscapeHtml(card.cardId) + ']';
                 if (card.byPath) label += ' (' + EscapeHtml(card.byPath) + ')';
+                // Prepend user-defined alias (issue #2586) if set.
+                if (card.alias) label = EscapeHtml(card.alias) + ' — ' + label;
                 html += '<option value="' + EscapeAttr(card.cardId) + '"' + sel + '>' + label + '</option>';
             }
             if (hasAlsa && hasAES67) html += '</optgroup>';

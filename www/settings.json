@@ -135,7 +135,8 @@
 				"WLEDAudioSyncPort",
 				"disableIPAnnouncement",
 				"disableAudioVolumeSlider",
-				"globalMediaOffset"
+				"globalMediaOffset",
+				"AudioCardAliases"
 			]
 		},
 		"alsaHardwareAudio": {
@@ -758,6 +759,19 @@
 				"AudioMixerDevice"
 			],
 			"optionsURL": "api/settings/AudioOutput/options"
+		},
+		"AudioCardAliases": {
+			"name": "AudioCardAliases",
+			"description": "Sound Card Aliases",
+			"tip": "Assign friendly names to your sound cards (e.g. 'Transmitter', 'Amplifier') so they are easier to identify in audio device dropdowns. Aliases apply to both Hardware Direct (ALSA) and PipeWire backends.",
+			"type": "modal",
+			"modalUrl": "audio-card-aliases.php?modal=1",
+			"icon": "fas fa-tag",
+			"buttonText": "Configure Sound Card Aliases",
+			"modalTitle": "Sound Card Aliases",
+			"platforms": [
+				"!MacOS"
+			]
 		},
 		"MediaBackend": {
 			"name": "MediaBackend",

@@ -532,6 +532,9 @@ function GetPipeWireAudioCards()
 
     $cards = array();
 
+    // User-defined sound card aliases (issue #2586) keyed by ALSA card ID
+    $audioCardAliases = LoadAudioCardAliases();
+
     // Query running PipeWire sinks to map to actual node names
     $pwSinkNames = array(); // substring -> full node name
     $pwEnv = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
@@ -803,7 +806,8 @@ function GetPipeWireAudioCards()
                         "alsaPath" => "hw:" . $cardNum,
                         "byPath" => $byPath,
                         "byId" => $byId,
-                        "pwNodeName" => $pwNodeName
+                        "pwNodeName" => $pwNodeName,
+                        "alias" => isset($audioCardAliases[$cardId]) ? $audioCardAliases[$cardId] : ""
                     );
                 }
             }
