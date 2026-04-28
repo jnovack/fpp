@@ -5327,10 +5327,23 @@ function ShowMultiSyncStats (data) {
 	var now = new Date().getTime();
 	var rows = [];
 
-	for (var i = 0; i < data.systems.length; i++) {
-		var s = data.systems[i];
+	// Sort so the syncing player (master) appears at the top of the list
+	var systems = data.systems.slice();
+	if (data.masterIP) {
+		systems.sort(function (a, b) {
+			if (a.sourceIP === data.masterIP && b.sourceIP !== data.masterIP)
+				return -1;
+			if (b.sourceIP === data.masterIP && a.sourceIP !== data.masterIP)
+				return 1;
+			return 0;
+		});
+	}
+
+	for (var i = 0; i < systems.length; i++) {
+		var s = systems[i];
 		var hostText = s.sourceIP;
 		if (s.hostname != '') hostText += '&nbsp;(' + s.hostname + ')';
+		if (s.sourceIP === data.masterIP) hostText += ' <b>(Player)</b>';
 
 		var ms = now - new Date(s.lastReceiveTime).getTime();
 		rows.push({
