@@ -2965,7 +2965,20 @@
 
             var ip = ipFromRowID(rowID);
             var branch = $("#branchSelect").val();
-            StreamURL('changeRemoteBranch.php?branch=' + branch + '&ip=' + ip, rowID + '_logText', 'actionDone', 'actionFailed');
+            var remote = $("#branchRemoteSelect").length ? $("#branchRemoteSelect").val() : 'origin';
+            StreamURL('changeRemoteBranch.php?branch=' + encodeURIComponent(branch) + '&remote=' + encodeURIComponent(remote) + '&ip=' + ip, rowID + '_logText', 'actionDone', 'actionFailed');
+        }
+        function reloadBranchSelect() {
+            var remote = $("#branchRemoteSelect").length ? $("#branchRemoteSelect").val() : 'origin';
+            $.get("api/git/branches?remote=" + encodeURIComponent(remote), function (data) {
+                $('#branchSelect').empty();
+                $.each(data, function (i, item) {
+                    $('#branchSelect').append($('<option>', {
+                        value: item,
+                        text: item
+                    }));
+                });
+            });
         }
         function changeBranchSelectedSystems() {
             $('input.remoteCheckbox').each(function () {
@@ -3382,7 +3395,23 @@
                                 can be enabled by going to the System tab on the Settings page of the remote system.</b>
                         </div>
                         <div id='changeBranchOptions' class='actionOptions'>
-                            <h2>Change to branch:
+                            <h2>
+                                <? if ($uiLevel > 0) {
+                                    $defaultRemote = isset($settings['gitRemote']) ? $settings['gitRemote'] : 'origin';
+                                    if (!preg_match('/^[a-zA-Z0-9_-]+$/', $defaultRemote)) {
+                                        $defaultRemote = 'origin';
+                                    }
+                                    ?>
+                                    Remote:
+                                    <select id="branchRemoteSelect" onChange="reloadBranchSelect();">
+                                        <option value="origin" <?= $defaultRemote === 'origin' ? ' selected' : '' ?>>FPP
+                                            Releases (origin)</option>
+                                        <option value="newfeatures" <?= $defaultRemote === 'newfeatures' ? ' selected' : '' ?>>
+                                            FPP New Feature Testing (newfeatures)</option>
+                                    </select>
+                                    &nbsp;
+                                <? } ?>
+                                Change to branch:
                                 <select id="branchSelect">
                                 </select>
                             </h2>
@@ -3524,6 +3553,11 @@
                         text: item
                     }));
                 });
+            });
+
+            // Reload branch list when remote selection changes (dev UI mode)
+            $('#branchRemoteSelect').on('change', function () {
+                reloadBranchSelect();
             });
 
             var $table = $('#fppSystemsTable');

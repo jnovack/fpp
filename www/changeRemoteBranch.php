@@ -17,7 +17,13 @@ if (!isset($_GET['branch'])) {
 }
 $branch = $_GET['branch'];
 
-echo "Changing branch @" . htmlspecialchars($ip) . " to " . $branch . "\n";
+$remote = isset($_GET['remote']) ? $_GET['remote'] : 'origin';
+// Validate remote name to prevent injection
+if (!preg_match('/^[a-zA-Z0-9_-]+$/', $remote)) {
+    $remote = 'origin';
+}
+
+echo "Changing branch @" . htmlspecialchars($ip) . " to " . $branch . " (remote: " . $remote . ")\n";
 
 $curl = curl_init('http://' . $ip . '/api/system/fppd/stop');
 curl_setopt($curl, CURLOPT_FAILONERROR, true);
@@ -27,7 +33,7 @@ curl_exec($curl);
 curl_close($curl);
 
 
-$curl = curl_init('http://' . $ip . '/changebranch.php?branch=' . $branch);
+$curl = curl_init('http://' . $ip . '/changebranch.php?branch=' . urlencode($branch) . '&remote=' . urlencode($remote));
 curl_setopt($curl, CURLOPT_FAILONERROR, true);
 curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
 curl_setopt($curl, CURLOPT_CONNECTTIMEOUT_MS, 200);
