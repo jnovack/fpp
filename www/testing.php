@@ -599,6 +599,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		}
 
 		function RebuildDMXSliders() {
+			DMXSineStop();
 			var startCh = parseInt($('#dmxStartChannel').val());
 			var count = parseInt($('#dmxChannelCount').val());
 			var maxCh = <? echo FPPD_MAX_CHANNELS; ?>;
@@ -692,12 +693,65 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		}
 
 		function DMXSetAll(v) {
+			DMXSineStop();
 			for (var i = 0; i < dmxValues.length; i++) {
 				dmxValues[i] = v;
 			}
 			$('.dmxSlider').val(v);
 			$('.dmxValueInput').val(v);
 			SetDMXTestMode();
+		}
+
+		var dmxSineTimer = null;
+		var dmxSineStart = 0;
+		const DMX_SINE_FRAME_MS = 50; // 20 fps
+
+		function DMXSineTick() {
+			var count = dmxValues.length;
+			if (!count) return;
+
+			var speed = parseFloat($('#dmxSineSpeed').val());
+			if (isNaN(speed) || speed <= 0) speed = 0.5;
+			var spread = parseFloat($('#dmxSineSpread').val());
+			if (isNaN(spread) || spread < 0) spread = 1;
+
+			var t = (performance.now() - dmxSineStart) / 1000.0;
+			var phase = 2 * Math.PI * speed * t;
+			// channelStep: how many radians of phase shift per channel
+			var channelStep = (count > 1) ? (2 * Math.PI * spread / count) : 0;
+
+			for (var i = 0; i < count; i++) {
+				var s = Math.sin(phase + i * channelStep);
+				var v = Math.round((s + 1) * 127.5); // 0..255
+				if (v < 0) v = 0;
+				if (v > 255) v = 255;
+				dmxValues[i] = v;
+				$('.dmxSlider[data-idx="' + i + '"]').val(v);
+				$('.dmxValueInput[data-idx="' + i + '"]').val(v);
+			}
+			SetDMXTestMode();
+		}
+
+		function DMXSineStart() {
+			if (dmxSineTimer) return;
+			// Auto-enable test mode so the sine wave is actually output
+			if (!$('#dmxTestEnabled').is(':checked')) {
+				$('#dmxTestEnabled').prop('checked', true);
+			}
+			dmxSineStart = performance.now();
+			dmxSineTimer = setInterval(DMXSineTick, DMX_SINE_FRAME_MS);
+			$('#dmxSineStartBtn').prop('disabled', true);
+			$('#dmxSineStopBtn').prop('disabled', false);
+			DMXSineTick();
+		}
+
+		function DMXSineStop() {
+			if (dmxSineTimer) {
+				clearInterval(dmxSineTimer);
+				dmxSineTimer = null;
+			}
+			$('#dmxSineStartBtn').prop('disabled', false);
+			$('#dmxSineStopBtn').prop('disabled', true);
 		}
 
 		function SetDMXTestMode() {
@@ -763,6 +817,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		}
 
 		function DisableDMXTestMode() {
+			DMXSineStop();
 			$('#dmxTestEnabled').prop('checked', false);
 			if (dmxLastEnabled) {
 				SetDMXTestMode();
@@ -1425,6 +1480,26 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 													onClick='DMXSetAll(128);'>
 												<input type='button' class='buttons' value='All 255'
 													onClick='DMXSetAll(255);'>
+											</div>
+											<hr class="my-2">
+											<div><b>Sine Wave</b></div>
+											<div class="form-group mt-1">
+												<label for='dmxSineSpeed'>Speed (cycles/sec):</label>
+												<input class="form-control" type='number' min='0.1' max='10'
+													step='0.1' value='0.5' id='dmxSineSpeed'>
+											</div>
+											<div class="form-group mt-1">
+												<label for='dmxSineSpread'>Channel Spread:</label>
+												<input class="form-control" type='number' min='0' max='10' step='0.1'
+													value='1' id='dmxSineSpread'>
+												<small class="form-text text-muted">0 = all channels in phase; higher
+													spreads the wave across channels</small>
+											</div>
+											<div class="mt-2">
+												<input type='button' class='buttons' value='Start Sine'
+													id='dmxSineStartBtn' onClick='DMXSineStart();'>
+												<input type='button' class='buttons' value='Stop Sine'
+													id='dmxSineStopBtn' onClick='DMXSineStop();' disabled>
 											</div>
 										</div>
 									</div>
