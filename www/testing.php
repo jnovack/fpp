@@ -94,7 +94,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 
 </head>
 
-<body onunload='DisableTestMode();'>
+<body onunload='DisableTestMode();DisableDMXTestMode();'>
 
 	<script type="text/javascript">
 		if (!window.console) console = { log: function () { } };
@@ -580,6 +580,194 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 			$('#testModeColorBText').html(rgb.b);
 			$('.color-box').colpickSetColor($.colpick.rgbToHex(rgb));
 		}
+
+		/////////////////////////////////////////////////////////////////////////////
+		/////////////////////////////////////////////////////////////////////////////
+		// DMX Tester Functions
+		/////////////////////////////////////////////////////////////////////////////
+		/////////////////////////////////////////////////////////////////////////////
+		var dmxValues = [];
+		var dmxLastEnabled = 0;
+		const DMX_CHANNELS_PER_TAB = 16;
+		const DMX_STATIC_CYCLE_MS = 86400000; // ~24h, prevents visible cycling
+
+		function dmxToHex(v) {
+			v = parseInt(v);
+			if (isNaN(v) || v < 0) v = 0;
+			if (v > 255) v = 255;
+			return ('00' + v.toString(16).toUpperCase()).slice(-2);
+		}
+
+		function RebuildDMXSliders() {
+			var startCh = parseInt($('#dmxStartChannel').val());
+			var count = parseInt($('#dmxChannelCount').val());
+			var maxCh = <? echo FPPD_MAX_CHANNELS; ?>;
+
+			if (isNaN(startCh) || startCh < 1) startCh = 1;
+			if (startCh > maxCh) startCh = maxCh;
+			if (isNaN(count) || count < 1) count = 1;
+			if (count > 512) count = 512;
+			if (startCh + count - 1 > maxCh) count = maxCh - startCh + 1;
+
+			$('#dmxStartChannel').val(startCh);
+			$('#dmxChannelCount').val(count);
+
+			// Preserve existing slider values when rebuilding
+			var prev = dmxValues.slice();
+			dmxValues = [];
+			for (var i = 0; i < count; i++) {
+				dmxValues.push(i < prev.length ? prev[i] : 0);
+			}
+
+			var $nav = $('#dmxSliderTabsNav');
+			var $content = $('#dmxSliderTabsContent');
+			$nav.empty();
+			$content.empty();
+
+			var numTabs = Math.ceil(count / DMX_CHANNELS_PER_TAB);
+			for (var t = 0; t < numTabs; t++) {
+				var first = t * DMX_CHANNELS_PER_TAB;
+				var last = Math.min(first + DMX_CHANNELS_PER_TAB, count) - 1;
+				var firstCh = startCh + first;
+				var lastCh = startCh + last;
+				var tabId = 'dmxSliderTab-' + t;
+				var navId = 'dmxSliderTabNav-' + t;
+				var activeNav = (t === 0) ? ' active' : '';
+				var activePane = (t === 0) ? ' show active' : '';
+
+				$nav.append(
+					'<li class="nav-item">' +
+					'<a class="nav-link' + activeNav + '" id="' + navId + '" data-bs-toggle="tab" ' +
+					'data-bs-target="#' + tabId + '" href="#' + tabId + '" role="tab" ' +
+					'aria-controls="' + tabId + '" aria-selected="' + (t === 0 ? 'true' : 'false') + '">' +
+					'Ch ' + firstCh + '-' + lastCh +
+					'</a></li>'
+				);
+
+				var paneHtml = '<div class="tab-pane fade' + activePane + '" id="' + tabId +
+					'" role="tabpanel" aria-labelledby="' + navId + '">' +
+					'<div class="dmxSliderGrid">';
+				for (var i = first; i <= last; i++) {
+					var ch = startCh + i;
+					paneHtml +=
+						'<div class="dmxChannelBox">' +
+						'<div class="dmxChannelLabel"><b>Ch ' + ch + '</b></div>' +
+						'<div class="dmxSliderWrapper">' +
+						'<input type="range" min="0" max="255" step="1" ' +
+						'value="' + dmxValues[i] + '" ' +
+						'class="dmxSlider" data-idx="' + i + '">' +
+						'</div>' +
+						'<div><input type="number" min="0" max="255" step="1" ' +
+						'value="' + dmxValues[i] + '" ' +
+						'class="form-control form-control-sm dmxValueInput" data-idx="' + i + '"></div>' +
+						'</div>';
+				}
+				paneHtml += '</div></div>';
+				$content.append(paneHtml);
+			}
+
+			// Wire up events
+			$('.dmxSlider').on('input', function () {
+				var idx = parseInt($(this).attr('data-idx'));
+				var v = parseInt($(this).val());
+				dmxValues[idx] = v;
+				$('.dmxValueInput[data-idx="' + idx + '"]').val(v);
+			}).on('change', function () {
+				var idx = parseInt($(this).attr('data-idx'));
+				dmxValues[idx] = parseInt($(this).val());
+				SetDMXTestMode();
+			});
+			$('.dmxValueInput').on('change', function () {
+				var idx = parseInt($(this).attr('data-idx'));
+				var v = parseInt($(this).val());
+				if (isNaN(v) || v < 0) v = 0;
+				if (v > 255) v = 255;
+				$(this).val(v);
+				dmxValues[idx] = v;
+				$('.dmxSlider[data-idx="' + idx + '"]').val(v);
+				SetDMXTestMode();
+			});
+
+			SetDMXTestMode();
+		}
+
+		function DMXSetAll(v) {
+			for (var i = 0; i < dmxValues.length; i++) {
+				dmxValues[i] = v;
+			}
+			$('.dmxSlider').val(v);
+			$('.dmxValueInput').val(v);
+			SetDMXTestMode();
+		}
+
+		function SetDMXTestMode() {
+			var enabled = $('#dmxTestEnabled').is(':checked') ? 1 : 0;
+			var startCh = parseInt($('#dmxStartChannel').val());
+			var count = dmxValues.length;
+
+			if (!enabled && !dmxLastEnabled) {
+				return;
+			}
+
+			var data;
+			if (enabled && count > 0) {
+				// Disable the channel-test page's test if it was running so we don't
+				// fight over channel ownership
+				if (lastEnabledState) {
+					$('#testModeEnabled').prop('checked', false);
+					lastEnabledState = 0;
+				}
+
+				var pattern = '';
+				for (var i = 0; i < count; i++) {
+					pattern += dmxToHex(dmxValues[i]);
+				}
+				// Pad to a multiple of 6 hex chars (RGB triplet) so the pattern parser
+				// doesn't append zeros that would alter our channel count.
+				while ((pattern.length % 6) !== 0) {
+					pattern += '00';
+				}
+
+				var endCh = startCh + count - 1;
+				// Ensure channel range is a multiple of 3 to align with the pattern's
+				// triplet-based padding above.
+				while (((endCh - startCh + 1) % 3) !== 0) {
+					endCh++;
+				}
+
+				data = {
+					"command": "Test Start",
+					"multisyncCommand": $('#dmxMultisyncEnabled').is(':checked'),
+					"multisyncHosts": "",
+					"args": [
+						String(DMX_STATIC_CYCLE_MS),
+						"Custom Chase",
+						startCh + "-" + endCh,
+						pattern
+					]
+				};
+			} else {
+				data = {
+					"command": "Test Stop",
+					"multisyncCommand": $('#dmxMultisyncEnabled').is(':checked'),
+					"multisyncHosts": "",
+					"args": []
+				};
+			}
+
+			$.post("api/command", JSON.stringify(data)).fail(function () {
+				DialogError("Failed to set DMX Test Mode", "Setup failed");
+			});
+
+			dmxLastEnabled = enabled;
+		}
+
+		function DisableDMXTestMode() {
+			$('#dmxTestEnabled').prop('checked', false);
+			if (dmxLastEnabled) {
+				SetDMXTestMode();
+			}
+		}
 		$(document).ready(function () {
 
 			$.ajax({
@@ -730,6 +918,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 				.css('background-color', '#ff00ff');
 
 			GetTestMode();
+			RebuildDMXSliders();
 		});
 
 	</script>
@@ -758,6 +947,54 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		#testModeColorB::-moz-range-thumb {
 			background-color: #0000FF;
 		}
+
+		.dmxSliderGrid {
+			margin-top: 10px;
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+		}
+
+		.dmxChannelBox {
+			flex: 0 0 auto;
+			width: 90px;
+			text-align: center;
+			padding: 10px 6px;
+			border: 1px solid rgba(128, 128, 128, 0.35);
+			border-radius: 6px;
+			background-color: rgba(0, 0, 0, 0.04);
+			box-sizing: border-box;
+		}
+
+		.dmxChannelLabel {
+			margin-bottom: 6px;
+			font-size: 0.9em;
+		}
+
+		.dmxSliderWrapper {
+			position: relative;
+			width: 100%;
+			height: 160px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			overflow: hidden;
+		}
+
+		.dmxSlider {
+			width: 140px;
+			height: 24px;
+			padding: 0;
+			margin: 0;
+			transform: rotate(-90deg);
+			transform-origin: center center;
+		}
+
+		.dmxValueInput {
+			width: 70px;
+			margin: 8px auto 0 auto;
+			text-align: center;
+		}
 	</style>
 
 	<div id="bodyWrapper">
@@ -777,6 +1014,12 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 									data-bs-target="#tab-channels" href="#tab-channels" role="tab"
 									aria-controls="tab-channels" aria-selected="true">
 									Channel Testing
+								</a>
+							</li>
+							<li class="nav-item">
+								<a class="nav-link" id="tab-dmx-tab" data-bs-toggle="tab" data-bs-target="#tab-dmx"
+									href="#tab-dmx" role="tab" aria-controls="tab-dmx" aria-selected="false">
+									DMX Tester
 								</a>
 							</li>
 							<?php if (isset($settings['fppMode']) && ($settings['fppMode'] == 'player')) { ?>
@@ -1144,6 +1387,56 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 
 
 
+							</div>
+							<div id='tab-dmx' class="tab-pane fade" role="tabpanel" aria-labelledby="tab-dmx-tab">
+								<div class="row">
+									<div class="col-md-3">
+										<div class="backdrop-dark">
+											<label for="dmxTestEnabled" class="mb-0 d-block">
+												<div><b>Enable Test Mode:</b>&nbsp;<input type='checkbox' class="ms-1"
+														id='dmxTestEnabled' onClick='SetDMXTestMode();'></div>
+												<div><b>Multisync:</b>&nbsp;<input type='checkbox' class="ms-1"
+														id='dmxMultisyncEnabled' onClick='SetDMXTestMode();'></div>
+											</label>
+										</div>
+										<div class="backdrop-dark mt-3">
+											<div class="form-group">
+												<label for='dmxStartChannel'><b>Start Channel:</b></label>
+												<input class="form-control" type='number' min='1'
+													max='<? echo FPPD_MAX_CHANNELS; ?>' value='1' id='dmxStartChannel'
+													onChange='RebuildDMXSliders();'>
+											</div>
+											<div class="form-group mt-2">
+												<label for='dmxChannelCount'><b>Number of Channels:</b></label>
+												<input class="form-control" type='number' min='1' max='512' value='16'
+													id='dmxChannelCount' onChange='RebuildDMXSliders();'>
+												<small class="form-text text-muted">Channels are grouped into tabs of
+													16</small>
+											</div>
+											<div class="mt-3">
+												<input type='button' class='buttons' value='All 0'
+													onClick='DMXSetAll(0);'>
+												<input type='button' class='buttons' value='All 128'
+													onClick='DMXSetAll(128);'>
+												<input type='button' class='buttons' value='All 255'
+													onClick='DMXSetAll(255);'>
+											</div>
+										</div>
+									</div>
+									<div class="col-md-9">
+										<h2>DMX Channel Tester</h2>
+										<div class="callout callout-primary">
+											<p><b>Note:</b> Use this tester to control individual DMX channels for
+												troubleshooting moving heads, dumb RGB fixtures, fog machines, and
+												other DMX devices. Adjust each slider (0-255) to set the value for that
+												channel. Channel numbers shown are absolute FPP channel numbers
+												starting at the configured Start Channel.</p>
+										</div>
+										<ul class="nav nav-pills pageContent-tabs" id="dmxSliderTabsNav" role="tablist">
+										</ul>
+										<div class="tab-content" id="dmxSliderTabsContent"></div>
+									</div>
+								</div>
 							</div>
 							<div id='tab-sequence' class="tab-pane fade" role="tabpanel"
 								aria-labelledby="interface-settings-tab">
