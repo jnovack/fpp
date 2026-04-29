@@ -974,19 +974,21 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		.dmxSliderWrapper {
 			position: relative;
 			width: 100%;
-			height: 160px;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			overflow: hidden;
+			height: 240px;
+			display: block;
+			overflow: visible;
 		}
 
-		.dmxSlider {
-			width: 140px;
+		.dmxSlider.dmxSlider {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			width: 220px !important;
 			height: 24px;
 			padding: 0;
 			margin: 0;
-			transform: rotate(-90deg);
+			flex: 0 0 auto;
+			transform: translate(-50%, -50%) rotate(-90deg);
 			transform-origin: center center;
 		}
 
@@ -1413,7 +1415,10 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 												<small class="form-text text-muted">Channels are grouped into tabs of
 													16</small>
 											</div>
-											<div class="mt-3">
+										</div>
+										<div class="backdrop-dark mt-3">
+											<div><b>Quick Set</b></div>
+											<div class="mt-2">
 												<input type='button' class='buttons' value='All 0'
 													onClick='DMXSetAll(0);'>
 												<input type='button' class='buttons' value='All 128'
