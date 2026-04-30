@@ -39,29 +39,6 @@
 /* custom-classed elements are not auto-themed                   */
 /* ------------------------------------------------------------- */
 
-/* [data-bs-theme="dark"] input:not([type=checkbox]),
-[data-bs-theme="dark"] input[list],
-[data-bs-theme="dark"] select,
-[data-bs-theme="dark"] textarea,
-[data-bs-theme="dark"] #eth_ssid,
-[data-bs-theme="dark"] #backupeth_ssid {
-    background: var(--bs-body-bg) !important;
-    color: var(--bs-body-color) !important;
-    border-color: var(--bs-border-color) !important;
-} */
-[data-bs-theme="dark"] input[type=checkbox]:not(:checked) {
-    background-color: var(--bs-secondary-bg) !important;
-    border-color: var(--bs-border-color) !important;
-}
-[data-bs-theme="dark"] input[type=checkbox]:checked {
-    background: #56B760 url(/images/redesign/check-white.svg) no-repeat center center !important;
-    border-color: #56B760 !important;
-}
-[data-bs-theme="dark"] input[type=checkbox][disabled=""]:checked {
-    background: #bdd3bf url(/images/redesign/check-white.svg) no-repeat center center !important;
-    border-color: #969996 !important;
-}
-
 [data-bs-theme="dark"] .fpp-select {
     background: var(--bs-body-bg) !important;
     color: var(--bs-body-color) !important;
