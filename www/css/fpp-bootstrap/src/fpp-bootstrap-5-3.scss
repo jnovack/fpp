@@ -1,3 +1,5 @@
+@use "sass:color";
+
 // Custom fpp-bootstrap.scss
 // Create following instructions at: https://getbootstrap.com/docs/5.3/customize/sass/
 // Option B: Include only parts of Bootstrap required
@@ -738,7 +740,7 @@ table.settingsTable div.th{
     .rowGripIcon{
         color:$gray-500;
         .selectedEntry & {
-            color: darken($highlight,10%);
+            color: color.adjust($highlight, $lightness: -10%);
         }
     }
 }
@@ -837,7 +839,7 @@ $fppTableExtraPadding:1.65em;
 	background-color: var(--bs-secondary-bg);
 }
 .fppActionTable.fppActionTable-success>tbody>tr:hover>td{
-    background-color: lighten($green, 5%);
+    background-color: color.adjust($green, $lightness: 5%);
 
 }
 
