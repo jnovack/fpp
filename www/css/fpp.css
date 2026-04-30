@@ -2,18 +2,8 @@
 /* = Base & Reset Styles = */
 /* ========================= */
 
-[data-bs-theme="light"] body {
-	background-color: #171720;
-}
-
-
 html {
 	forced-color-adjust: none;
-}
-
-
-[data-bs-theme="light"] input {
-	background: white;
 }
 
 /* Fix dark border on datalist inputs (SSID fields) */
