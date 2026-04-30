@@ -352,12 +352,12 @@ input[type='color']::-moz-color-swatch {
 }
 
 
-[data-bs-theme="light"] .pageContent {
+.pageContent {
 	background: #fff;
 	border-radius: 8px;
 	color: #000;
 	padding: 2.5em 3em;
-	box-shadow: 5px 10100px 0px 10000px #20222e, -1000px 100px 0px 0px #20222e,
+	box-shadow: 5px 0px 0px 10000px #20222e, -1000px 100px 0px 0px #20222e,
 		1000px 100px 0px 0px #20222e;
 }
 
@@ -3421,12 +3421,10 @@ table#fppSystemsTable > thead > tr:last-child > td {
 /* = Footer = */
 /* ============ */
 
-[data-bs-theme="light"] #footer {
-	background-color: #20222e;
-	box-shadow: 1000px 100px 0px 0px #20222e, -1000px 100px 0px 0px #20222e,
-		0px 100px 0px 0px #20222e;
-}
 #footer {
+	background-color: #20222e;
+	box-shadow: 2000px 100px 0px 0px #20222e, -2000px 100px 0px 0px #20222e,
+		0px 100px 0px 0px #20222e;
 	position: relative;
 	text-align: center;
 	padding: 2em;
