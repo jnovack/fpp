@@ -17,13 +17,13 @@ $gulp watch-bs
 */
 
 var gulp = require('gulp');
-var plumber = require('gulp-plumber');
-var sass = require('gulp-sass')(require('sass'));
-var postcss = require('gulp-postcss');
-var touch = require('gulp-touch-fd');
+var fs = require('fs/promises');
+var path = require('path');
+var sass = require('sass');
+var postcss = require('postcss');
 var browserSync = require('browser-sync').create();
+var browserSyncProxy = require('browser-sync').create('proxy');
 var autoprefixer = require('autoprefixer');
-var sourcemaps = require('gulp-sourcemaps');
 var cfg = {
 	browserSyncOptions: {
 		server: {
@@ -53,23 +53,38 @@ var paths = {
 // Run:
 // gulp sass
 // Compiles SCSS files in CSS
-gulp.task('sass', function () {
-	var stream = gulp
-		.src(paths.scss + '/*.scss')
-		.pipe(
-			plumber({
-				errorHandler: function (err) {
-					console.log(err);
-					this.emit('end');
+gulp.task('sass', async function () {
+	var entries = await fs.readdir(paths.scss);
+	var processor = postcss([autoprefixer()]);
+
+	await Promise.all(
+		entries
+			.filter(function (entry) {
+				return entry.endsWith('.scss') && !entry.startsWith('_');
+			})
+			.map(async function (entry) {
+				var inputPath = path.join(paths.scss, entry);
+				var outputName = entry.replace(/\.scss$/, '.css');
+				var outputPath = path.join(paths.css, outputName);
+				var result = await sass.compileAsync(inputPath, {
+					sourceMap: true
+				});
+				var processed = await processor.process(result.css, {
+					from: inputPath,
+					to: outputPath,
+					map: {
+						inline: false,
+						prev: result.sourceMap
+					}
+				});
+
+				await fs.mkdir(paths.css, { recursive: true });
+				await fs.writeFile(outputPath, processed.css);
+				if (processed.map) {
+					await fs.writeFile(outputPath + '.map', processed.map.toString());
 				}
 			})
-		)
-		.pipe(sourcemaps.init({ loadMaps: true }))
-		.pipe(sass({ errLogToConsole: true }))
-		.pipe(postcss([autoprefixer()]))
-		.pipe(gulp.dest(paths.css))
-		.pipe(touch());
-	return stream;
+	);
 });
 
 // Run:
@@ -91,9 +106,27 @@ gulp.task('browser-sync', function () {
 });
 
 // Run:
+// gulp watch-proxy
+// Proxies the live Apache site (localhost:80) with live CSS reload and
+// BrowserSync click/scroll mirroring across all connected tabs/windows.
+// Open two windows at http://localhost:3182, force dark mode in one via DevTools.
+gulp.task('browser-sync-proxy', function () {
+	browserSyncProxy.init(['./css/**/*.css'], {
+		proxy: 'fpp',
+		notify: false,
+		ui: { port: 3183 },
+		port: 3182
+	});
+});
+
+// Run:
 // gulp watch-bs
 // Starts watcher and launches component page with browsersync for live previewing.
+gulp.task(
+	'watch-bs',
+	gulp.parallel('browser-sync', 'browser-sync-proxy', 'watch')
+);
 
-gulp.task('watch-bs', gulp.parallel('browser-sync', 'watch'));
+gulp.task('watch-proxy', gulp.parallel('browser-sync-proxy', 'watch'));
 
 gulp.task('default', gulp.series('styles'));
