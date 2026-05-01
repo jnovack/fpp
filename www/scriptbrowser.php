@@ -131,19 +131,19 @@
 
 
                                     <div class="col-lg-3 fppScriptEntryCol">
-                                        <div class="labelHeading">Filename:</div>
+                                        <div class="labelHeading text-secondary">Filename:</div>
 
                                         <h3><? echo $parts[1]; ?></h3>
 
 
 
                                     </div>
-                                    <div class="col-lg-1  fppScriptEntryCol text-muted">
-                                        <div class="labelHeading">Category:</div>
+                                    <div class="col-lg-1  fppScriptEntryCol">
+                                        <div class="labelHeading text-secondary">Category:</div>
                                         <? echo $parts[0]; ?>
                                     </div>
-                                    <div class="col-lg  fppScriptEntryCol text-muted">
-                                        <div class="labelHeading">Description:</div>
+                                    <div class="col-lg  fppScriptEntryCol">
+                                        <div class="labelHeading text-secondary">Description:</div>
                                         <? echo $parts[2]; ?>
                                     </div>
                                     <div class="col-lg-auto fppScriptEntryCol">
