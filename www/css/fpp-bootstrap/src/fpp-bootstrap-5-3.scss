@@ -55,6 +55,21 @@
 @import './uploadfile';
 @import './bootstrap-scss-src/popover';
 
+:root,
+[data-bs-theme='light'] {
+	--fpp-highlight: #dee8ff;
+}
+
+[data-bs-theme='dark'] {
+	--fpp-highlight: #495057;
+
+	.pageContent select,
+	.ui-dialog select,
+	.modal select {
+		background-image: url(../../../images/redesign/chevron-down-white.svg);
+	}
+}
+
 body {
 	font-family: 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
 		'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color';
@@ -312,13 +327,6 @@ input[type='date'] {
 	vertical-align: middle;
 	&.form-control-lg {
 		background-position: right 20px center;
-	}
-}
-[data-bs-theme='dark'] {
-	.pageContent select,
-	.ui-dialog select,
-	.modal select {
-		background-image: url(../../../images/redesign/chevron-down-white.svg);
 	}
 }
 
@@ -774,7 +782,7 @@ table.settingsTable div.th {
 	.rowGripIcon {
 		color: $gray-500;
 		.selectedEntry & {
-			color: darken($highlight, 10%);
+			color: color-mix(in srgb, var(--fpp-highlight) 90%, black);
 		}
 	}
 }
@@ -844,7 +852,7 @@ table.settingsTable div.th {
 }
 .fppSelectableRowTable > tbody > tr.selectedEntry > td,
 .fppSelectableRowTable > tbody > tr.fppTableSelectedEntry > td {
-	background-color: $highlight;
+	background-color: var(--fpp-highlight);
 }
 #tblSchedule.fppSelectableRowTable > tbody > tr > td {
 	vertical-align: top;

@@ -1,14 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<?php
-require_once "common.php";
-?>
 
 <head>
     <?php
     include 'common/htmlMeta.inc';
     require_once 'common.php';
     include 'common/menuHead.inc'; ?>
+
+    <title><? echo $pageTitle; ?></title>
 
     <script language="Javascript">
 
