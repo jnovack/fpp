@@ -112,7 +112,7 @@ gulp.task('browser-sync', function () {
 // Open two windows at http://localhost:3182, force dark mode in one via DevTools.
 gulp.task('browser-sync-proxy', function () {
 	browserSyncProxy.init(['./css/**/*.css'], {
-		proxy: 'fpp',
+		proxy: 'fpp-docker',
 		notify: false,
 		ui: { port: 3183 },
 		port: 3182

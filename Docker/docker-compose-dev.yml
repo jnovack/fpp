@@ -44,6 +44,10 @@ services:
     cap_add:
       - SYS_PTRACE
       - SYS_NICE
+    networks:
+      default:
+        aliases:
+          - fpp-docker
 
   node:
     build:
