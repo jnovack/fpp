@@ -1162,13 +1162,13 @@
             <? } ?>
             localVer += "<b><font color='";
             if (updatesAvailable) {
-                localVer += 'red';
+                localVer += 'text-warning';
             } else if ((typeof (data.advancedView.RemoteGitVersion) !== 'undefined') &&
                 (data.advancedView.RemoteGitVersion == data.advancedView.LocalGitVersion)) {
-                localVer += 'darkgreen';
+                localVer += 'text-success';
             } else {
                 // Unknown or can't tell if up to date or not for some reason
-                localVer += 'blue';
+                localVer += 'text-info';
             }
             localVer += "'>" + data.advancedView.LocalGitVersion + "</font></b>";
             <? if (!$settings['hideExternalURLs']) { ?>
@@ -1521,7 +1521,7 @@
 
                                     }
                                     u += "<tr><td>Up:&nbsp;</td><td>" + ut
-                                    u += ' <span class="multisync-utilization-more" data-bs-html="true" title="<span class=\'tooltipSpan\'>' + diskHtml + '<br><b>Uptime:</b> ' + ut;
+                                    u += ' <span data-bs-html="true" title="<span class=\'tooltipSpan\'>' + diskHtml + '<br><b>Uptime:</b> ' + ut;
                                     u += '</span>">...</td></tr>'
                                 }
                             }

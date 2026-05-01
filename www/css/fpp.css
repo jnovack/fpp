@@ -2686,14 +2686,6 @@ table#fppSystemsTable > thead > tr:last-child > td {
 	padding-top: 0.5em;
 }
 
-
-.multisync-utilization-more {
-	color: blue;
-	font-weight: bold;
-	text-decoration: underline;
-}
-
-
 .wifi-icon {
 	height: 20px;
 	display: inline-block;
