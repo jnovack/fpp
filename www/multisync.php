@@ -1007,7 +1007,7 @@
         /**
          * Extracts unique platform types from all selected (checked) remote systems.
          * Skips systems that are currently filtered out in the UI.
-         * 
+         *
          * @returns {Array} Array of unique platform names (e.g., ['BBB', 'Pi'])
          */
         function getUniquePlatformsFromSelectedCheckboxes() {
@@ -1032,7 +1032,7 @@
         /**
          * Extracts unique IP addresses from all selected (checked) remote systems.
          * Skips systems that are currently filtered out in the UI.
-         * 
+         *
          * @returns {Array} Array of unique IP addresses from selected systems
          */
         function getUniqueIpFromSelectedCheckboxes() {
@@ -1059,9 +1059,9 @@
          * Checks that:
          * - At least one system is selected
          * - All selected systems have the same platform
-         * 
+         *
          * As a side effect, updates the list of available OS files via updateOSFileList()
-         * 
+         *
          * Displays appropriate warning messages if validation fails, or clears warnings
          * and populates the OS file dropdown if validation succeeds.
          */
@@ -1122,7 +1122,7 @@
          * Clears previous options and populates with new files, applying a minimum
          * asset_id threshold to filter out deprecated versions.
          * Makes the upgrade action div visible after populating the list.
-         * 
+         *
          * @param {Array} files - Array of file objects containing 'asset_id' and 'filename' properties
          */
         function updateOSFileList(files) {
@@ -1133,7 +1133,7 @@
             for (const file of files) {
                 let id = file["asset_id"];
                 if (id < 211762298) {
-                    // This is a safety check to prevent some really old files from showing up in the list. 
+                    // This is a safety check to prevent some really old files from showing up in the list.
                     // The asset_id may need to be manually updated in the future.
                     continue;
                 }
@@ -2717,7 +2717,7 @@
         /**
          * Initiates an OS upgrade for a single remote system.
          * Delegates to streamUpgrade with the 'upgradeOS' action.
-         * 
+         *
          * @param {string} rowID - The table row ID of the target system
          * @param {string} os - The OS upgrade filename/version to apply
          */
@@ -2729,7 +2729,7 @@
          * Generic upgrade streaming handler that manages the upgrade process for a single system.
          * Handles the UI state (hiding checkboxes, showing logs), manages stream count,
          * and invokes the appropriate remote action via StreamURL.
-         * 
+         *
          * @param {string} rowID - The table row ID of the target system
          * @param {string} action - The type of upgrade action ('upgrade', 'upgradeOS', etc.)
          * @param {string} failedCallback - Name of the callback function to invoke on failure
