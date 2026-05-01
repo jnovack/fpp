@@ -71,7 +71,12 @@ bool SerialChannelOutput::setupSerialPort(Json::Value& config, int baud, const c
 #endif
     if (pin == nullptr) {
         pin = PinCapabilities::getPinByName(m_deviceName + "-tx").ptr();
-        this->pinName = pin->name;
+        if (!pin) {
+            pin = PinCapabilities::getPinByUART(m_deviceName + "-tx").ptr();
+        }
+        if (pin) {
+            this->pinName = pin->name;
+        }
     }
     if (desc.empty()) {
         desc = m_deviceName;

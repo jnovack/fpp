@@ -50,7 +50,11 @@ public:
         GPIODCapabilities::setPwm(p, sub);
         return *this;
     }
-
+    PiGPIODCapabilities& setUART(const std::string& u, const std::string& um) {
+        uart = u;
+        uartMode = um;
+        return *this;
+    }
     virtual void releasePin() const override {
         char buf[256];
         snprintf(buf, 256, "/usr/bin/pinctrl set %d %s", gpio, resetMode.c_str());
@@ -76,6 +80,18 @@ public:
             const char* alt = isPi5() ? "a1" : "a2";
             char buf[256];
             snprintf(buf, 256, "/usr/bin/pinctrl set %d %s", gpio, alt);
+            system(buf);
+            return 0;
+        }
+        if (mode == "uart" && !uart.empty() && !uartMode.empty()) {
+            char buf[256];
+            snprintf(buf, 256, "/usr/bin/pinctrl set %d %s", gpio, uartMode.c_str());
+            system(buf);
+            return 0;
+        }
+        if (startsWith(mode, "gpio") && (resetMode == "a0" || resetMode == "no" || resetMode == "a3")) {
+            char buf[256];
+            snprintf(buf, 256, "/usr/bin/pinctrl set %d %s", gpio, directionOut ? "op" : "ip");
             system(buf);
             return 0;
         }
@@ -187,6 +203,7 @@ public:
     static int pinctrlRpiChip;
     static std::string pinctrlRpiChipName;
     std::string resetMode = "a0";
+    std::string uartMode;
 };
 int PiGPIODCapabilities::pinctrlRpiChip = -1;
 std::string PiGPIODCapabilities::pinctrlRpiChipName;
@@ -198,8 +215,8 @@ void PiGPIOPinProvider::Init() {
     PI_PINS.push_back(PiGPIODCapabilities("P1-3", 2).setResetMode(i2c));
     PI_PINS.push_back(PiGPIODCapabilities("P1-5", 3).setResetMode(i2c));
     PI_PINS.push_back(PiGPIODCapabilities("P1-7", 4));
-    PI_PINS.push_back(PiGPIODCapabilities("P1-8", 14));
-    PI_PINS.push_back(PiGPIODCapabilities("P1-10", 15));
+    PI_PINS.push_back(PiGPIODCapabilities("P1-8", 14).setUART("ttyAMA0-tx", isPi5() ? "a4" : "a0"));
+    PI_PINS.push_back(PiGPIODCapabilities("P1-10", 15).setUART("ttyAMA0-rx", isPi5() ? "a4" : "a0"));
     PI_PINS.push_back(PiGPIODCapabilities("P1-11", 17).setResetMode(ipOrNo));
     PI_PINS.push_back(PiGPIODCapabilities("P1-12", 18).setPwm(0, 0).setResetMode(ipOrNo));
     PI_PINS.push_back(PiGPIODCapabilities("P1-13", 27).setPwm(0, 1).setResetMode(ipOrNo));
@@ -254,5 +271,10 @@ std::vector<std::string> PiGPIOPinProvider::getPinNames() {
     return ret;
 }
 const PinCapabilities& PiGPIOPinProvider::getPinByUART(const std::string& n) {
+    for (auto& a : PI_PINS) {
+        if (a.uart == n) {
+            return a;
+        }
+    }
     return PiFacePinCapabilities::getPinByUART(n);
 }
