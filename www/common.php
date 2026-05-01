@@ -1782,22 +1782,29 @@ function file_cache($cache_name, $data_function, $cache_time = 90, $grace_time =
             // will get the older data during the re-create process
             $flags = LOCK_EX | LOCK_NB;
         }
-        if (flock($fdLock, $flags)) {
+        if ($fdLock !== false && flock($fdLock, $flags)) {
             $data = $data_function();
             $fd = @fopen($file_path, "c+");
-            flock($fd, LOCK_EX);
-            ftruncate($fd, 0);
-            fputs($fd, $data);
-            flock($fd, LOCK_UN);
-            fclose($fd);
+            if ($fd !== false) {
+                flock($fd, LOCK_EX);
+                ftruncate($fd, 0);
+                fputs($fd, $data);
+                flock($fd, LOCK_UN);
+                fclose($fd);
+            }
             flock($fdLock, LOCK_UN);
             fclose($fdLock);
             unlink($file_path_lock);
             return $data;
         }
-        fclose($fdLock);
+        if ($fdLock !== false) {
+            fclose($fdLock);
+        }
     }
     $fd = @fopen($file_path, "r");
+    if ($fd === false) {
+        return '';
+    }
     flock($fd, LOCK_SH);
     $data = trim(fgets($fd));
     flock($fd, LOCK_UN);
@@ -2162,9 +2169,11 @@ function check_fppstats_updates($latestReleaseVersion = null)
                     $result['remoteCommit'] = $remoteCommit;
 
                     // Check if local is behind remote (commit update available)
-                    if (!empty($remoteCommit) && !empty($localCommit) &&
+                    if (
+                        !empty($remoteCommit) && !empty($localCommit) &&
                         strpos($remoteCommit, $localCommit) !== 0 &&
-                        strpos($localCommit, $remoteCommit) !== 0) {
+                        strpos($localCommit, $remoteCommit) !== 0
+                    ) {
                         $result['commitUpdateAvailable'] = true;
                     }
                 }
@@ -2197,9 +2206,11 @@ function check_fppstats_updates($latestReleaseVersion = null)
         $remoteGitVersion = get_remote_git_version();
         $result['remoteCommit'] = $remoteGitVersion;
 
-        if (!empty($remoteGitVersion) && $remoteGitVersion !== 'Unknown' &&
+        if (
+            !empty($remoteGitVersion) && $remoteGitVersion !== 'Unknown' &&
             !empty($localCommit) && $localCommit !== 'Unknown' &&
-            $remoteGitVersion !== $localCommit) {
+            $remoteGitVersion !== $localCommit
+        ) {
             $result['commitUpdateAvailable'] = true;
         }
     }
