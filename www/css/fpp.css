@@ -1439,7 +1439,7 @@ body.is-loading #schedulerInfo .labelValue:before {
 
 #playerTime .labelValue,
 .tblPlaylistHeaderDetails .labelValue {
-	background-color: #ececec;
+	background-color: var(--bs-border-color);
 	padding-top: 0.5em;
 	padding-bottom: 0.5em;
 	font-size: 1em;
