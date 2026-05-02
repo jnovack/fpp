@@ -1166,7 +1166,7 @@
                                     <?php if (isset($settings['uiLevel']) && $settings['uiLevel'] >= 3) { ?>
                                         <label class="fpp-checkbox-option fpp-checkbox-option--dev">
                                             <input type="checkbox" id="keepOptFPP">
-                                            <span class="fpp-badge fpp-badge--dev">Dev</span>
+                                            <span class="fpp-badge fpp-badge--graceful">Dev</span>
                                             Keep /opt/fpp
                                             <img title='WARNING: This will upgrade the OS but will not upgrade the FPP version running in /opt/fpp. This is useful for developers who are developing the code in /opt/fpp and just want the underlying OS upgraded.'
                                                 src='images/redesign/help-icon.svg' class='icon-help'>

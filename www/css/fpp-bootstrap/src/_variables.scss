@@ -332,8 +332,8 @@ $hr-margin-y: $spacer !default;
 // Buttons + Forms
 //
 // Shared variables that are reassigned to `$input-` and `$btn-` specific variables.
-$checkbox-size: 33px;
-$checkbox-size-sm: 24px;
+$checkbox-size: 1.75em;
+$checkbox-size-sm: 1.25em;
 $input-btn-padding-y: 0.33rem !default;
 $input-btn-padding-x: 0.65rem !default;
 $input-btn-font-family: null !default;
