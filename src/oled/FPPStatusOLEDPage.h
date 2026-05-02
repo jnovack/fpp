@@ -68,7 +68,6 @@ private:
 
     CURL* curl;
     std::string buffer;
-    int sockfd;
 
     bool _hasSensors;
     std::string currentMode;

@@ -22,7 +22,10 @@ OBJECTS_fppoled += \
 LIBS_fppoled = \
 	-ljsoncpp \
 	-lcurl \
+	-lnl-genl-3 -lnl-3 \
 	$(LIBS_GPIO_ADDITIONS) -L. $(LIBS_GPIO_EXE_ADDITIONS)
+
+CXXFLAGS_oled/FPPStatusOLEDPage.o = -I/usr/include/libnl3
 
 TARGETS += fppoled
 OBJECTS_ALL+=$(OBJECTS_fppoled)

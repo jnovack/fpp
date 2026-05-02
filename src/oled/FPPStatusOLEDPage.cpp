@@ -1,10 +1,12 @@
 #include "fpp-pch.h"
 
-#include <linux/wireless.h>
-#include <sys/ioctl.h>
+#include <linux/nl80211.h>
+#include <net/if.h>
+#include <netlink/genl/ctrl.h>
+#include <netlink/genl/genl.h>
+#include <netlink/netlink.h>
 
 #include <netinet/in.h>
-#include <fstream>
 #include <ifaddrs.h>
 #include <netdb.h>
 #include <unistd.h>
@@ -14,58 +16,125 @@
 #include "FPPMainMenu.h"
 #include "FPPStatusOLEDPage.h"
 
-static inline int iw_get_ext(
-    int skfd,           /* Socket to the kernel */
-    const char* ifname, /* Device name */
-    int request,        /* WE ID */
-    struct iwreq* pwrq) /* Fixed part of the request */
-{
-    strncpy(pwrq->ifr_name, ifname, IFNAMSIZ);
-    return (ioctl(skfd, request, pwrq));
-}
-
 #define MAX_PAGE 2
 
+// nl80211 query for station signal strength. Replaces the legacy
+// SIOCGIWRANGE/SIOCGIWSTATS ioctl path, which causes the kernel to log
+// "uses wireless extensions which will stop working for Wi-Fi 7 hardware;
+// use nl80211" and won't be supported by Wi-Fi 7 drivers.
+namespace {
+struct SignalQuery {
+    int signal_dbm = 0;
+    bool found = false;
+    int done = 0;
+};
+
+int signalValidCb(struct nl_msg* msg, void* arg) {
+    auto* q = static_cast<SignalQuery*>(arg);
+    auto* gnlh = static_cast<struct genlmsghdr*>(nlmsg_data(nlmsg_hdr(msg)));
+    struct nlattr* tb[NL80211_ATTR_MAX + 1];
+    nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
+              genlmsg_attrlen(gnlh, 0), nullptr);
+    if (!tb[NL80211_ATTR_STA_INFO]) {
+        return NL_SKIP;
+    }
+    struct nlattr* sinfo[NL80211_STA_INFO_MAX + 1];
+    static struct nla_policy stats_policy[NL80211_STA_INFO_MAX + 1] = {};
+    stats_policy[NL80211_STA_INFO_SIGNAL].type = NLA_U8;
+    if (nla_parse_nested(sinfo, NL80211_STA_INFO_MAX,
+                         tb[NL80211_ATTR_STA_INFO], stats_policy) != 0) {
+        return NL_SKIP;
+    }
+    if (sinfo[NL80211_STA_INFO_SIGNAL]) {
+        // Reported as u8 but is a signed dBm value.
+        q->signal_dbm = (int8_t)nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]);
+        q->found = true;
+    }
+    return NL_SKIP;
+}
+
+int signalFinishCb(struct nl_msg*, void* arg) {
+    static_cast<SignalQuery*>(arg)->done = 1;
+    return NL_SKIP;
+}
+
+int signalAckCb(struct nl_msg*, void* arg) {
+    static_cast<SignalQuery*>(arg)->done = 1;
+    return NL_STOP;
+}
+
+int signalErrorCb(struct sockaddr_nl*, struct nlmsgerr*, void* arg) {
+    static_cast<SignalQuery*>(arg)->done = 1;
+    return NL_SKIP;
+}
+} // namespace
+
 int FPPStatusOLEDPage::getSignalStrength(char* iwname) {
-    int sigLevel = 0;
-
-    iw_statistics stats;
-    int has_stats;
-    iw_range range;
-    int has_range;
-
-    struct iwreq wrq;
-    char buffer[std::max(sizeof(iw_range), sizeof(iw_statistics)) * 2]; /* Large enough */
-    iw_range* range_raw;
-
-    /* Cleanup */
-    bzero(buffer, sizeof(buffer));
-
-    wrq.u.data.pointer = (caddr_t)buffer;
-    wrq.u.data.length = sizeof(buffer);
-    wrq.u.data.flags = 0;
-    if (iw_get_ext(sockfd, iwname, SIOCGIWRANGE, &wrq) < 0) {
-        // no ranges
-        return sigLevel;
-    }
-    range_raw = (iw_range*)buffer;
-    memcpy((char*)&range, buffer, sizeof(iw_range));
-    if (range.max_qual.qual == 0) {
-        return sigLevel;
-    }
-    wrq.u.data.pointer = (caddr_t)&stats;
-    wrq.u.data.length = sizeof(struct iw_statistics);
-    wrq.u.data.flags = 1;
-    strncpy(wrq.ifr_name, iwname, IFNAMSIZ);
-    if (iw_get_ext(sockfd, iwname, SIOCGIWSTATS, &wrq) < 0) {
-        // no stats
-        return sigLevel;
+    unsigned int ifindex = if_nametoindex(iwname);
+    if (ifindex == 0) {
+        return 0;
     }
 
-    sigLevel = stats.qual.qual;
-    sigLevel *= 100;
-    sigLevel /= range.max_qual.qual;
-    return sigLevel;
+    struct nl_sock* sk = nl_socket_alloc();
+    if (!sk) {
+        return 0;
+    }
+    if (genl_connect(sk) != 0) {
+        nl_socket_free(sk);
+        return 0;
+    }
+    int family = genl_ctrl_resolve(sk, "nl80211");
+    if (family < 0) {
+        // Not a wireless interface (or nl80211 unavailable).
+        nl_socket_free(sk);
+        return 0;
+    }
+
+    struct nl_msg* msg = nlmsg_alloc();
+    struct nl_cb* cb = nl_cb_alloc(NL_CB_DEFAULT);
+    if (!msg || !cb) {
+        if (msg) nlmsg_free(msg);
+        if (cb) nl_cb_put(cb);
+        nl_socket_free(sk);
+        return 0;
+    }
+
+    SignalQuery q;
+    genlmsg_put(msg, 0, 0, family, 0, NLM_F_DUMP,
+                NL80211_CMD_GET_STATION, 0);
+    nla_put_u32(msg, NL80211_ATTR_IFINDEX, ifindex);
+
+    nl_cb_set(cb, NL_CB_VALID, NL_CB_CUSTOM, signalValidCb, &q);
+    nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, signalFinishCb, &q);
+    nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, signalAckCb, &q);
+    nl_cb_err(cb, NL_CB_CUSTOM, signalErrorCb, &q);
+
+    if (nl_send_auto(sk, msg) >= 0) {
+        while (!q.done) {
+            int r = nl_recvmsgs(sk, cb);
+            if (r < 0) {
+                break;
+            }
+        }
+    }
+
+    nlmsg_free(msg);
+    nl_cb_put(cb);
+    nl_socket_free(sk);
+
+    if (!q.found) {
+        return 0;
+    }
+    // Map dBm to a 0-100 quality. -50 dBm or better -> 100%, -100 dBm or
+    // worse -> 0%; linear in between. Matches the "2*(level+100)" rule
+    // commonly used by wpa_supplicant/iw consumers.
+    int pct = 2 * (q.signal_dbm + 100);
+    if (pct < 0) {
+        pct = 0;
+    } else if (pct > 100) {
+        pct = 100;
+    }
+    return pct;
 }
 
 static bool debug = false;
@@ -94,15 +163,11 @@ FPPStatusOLEDPage::FPPStatusOLEDPage() :
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writer);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
 
-    // have to use a socket for ioctl
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-
     readCapeImage();
     mainMenu = new FPPMainMenu(this);
 }
 FPPStatusOLEDPage::~FPPStatusOLEDPage() {
     curl_easy_cleanup(curl);
-    close(sockfd);
     delete mainMenu;
 }
 
