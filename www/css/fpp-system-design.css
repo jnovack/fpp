@@ -242,7 +242,7 @@
 		--fpp-warning-light: #4a3b14;
 		--fpp-danger-dark: #f87171;
 		--fpp-danger-light: #4a1f24;
-		--fpp-info: #8fb1f2;
+		--fpp-info: var(--bs-info);
 		--fpp-info-light: #1e2f52;
 
 		/* Neutral Colors - Text */
@@ -990,7 +990,6 @@
 	transform: translate(-50%, -50%);
 	font-size: 1.75em;
 	font-weight: var(--fpp-fw-bold);
-	color: var(--fpp-text-primary);
 	text-align: center;
 }
 
