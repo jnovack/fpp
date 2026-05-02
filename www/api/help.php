@@ -286,7 +286,7 @@ if (!isset($apiDir)) {
 
         /*
          * Anchors are dynamically via ajax thus auto scrolling if anchor is in url
-         * will fail.  This will workaround that problem by forcing a scroll 
+         * will fail.  This will workaround that problem by forcing a scroll
          * afterward dynamic content is loaded.
          */
         function fixScroll() {
@@ -340,7 +340,6 @@ if (!isset($apiDir)) {
             border: none;
             margin: 1px;
             padding: 1px;
-            background: rgb(240, 240, 240);
         }
 
         .preResponse {
