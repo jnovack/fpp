@@ -334,6 +334,12 @@ void MDNSManager::Cleanup() {
     // Freeing the client triggers watch_free / timeout_free for its internal
     // watches and timeouts, which removes them from EPollManager automatically.
     if (m_entryGroup) {
+        // Reset the group first, which forces the daemon to send mDNS
+        // withdraw packets *before* the group is destroyed. Without this,
+        // peers can keep our advertised services cached until the record
+        // TTL expires (often >1 hour) — and on a force-killed fppd they'd
+        // miss the goodbye entirely.
+        avahi_entry_group_reset(static_cast<AvahiEntryGroup*>(m_entryGroup));
         avahi_entry_group_free(static_cast<AvahiEntryGroup*>(m_entryGroup));
         m_entryGroup = nullptr;
     }

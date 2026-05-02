@@ -804,10 +804,16 @@ int main(int argc, char* argv[]) {
     // events while we are shutting down
     Events::PrepareForShutdown();
 
+    // Tear down mDNS *first* so the goodbye packets for our advertised
+    // services go out on the wire before anything slower (media output
+    // shutdown, channel-output close, or the WS responder draining its
+    // client list) has a chance to hang. If shutdown is force-killed
+    // partway through (e.g. fppd_stop's 1s timeout), at least other
+    // discovery clients won't keep our entries cached for the TTL.
+    MDNSManager::INSTANCE.Cleanup();
     CleanupMediaOutput();
     CloseEffects();
     CloseChannelOutputs();
-    MDNSManager::INSTANCE.Cleanup();
     WLEDAPIResponder::INSTANCE.Cleanup();
     PingManager::INSTANCE.Cleanup();
     OutputMonitor::INSTANCE.Cleanup();
