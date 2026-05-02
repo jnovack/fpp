@@ -89,6 +89,7 @@
 
 #include "MDNSManager.h"
 #include "WLEDAPIResponder.h"
+#include "WLEDAudioSync.h"
 
 #include "fppd.h"
 
@@ -782,6 +783,7 @@ int main(int argc, char* argv[]) {
     PixelOverlayManager::INSTANCE.Initialize();
     PingManager::INSTANCE.Initialize();
     WLEDAPIResponder::INSTANCE.Initialize();
+    WLEDAudioSync::INSTANCE.Initialize();
     InitializeChannelOutputs();
     PluginManager::INSTANCE.loadUserPlugins();
 
@@ -815,6 +817,7 @@ int main(int argc, char* argv[]) {
     CloseEffects();
     CloseChannelOutputs();
     WLEDAPIResponder::INSTANCE.Cleanup();
+    WLEDAudioSync::INSTANCE.Cleanup();
     PingManager::INSTANCE.Cleanup();
     OutputMonitor::INSTANCE.Cleanup();
     CommandManager::INSTANCE.Cleanup();

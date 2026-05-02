@@ -72,6 +72,7 @@ OBJECTS_fpp_so += \
 	ping.o \
 	MDNSManager.o \
 	WLEDAPIResponder.o \
+	WLEDAudioSync.o \
 	Player.o \
 	OutputMonitor.o \
 	overlays/PixelOverlay.o \

@@ -30,6 +30,7 @@
 #include "kiss_fftr.h"
 #include "../../Warnings.h"
 #include "../../mediaoutput/SDLOut.h"
+#include "../../WLEDAudioSync.h"
 
 uint8_t blendingStyle = 0; // effect blending/transitionig style
 
@@ -266,6 +267,90 @@ public:
 
 } WLED_SOUND_SOURCE;
 
+// Free-function entry points (declared in wled.h) so external callers
+// — notably WLEDAudioSync — can pull a sample buffer and run the same
+// FFT pipeline the WLED reactive effects use, without holding a
+// WS2812FXExt instance.
+bool fetchAudioSamples(std::array<float, NUM_SAMPLES>& samples, int& sampleRate) {
+    return WLED_SOUND_SOURCE.getAudioSamples(samples, sampleRate);
+}
+
+void computeAudioFrame(const std::array<float, NUM_SAMPLES>& samples,
+                       int sampleRate,
+                       AudioFrame& out) {
+    static kiss_fftr_cfg cfg = kiss_fftr_alloc(NUM_SAMPLES, false, 0, 0);
+    kiss_fft_cpx fft_out[NUM_SAMPLES];
+    kiss_fftr(cfg, (kiss_fft_scalar*)samples.data(), fft_out);
+
+    // Log-bin into 16 octave-ish buckets, mirroring WLED's binning.
+    std::array<float, 17> res{};
+    float rate = sampleRate;
+    int curBucket = 0;
+    double freqnext = 440.0 * exp2f(((float)((1 + 1) * 8) - 69.0) / 12.0);
+    int end = freqnext * (float)NUM_SAMPLES / rate;
+    float binHzRange = rate / (float)NUM_SAMPLES;
+
+    float maxValue = 0;
+    int maxBin = 0;
+    int maxBucket = 0;
+    for (int bin = 0; bin < (NUM_SAMPLES / 2); ++bin) {
+        if (bin > end) {
+            curBucket++;
+            if (curBucket == 18) break;
+            freqnext = 440.0 * exp2f(((double)((curBucket + 1) * 8) - 69.0) / 12.0);
+            end = freqnext * (double)NUM_SAMPLES / rate;
+        }
+        float nv = sqrtf(fft_out[bin].r * fft_out[bin].r + fft_out[bin].i * fft_out[bin].i);
+        if (nv > maxValue) {
+            maxValue = nv;
+            maxBin = bin;
+            maxBucket = curBucket;
+        }
+        res[curBucket] = std::max(res[curBucket], nv);
+    }
+
+    float maxRV = 0;
+    for (int x = 0; x < 16; x++) {
+        int v2 = round(log10(res[x]) * 120.0);
+        if (v2 > 255) v2 = 255;
+        if (v2 < 0) v2 = 0;
+        out.fftResult[x] = static_cast<uint8_t>(v2);
+        if (res[x] > maxRV) maxRV = res[x];
+    }
+
+    out.FFT_MajorPeak = (maxBin * binHzRange) + (binHzRange / 2);
+    out.FFT_Magnitude = maxRV;
+
+    // RMS / peak amplitude for the volume fields.
+    float peakAmp = 0.0f;
+    for (int i = 0; i < NUM_SAMPLES; ++i) {
+        float a = std::fabs(samples[i]);
+        if (a > peakAmp) peakAmp = a;
+    }
+    float instantVolume = std::min(255.0f, peakAmp * 255.0f);
+
+    static float smoothedVolume = 0.0f;
+    smoothedVolume = 0.7f * smoothedVolume + 0.3f * instantVolume;
+
+    // Beat detection — same approach as the WLED audioreactive usermod:
+    // an above-threshold step over the smoothed baseline marks a beat,
+    // held for 50ms with a 100ms refractory window so receivers don't
+    // miss it even with slower poll cadences.
+    static uint64_t lastPeakMs = 0;
+    uint64_t nowMsLocal = GetTimeMS();
+    uint8_t peakOut = 0;
+    if (instantVolume > 12.0f &&
+        instantVolume > smoothedVolume + 25.0f &&
+        (nowMsLocal - lastPeakMs) >= 100) {
+        lastPeakMs = nowMsLocal;
+    }
+    if (nowMsLocal - lastPeakMs < 50) peakOut = 1;
+
+    out.volumeSmth = smoothedVolume;
+    out.volumeRaw  = static_cast<uint16_t>(instantVolume);
+    out.samplePeak = peakOut;
+}
+
 WS2812FXExt::WS2812FXExt() :
     WS2812FX() {
     pushCurrent(this);
@@ -480,81 +565,31 @@ CRGB getCRGBForBand(int x, uint8_t* fftResult, int pal) {
     return value;
 }
 void WS2812FXExt::processSamples(std::array<float, NUM_SAMPLES>& samples, int sampleRate) {
-    kiss_fft_cpx fft_out[NUM_SAMPLES];
-    static kiss_fftr_cfg cfg = kiss_fftr_alloc(NUM_SAMPLES, false, 0, 0);
+    // Delegate the FFT + binning + RMS + beat work to the free helper
+    // so WLEDAudioSync's broadcast thread can run the same pipeline
+    // without holding a WS2812FXExt instance. We then copy the result
+    // into our own per-instance um_data fields for FX.cpp to read.
+    AudioFrame f{};
+    computeAudioFrame(samples, sampleRate, f);
 
-    // GenerateSinWave(samples, sampleRate);
-    // HammingWindow(samples);
+    uint8_t* dstFft = (uint8_t*)um_data.u_data[2];
+    std::memcpy(dstFft, f.fftResult, 16);
+    FFT_MajorPeak = f.FFT_MajorPeak;
+    my_magnitude  = f.FFT_Magnitude;
+    volumeSmth    = f.volumeSmth;
+    volumeRaw     = f.volumeRaw;
+    samplePeak    = f.samplePeak;
 
-    // compute fast fourier transform
-    kiss_fftr(cfg, (kiss_fft_scalar*)&samples[0], fft_out);
-
-    // arrays
-
-    std::array<float, 17> res;
+    // maxVol/binNum aren't part of AudioFrame (they're a couple of
+    // decorative scalars only a few effects read); recompute cheaply.
+    int maxV = 0, maxBucket = 0;
     for (int x = 0; x < 16; x++) {
-        res[x] = 0;
+        if (f.fftResult[x] > maxV) { maxV = f.fftResult[x]; maxBucket = x; }
     }
-    float rate = sampleRate;
-    int curBucket = 0;
-    double freqnext = 440.0 * exp2f(((float)((1 + 1) * 8) - 69.0) / 12.0);
-    int end = freqnext * (float)NUM_SAMPLES / rate;
-    float binHzRange = rate / (float)NUM_SAMPLES;
-
-    float maxValue = 0;
-    int maxBin = 0;
-    int maxBucket = 0;
-    for (int bin = 0; bin < (NUM_SAMPLES / 2); ++bin) {
-        if (bin > end) {
-            curBucket++;
-            if (curBucket == 18) {
-                break;
-            }
-            freqnext = 440.0 * exp2f(((double)((curBucket + 1) * 8) - 69.0) / 12.0);
-            end = freqnext * (double)NUM_SAMPLES / rate;
-        }
-        float nv = sqrtf(fft_out[bin].r * fft_out[bin].r + fft_out[bin].i * fft_out[bin].i);
-        if (nv > maxValue) {
-            maxValue = nv;
-            maxBin = bin;
-            maxBucket = curBucket;
-        }
-        res[curBucket] = std::max(res[curBucket], nv);
-    }
-
-    uint8_t* fftResult = (uint8_t*)um_data.u_data[2];
-    float maxFreq = (maxBin * binHzRange) + (binHzRange / 2);
-    int maxIdx = maxBin;
-
-    // printf("Max: %0.5f Hz   idx: %d\n", maxFreq, maxIdx);
-    int maxV = 0;
-    float maxRV = 0;
-    for (int x = 0; x < 16; x++) {
-        int v2 = round(log10(res[x]) * 120.0);
-        if (v2 > 255) {
-            v2 = 255;
-        }
-        if (v2 < 0) {
-            v2 = 0;
-        }
-        // printf("%d:   %0.2f  %0.2f    %d\n", x, res[x], (float)log10(res[x]), v2);
-        maxV = std::max(maxV, v2);
-        maxRV = std::max(maxRV, res[x]);
-        fftResult[x] = v2;
-    }
-    // printf("\n");
-    // volumeSmth = max * 127.0;
-
-    FFT_MajorPeak = maxFreq;
-    my_magnitude = maxRV;
     maxVol = maxV;
     binNum = maxBucket;
 
-    volumeSmth = maxFreq;
-    volumeRaw = volumeSmth;
-    samplePeak = random8() > 250;
-    if (volumeSmth < 1)
-        my_magnitude = 0.001f;
+    if (volumeSmth < 1) my_magnitude = 0.001f;
 }
 // Currently 4 types defined, to be fine tuned and new types added
 typedef enum UM_SoundSimulations {
@@ -564,6 +599,16 @@ typedef enum UM_SoundSimulations {
     UMS_14_3
 } um_soundSimulations_t;
 um_data_t* WS2812FXExt::getAudioSamples(int simulationId) {
+    // Network audio source has highest priority — when WLEDAudioSync
+    // is in receive mode and we have a recent packet, drop the local
+    // FFT entirely and use the network values. If no recent packet,
+    // fall through to the normal local-audio path.
+    if (WLEDAudioSync::INSTANCE.InjectCachedFrame(
+            fftResult.data(), volumeSmth, volumeRaw, samplePeak,
+            my_magnitude, FFT_MajorPeak)) {
+        return &um_data;
+    }
+
     std::array<float, NUM_SAMPLES> samples;
     int sampleRate = 0;
     if (WLED_SOUND_SOURCE.getAudioSamples(samples, sampleRate)) {

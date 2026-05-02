@@ -47,6 +47,30 @@ constexpr int NUM_SAMPLES = 1024;
 
 long long GetTimeMS(void);
 long long GetTimeMicros(void);
+
+// Audio sample buffer + computed FFT frame, in the form used by both
+// the WLED reactive effects and the WLEDAudioSync UDP broadcast.
+// `volumeSmth`/`volumeRaw` are 0-255 amplitudes (NOT frequencies);
+// `samplePeak` is a beat-detection flag with a short hold window.
+struct AudioFrame {
+    uint8_t  fftResult[16];
+    float    volumeSmth;
+    uint16_t volumeRaw;
+    uint8_t  samplePeak;
+    float    FFT_Magnitude;
+    float    FFT_MajorPeak;
+};
+
+// Pull samples from the configured audio source (playing media or a
+// configured input device). Returns false if no source is producing.
+bool fetchAudioSamples(std::array<float, NUM_SAMPLES>& samples, int& sampleRate);
+
+// FFT + log-binning + RMS + beat detection. Pure function over
+// (samples, sampleRate) → AudioFrame, with EMA + peak-timing kept
+// in static locals (single-threaded callers only).
+void computeAudioFrame(const std::array<float, NUM_SAMPLES>& samples,
+                       int sampleRate,
+                       AudioFrame& out);
 inline uint32_t millis() {
     return GetTimeMS();
 }

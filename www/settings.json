@@ -131,6 +131,9 @@
 				"AudioPeriodSize",
 				"ForceAudioId",
 				"WLEDAudioInput",
+				"WLEDAudioSyncMode",
+				"WLEDAudioSyncDest",
+				"WLEDAudioSyncPort",
 				"disableIPAnnouncement",
 				"disableAudioVolumeSlider",
 				"globalMediaOffset"
@@ -2735,6 +2738,46 @@
 			"optionsURL": "api/settings/AudioInputListAllowMedia/options",
 			"optionCanBeBlank": false,
 			"level": 1
+		},
+		"WLEDAudioSyncMode": {
+			"name": "WLEDAudioSyncMode",
+			"description": "WLED Audio Sync",
+			"tip": "Bridge FPP's audio reactive data with other WLED devices on the network using the standard WLED sound sync UDP protocol on port 11988. <b>Send</b>: broadcast FPP's FFT/volume so external WLED nodes react to whatever FPP is playing. <b>Receive</b>: feed FPP's WLED&#9834; reactive effects from another device's microphone instead of FPP's local audio. <b>Off</b>: no sync.",
+			"restart": 0,
+			"reboot": 0,
+			"default": "off",
+			"type": "select",
+			"options": {
+				"Off": "off",
+				"Send": "send",
+				"Receive": "receive"
+			},
+			"optionCanBeBlank": false,
+			"level": 1
+		},
+		"WLEDAudioSyncDest": {
+			"name": "WLEDAudioSyncDest",
+			"description": "WLED Audio Sync Address",
+			"tip": "Destination address for sent audio sync packets, and (for receive mode) the multicast group to join. <b>239.0.0.1</b> is WLED's default multicast group. Use a unicast IP (e.g. 192.168.1.70) or a broadcast address (e.g. 192.168.1.255) on networks where multicast is filtered.",
+			"restart": 0,
+			"reboot": 0,
+			"default": "239.0.0.1",
+			"type": "text",
+			"size": 24,
+			"maxlength": 64,
+			"level": 1
+		},
+		"WLEDAudioSyncPort": {
+			"name": "WLEDAudioSyncPort",
+			"description": "WLED Audio Sync Port",
+			"tip": "UDP port for WLED audio sync. The WLED default is 11988; only change this if you've reconfigured your other WLED devices.",
+			"restart": 0,
+			"reboot": 0,
+			"default": "11988",
+			"type": "number",
+			"min": 1,
+			"max": 65535,
+			"level": 2
 		},
 		"TimeZone": {
 			"name": "TimeZone",
