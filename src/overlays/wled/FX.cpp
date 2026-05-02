@@ -3116,6 +3116,394 @@ static const char _data_FX_MODE_ROLLINGBALLS[] PROGMEM = "Rolling Balls@!,# of b
 #endif // WLED_PS_DONT_REPLACE_FX
 
 /*
+ * Shimmer (ported from upstream WLED)
+ * A pulse of light moves across the segment. Pulses appear at randomized intervals.
+ */
+static uint16_t mode_shimmer() {
+  if (!SEGENV.allocateData(sizeof(uint32_t))) return mode_static();
+  uint32_t* lastTime = reinterpret_cast<uint32_t*>(SEGENV.data);
+
+  uint32_t radius = (SEGMENT.custom1 * SEGLEN >> 7) + 1;            // [1, 2*SEGLEN+1] pixels
+  uint32_t traversalDistance = (SEGLEN + 2 * radius) << 8;          // total subpixels to cross, 1 pixel = 256 subpixels
+  uint32_t traversalTime = 200 + (255 - SEGMENT.speed) * 80;        // [200, 20600] ms
+  uint32_t speed = ((traversalDistance << 5) / traversalTime);      // subpixels/512ms
+  int32_t  position = static_cast<int32_t>(SEGENV.step);            // current position in subpixels
+  uint16_t inputstate = (uint16_t(SEGMENT.intensity) << 8) | uint16_t(SEGMENT.custom1);
+
+  if (SEGENV.call == 0 || inputstate != SEGENV.aux1) {
+    position = -(int32_t)(radius << 8);
+    SEGENV.aux0 = 0;                                                // pause timer
+    *lastTime = strip().now;
+    SEGENV.aux1 = inputstate;
+  }
+
+  if (SEGMENT.speed) {
+    uint32_t deltaTime = (strip().now - *lastTime) & 0x7F;          // clamp to 127ms
+    *lastTime = strip().now;
+
+    if (SEGENV.aux0 > 0) {
+      SEGENV.aux0 = (SEGENV.aux0 > deltaTime) ? SEGENV.aux0 - deltaTime : 0;
+    } else {
+      int32_t step = 1 + ((speed * deltaTime) >> 5);
+      position += step;
+      int endposition = (SEGLEN + radius) << 8;
+      if (position > endposition) {
+        SEGENV.aux0 = SEGMENT.intensity * 236;                      // [0, 60180] ms pause
+        if (SEGMENT.check3) SEGENV.aux0 = hw_random(SEGENV.aux0 + 1000);
+        position = -(int32_t)(radius << 8);
+      }
+      SEGENV.step = (uint32_t)position;
+    }
+
+    if (SEGMENT.check2)
+      position = (SEGLEN << 8) - position;                          // invert position
+  } else {
+    position = (SEGLEN << 7);                                       // static center
+  }
+
+  for (int i = 0; i < (int)SEGLEN; i++) {
+    uint32_t dist = abs(position - (i << 8));
+    if (dist < (radius << 8)) {
+      uint32_t color = SEGMENT.color_from_palette(i * 255 / SEGLEN, false, false, 0);
+      uint8_t blend = dist / radius;                                // [0, 255]
+      if (SEGMENT.custom2) {
+        uint8_t modVal;
+        if (SEGMENT.check1) {
+          modVal = (sin16_t((i * SEGMENT.custom2 << 6) + (strip().now * SEGMENT.custom3 << 5)) >> 8) + 128;
+        } else {
+          modVal = perlin16((i * SEGMENT.custom2 << 7), strip().now * SEGMENT.custom3 << 5) >> 8;
+        }
+        color = color_fade(color, modVal, true);
+      }
+      SEGMENT.setPixelColor(i, color_blend(color, SEGCOLOR(1), blend));
+    } else {
+      SEGMENT.setPixelColor(i, SEGCOLOR(1));
+    }
+  }
+  return FRAMETIME;
+}
+static const char _data_FX_MODE_SHIMMER[] PROGMEM = "Shimmer@Speed,Interval,Size,Granular,Flow,Zebra,Reverse,Sporadic;Fx,Bg,Cx;!;1;pal=15,sx=220,ix=10,c2=0,c3=0";
+
+/*
+ * Color Clouds (ported from upstream WLED)
+ * Soft, drifting cloud-like colors driven by 2D perlin noise.
+ */
+static uint16_t mode_ColorClouds() {
+  if (SEGENV.call == 0) {
+    SEGENV.aux0 = hw_random16();
+    SEGENV.aux1 = hw_random16();
+  }
+  const uint32_t volX0 = SEGENV.aux0;
+  const uint32_t hueX0 = SEGENV.aux1;
+  const uint8_t hueOffset0 = volX0 + hueX0;
+
+  const bool cozy = SEGMENT.check3;
+
+  const uint32_t volSpeed   = 1 + SEGMENT.speed;
+  const uint32_t hueSpeed   = 1 + SEGMENT.intensity;
+  const uint32_t volSqueeze = 8 + SEGMENT.custom1;
+  const uint32_t hueSqueeze = SEGMENT.custom2;
+
+  const int32_t volCutoff   = 12500 + SEGMENT.custom3 * 900;
+  const int32_t volSaturate = 52000;
+
+  const uint32_t now  = strip().now;
+  const uint32_t volT = now * volSpeed / 8;
+  const uint32_t hueT = now * hueSpeed / 8;
+  const uint8_t hueOffset = beat88(64) >> 8;
+
+  for (int i = 0; i < (int)SEGLEN; i++) {
+    const uint32_t volX = i * volSqueeze * 64;
+    int32_t vol = perlin16(volX0 + volX, volT);
+    vol = map(vol, volCutoff, volSaturate, 0, 255);
+    vol = constrain(vol, 0, 255);
+
+    const uint32_t hueX = i * hueSqueeze * 8;
+    uint8_t hue = perlin16(hueX0 + hueX, hueT) >> 7;
+    hue += hueOffset0;
+    hue += hueOffset;
+    if (cozy) {
+      hue = cos8_t(128 + hue / 2);
+    }
+
+    uint32_t pixel;
+    if (SEGMENT.palette) {
+      pixel = SEGMENT.color_from_palette(hue, false, true, 0, vol);
+    } else {
+      // CHSV(hue, 255, vol) -> CRGB -> CRGBW (FPP doesn't have CHSV32 ctor for CRGBW)
+      CRGB tmp;
+      hsv2rgb_rainbow(CHSV((uint8_t)hue, (uint8_t)255, (uint8_t)vol), tmp);
+      pixel = CRGBW(tmp);
+    }
+
+    if (int(R(pixel)) + G(pixel) + B(pixel) <= 2) {
+      pixel = 0;
+    }
+
+    SEGMENT.setPixelColor(i, pixel);
+  }
+  return FRAMETIME;
+}
+static const char _data_FX_MODE_COLORCLOUDS[] PROGMEM = "Color Clouds@!,!,Clouds,Colors,Distance,,,Cozy;;!;;sx=24,ix=32,c1=48,c2=64,c3=12,pal=0";
+
+/*
+ * PacMan (ported from upstream WLED)
+ * The classic chase across the strip — PacMan + ghosts + power dots.
+ */
+typedef struct PacManChars {
+  signed    pos;
+  signed    topPos;     // LED position of farthest PacMan has moved
+  uint32_t  color;
+  bool      direction;  // true = moving away from first LED
+  bool      blue;       // used for ghosts only
+  bool      eaten;      // used for power dots only
+} pacmancharacters_t;
+
+static uint16_t mode_pacman(void) {
+  constexpr unsigned ORANGEYELLOW = 0xFFCC00;
+  constexpr unsigned PURPLEISH    = 0xB000B0;
+  constexpr unsigned ORANGEISH    = 0xFF8800;
+  constexpr unsigned WHITEISH     = 0x999999;
+  constexpr unsigned PACMAN = 0;
+  constexpr uint32_t ghostColors[] = {RED, PURPLEISH, CYAN, ORANGEISH};
+
+  unsigned maxPowerDots = std::min<unsigned>(SEGLEN / 10U, 255U);
+  unsigned numPowerDots = map(SEGMENT.intensity, 0, 255, 1, maxPowerDots);
+  unsigned numGhosts    = map(SEGMENT.custom3, 0, 31, 2, 8);
+  bool smearMode = SEGMENT.check2;
+
+  uint16_t combined_value = uint16_t(((numPowerDots & 0xFF) << 8) | (numGhosts & 0xFF));
+  if (combined_value != SEGENV.aux0) SEGENV.call = 0;
+  SEGENV.aux0 = combined_value;
+
+  unsigned dataSize = sizeof(pacmancharacters_t) * (numGhosts + maxPowerDots + 1);
+  if (SEGLEN <= 16 + (2 * numGhosts) || !SEGENV.allocateData(dataSize)) return mode_static();
+  pacmancharacters_t *character = reinterpret_cast<pacmancharacters_t *>(SEGENV.data);
+
+  int maxBlinkPos = (SEGENV.call == 0) ? (int)SEGLEN - 1 : character[PACMAN].topPos;
+  if (maxBlinkPos < 20) maxBlinkPos = 20;
+  int startBlinkingGhostsLED = (SEGLEN < 64)
+    ? (int)SEGLEN / 3
+    : map(SEGMENT.custom1, 0, 255, 20, maxBlinkPos);
+
+  if (SEGENV.call == 0) {
+    character[PACMAN].color = YELLOW;
+    character[PACMAN].pos = 0;
+    character[PACMAN].topPos = 0;
+    character[PACMAN].direction = true;
+    character[PACMAN].blue = false;
+
+    for (unsigned i = 1; i <= numGhosts; i++) {
+      character[i].color = ghostColors[(i - 1) % 4];
+      character[i].pos = -2 * (int)(i + 1);
+      character[i].direction = true;
+      character[i].blue = false;
+    }
+
+    for (unsigned i = 0; i < numPowerDots; i++) {
+      character[i + numGhosts + 1].color = ORANGEYELLOW;
+      character[i + numGhosts + 1].eaten = false;
+    }
+    character[numGhosts + 1].pos = SEGLEN - 1;
+  }
+
+  if (strip().now > SEGENV.step) {
+    SEGENV.step = strip().now;
+    SEGENV.aux1++;
+  }
+
+  if (!smearMode) SEGMENT.fill(BLACK);
+
+  if (SEGMENT.check1) {
+    int step = SEGMENT.check3 ? 1 : 2;
+    for (int i = (int)SEGLEN - 1; i > character[PACMAN].topPos; i -= step) {
+      SEGMENT.setPixelColor(i, WHITEISH);
+    }
+  }
+
+  uint32_t everyXLeds = (((uint32_t)SEGLEN - 10U) << 8) / numPowerDots;
+  for (unsigned i = 1; i < numPowerDots; i++) {
+    character[i + numGhosts + 1].pos = 10 + ((i * everyXLeds) >> 8);
+  }
+
+  if (SEGENV.aux1 % 10 == 0) {
+    uint32_t dotColor = (character[numGhosts + 1].color == ORANGEYELLOW) ? BLACK : ORANGEYELLOW;
+    for (unsigned i = 0; i < numPowerDots; i++) {
+      character[i + numGhosts + 1].color = dotColor;
+    }
+  }
+
+  if (SEGENV.aux1 % 15 == 0 && character[1].blue && character[PACMAN].pos <= startBlinkingGhostsLED) {
+    uint32_t ghostColor = (character[1].color == BLUE) ? WHITEISH : BLUE;
+    for (unsigned i = 1; i <= numGhosts; i++) {
+      character[i].color = ghostColor;
+    }
+  }
+
+  for (unsigned i = 0; i < numPowerDots; i++) {
+    if (!character[i + numGhosts + 1].eaten && (unsigned)character[i + numGhosts + 1].pos < SEGLEN) {
+      SEGMENT.setPixelColor(character[i + numGhosts + 1].pos, character[i + numGhosts + 1].color);
+    }
+  }
+
+  for (unsigned j = 0; j < numPowerDots; j++) {
+    auto &dot = character[j + numGhosts + 1];
+    if (character[PACMAN].pos == dot.pos && !dot.eaten) {
+      for (unsigned i = 0; i <= numGhosts; i++) {
+        character[i].direction = false;
+      }
+      for (unsigned i = 1; i <= numGhosts; i++) {
+        character[i].color = BLUE;
+        character[i].blue = true;
+      }
+      dot.eaten = true;
+      break;
+    }
+  }
+
+  if (character[1].blue && character[PACMAN].pos <= 0) {
+    for (unsigned i = 0; i <= numGhosts; i++) {
+      character[i].direction = true;
+    }
+    for (unsigned i = 1; i <= numGhosts; i++) {
+      character[i].color = ghostColors[(i - 1) % 4];
+      character[i].blue = false;
+    }
+    if (character[numGhosts + 1].eaten) {
+      for (unsigned i = 0; i < numPowerDots; i++) {
+        character[i + numGhosts + 1].eaten = false;
+      }
+      character[PACMAN].topPos = 0;
+    }
+  }
+
+  bool updatePositions = (SEGENV.aux1 % map(SEGMENT.speed, 0, 255, 15, 1) == 0);
+
+  if (updatePositions) {
+    character[PACMAN].pos += character[PACMAN].direction ? 1 : -1;
+    for (unsigned i = 1; i <= numGhosts; i++) {
+      character[i].pos += character[i].direction ? 1 : -1;
+    }
+  }
+
+  if ((unsigned)character[PACMAN].pos < SEGLEN) {
+    SEGMENT.setPixelColor(character[PACMAN].pos, character[PACMAN].color);
+  }
+
+  for (unsigned i = 1; i <= numGhosts; i++) {
+    if ((unsigned)character[i].pos < SEGLEN) {
+      SEGMENT.setPixelColor(character[i].pos, character[i].color);
+    }
+  }
+
+  if (character[PACMAN].topPos < character[PACMAN].pos) {
+    character[PACMAN].topPos = character[PACMAN].pos;
+  }
+
+  SEGMENT.blur(SEGMENT.custom2 >> 1);
+  return FRAMETIME;
+}
+static const char _data_FX_MODE_PACMAN[] PROGMEM = "PacMan@Speed,# of PowerDots,Blink distance,Blur,# of Ghosts,Dots,Smear,Compact;;!;1;m12=0,sx=192,ix=64,c1=64,c2=0,c3=12,o1=1,o2=0";
+
+/*
+ * Slow Transition (ported from upstream WLED)
+ * Smoothly cross-fades the current palette / white / CCT to the selected target
+ * over a user-specified time window (1-255 minutes). When the user changes the
+ * palette mid-transition, blending re-anchors to the current state.
+ */
+typedef struct SlowTransitionData {
+  CRGBPalette16 startPalette;
+  CRGBPalette16 currentPalette;
+  CRGBPalette16 endPalette;
+  uint8_t startWhite;
+  uint8_t currentWhite;
+  uint8_t endWhite;
+  uint8_t startCCT;
+  uint8_t currentCCT;
+  uint8_t endCCT;
+} slow_transition_data;
+
+static uint16_t mode_slow_transition(void) {
+  uint32_t* startTime  = &SEGMENT.step;
+  uint16_t* stepsDone  = &SEGMENT.aux0;
+  uint16_t* startSpeed = &SEGMENT.aux1;
+
+  size_t dataSize = sizeof(slow_transition_data);
+  if (!SEGMENT.allocateData(dataSize)) return mode_static();
+  slow_transition_data* data = reinterpret_cast<slow_transition_data*>(SEGMENT.data);
+  bool changed = (data->endPalette != SEGPALETTE
+                  || *startSpeed != SEGMENT.speed
+                  || data->endWhite != W(SEGCOLOR(0))
+                  || data->currentCCT != SEGMENT.cct);
+
+  if (changed || SEGMENT.call == 0) {
+    if (SEGMENT.call == 0) {
+      data->startPalette   = SEGPALETTE;
+      data->currentPalette = SEGPALETTE;
+      data->endPalette     = SEGPALETTE;
+      data->startWhite = data->currentWhite = data->endWhite = W(SEGCOLOR(0));
+      data->startCCT   = data->currentCCT   = data->endCCT   = SEGMENT.cct;
+      *stepsDone = 0xFFFF;
+    } else {
+      data->startPalette = data->currentPalette;
+      data->endPalette   = SEGPALETTE;
+      data->startWhite   = data->currentWhite;
+      data->endWhite     = W(SEGCOLOR(0));
+      data->startCCT     = data->currentCCT;
+      data->endCCT       = SEGMENT.cct;
+      *stepsDone = 0;
+    }
+    *startSpeed = SEGMENT.speed;
+    *startTime  = millis();
+  }
+
+  uint32_t totalSteps = SEGMENT.check2 ? 16 * 255 : 255;
+  uint32_t duration   = (SEGMENT.speed == 0) ? 10000 : (uint32_t)SEGMENT.speed * 60000;
+  uint32_t elapsed    = millis() - *startTime;
+  uint32_t expectedSteps = (uint64_t)elapsed * totalSteps / duration;
+  expectedSteps = std::min<uint32_t>(expectedSteps, totalSteps);
+
+  if (*stepsDone > expectedSteps)
+    *stepsDone = expectedSteps;
+
+  if (*stepsDone < expectedSteps) {
+    *stepsDone = expectedSteps;
+    uint8_t blendAmount;
+    if (SEGMENT.check2) {
+      uint8_t i = *stepsDone % 16;
+      blendAmount = *stepsDone / 16;
+      data->currentPalette[i] = CRGB(color_blend((uint32_t)CRGBW(data->startPalette[i]),
+                                                 (uint32_t)CRGBW(data->endPalette[i]),
+                                                 blendAmount));
+    } else {
+      blendAmount = (uint8_t)*stepsDone;
+      for (uint8_t i = 0; i < 16; i++) {
+        data->currentPalette[i] = CRGB(color_blend((uint32_t)CRGBW(data->startPalette[i]),
+                                                   (uint32_t)CRGBW(data->endPalette[i]),
+                                                   blendAmount));
+      }
+    }
+    data->currentWhite = (data->startWhite * (255 - blendAmount) + data->endWhite * blendAmount) / 255;
+    data->currentCCT   = (data->startCCT   * (255 - blendAmount) + data->endCCT   * blendAmount) / 255;
+    if (*stepsDone >= totalSteps) {
+      data->currentPalette = data->endPalette;
+      data->currentWhite   = data->endWhite;
+      data->currentCCT     = data->endCCT;
+    }
+  }
+
+  for (unsigned i = 0; i < SEGLEN; i++) {
+    uint8_t paletteIndex = (i * 255) / SEGLEN;
+    CRGBW palcol = ColorFromPalette(data->currentPalette, paletteIndex, 255, LINEARBLEND_NOWRAP);
+    palcol.w = data->currentWhite;
+    SEGMENT.setPixelColor(i, palcol.color32);
+  }
+  SEGMENT.cct = data->currentCCT;
+  return FRAMETIME;
+}
+static const char _data_FX_MODE_SLOW_TRANSITION[] PROGMEM = "Slow Transition@Time (min),,,,,,Sweep;!;!;1;pal=2,sx=0,ix=0";
+
+/*
 * Sinelon stolen from FASTLED examples
 */
 static uint16_t sinelon_base(bool dual, bool rainbow=false) {
@@ -10532,6 +10920,10 @@ void WS2812FX::setupEffectData() {
   #ifdef WLED_PS_DONT_REPLACE_FX
   addEffect(FX_MODE_MULTI_COMET, &mode_multi_comet, _data_FX_MODE_MULTI_COMET);  
   addEffect(FX_MODE_ROLLINGBALLS, &rolling_balls, _data_FX_MODE_ROLLINGBALLS);
+  addEffect(FX_MODE_SHIMMER, &mode_shimmer, _data_FX_MODE_SHIMMER);
+  addEffect(FX_MODE_COLORCLOUDS, &mode_ColorClouds, _data_FX_MODE_COLORCLOUDS);
+  addEffect(FX_MODE_PACMAN, &mode_pacman, _data_FX_MODE_PACMAN);
+  addEffect(FX_MODE_SLOW_TRANSITION, &mode_slow_transition, _data_FX_MODE_SLOW_TRANSITION);
   addEffect(FX_MODE_SPARKLE, &mode_sparkle, _data_FX_MODE_SPARKLE);
   addEffect(FX_MODE_GLITTER, &mode_glitter, _data_FX_MODE_GLITTER);
   addEffect(FX_MODE_SOLID_GLITTER, &mode_solid_glitter, _data_FX_MODE_SOLID_GLITTER);

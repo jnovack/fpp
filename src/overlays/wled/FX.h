@@ -209,7 +209,7 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_COLORTWINKLE            74
 #define FX_MODE_LAKE                    75
 #define FX_MODE_METEOR                  76
-//#define FX_MODE_METEOR_SMOOTH           77 // merged with meteor
+#define FX_MODE_COPY                    77 // was METEOR_SMOOTH (merged with meteor); reused upstream for Copy Segment
 #define FX_MODE_RAILWAY                 78
 #define FX_MODE_RIPPLE                  79
 #define FX_MODE_TWINKLEFOX              80
@@ -287,7 +287,7 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_RIPPLEPEAK             148
 #define FX_MODE_2DFIRENOISE            149
 #define FX_MODE_2DSQUAREDSWIRL         150
-// #define FX_MODE_2DFIRE2012             151
+#define FX_MODE_PACMAN                 151 // gap fill (was 2DFIRE2012). Do NOT renumber; SR-ID range must remain stable.
 #define FX_MODE_2DDNA                  152
 #define FX_MODE_2DMATRIX               153
 #define FX_MODE_2DMETABALLS            154
@@ -297,7 +297,7 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_GRAVFREQ               158
 #define FX_MODE_DJLIGHT                159
 #define FX_MODE_2DFUNKYPLANK           160
-//#define FX_MODE_2DCENTERBARS           161
+#define FX_MODE_SHIMMER                161  // gap fill, non-SR 1D effect
 #define FX_MODE_2DPULSER               162
 #define FX_MODE_BLURZ                  163
 #define FX_MODE_2DDRIFT                164
@@ -353,7 +353,10 @@ extern byte realtimeMode;           // used in getMappedPixelIndex()
 #define FX_MODE_PS1DSONICSTREAM        214
 #define FX_MODE_PS1DSONICBOOM          215
 #define FX_MODE_PS1DSPRINGY            216
-#define MODE_COUNT                     217
+#define FX_MODE_PARTICLEGALAXY         217
+#define FX_MODE_COLORCLOUDS            218
+#define FX_MODE_SLOW_TRANSITION        219
+#define MODE_COUNT                     220
 
 
 #define BLEND_STYLE_FADE            0x00  // universal
