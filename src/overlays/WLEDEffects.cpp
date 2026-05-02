@@ -76,22 +76,17 @@ public:
         return PixelOverlayManager::mapColor(setting);
     }
     static uint32_t adjustColor(uint32_t color, int brightness) {
-        int r = color & 0xFF0000;
-        r >>= 16;
-        int g = color & 0xFF00;
-        g >>= 8;
-        int b = color & 0xFF;
+        int r = (color >> 16) & 0xFF;
+        int g = (color >>  8) & 0xFF;
+        int b =  color        & 0xFF;
+        int w = (color >> 24) & 0xFF;  // RGBW high byte; 0 for plain #RRGGBB inputs
 
-        r *= brightness;
-        r /= 100;
-        r &= 0xFF;
-        g *= brightness;
-        g /= 100;
-        g &= 0xFF;
-        b *= brightness;
-        b /= 100;
-        b &= 0xFF;
-        return (r << 16 | g << 8 | b);
+        r = (r * brightness / 100) & 0xFF;
+        g = (g * brightness / 100) & 0xFF;
+        b = (b * brightness / 100) & 0xFF;
+        w = (w * brightness / 100) & 0xFF;
+
+        return ((uint32_t)w << 24) | (r << 16) | (g << 8) | b;
     }
 
     void fill(uint32_t color) {

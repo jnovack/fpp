@@ -173,7 +173,16 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
 
     <div id="hexw">
       <span class="hash">#</span>
-      <input type="text" id="hexc" maxlength="6" placeholder="ff8000" autocomplete="off">
+      <input type="text" id="hexc" maxlength="8" placeholder="ff8000  (or ff8000WW)" autocomplete="off">
+    </div>
+
+    <!-- White-channel slider, shown only when the selected model is RGBW
+         (4 channels per pixel). The slider lives next to the wheel so
+         users can dial in W independently of the RGB color. -->
+    <div id="wwrap" class="slider hide">
+      <span class="icon">W</span>
+      <input type="range" id="sliderW" min="0" max="255" value="0">
+      <span class="val" id="wVal">0</span>
     </div>
 
     <div class="qcs-w" id="quickColors"></div>
@@ -203,8 +212,13 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
       <div class="csl compact" id="cslE"></div>
       <div id="mini-color">
         <div class="lbl">Hex</div>
-        <input type="text" id="hexcE" maxlength="6" placeholder="ff8000" autocomplete="off"
+        <input type="text" id="hexcE" maxlength="8" placeholder="ff8000  (or ff8000WW)" autocomplete="off"
                style="background:var(--c-2);color:var(--c-f);border:1px solid var(--c-4);border-radius:6px;padding:6px 10px;font-family:monospace;text-transform:uppercase;width:100%;">
+        <div id="wwrapE" class="slider hide" style="margin-top:8px;">
+          <span class="icon">W</span>
+          <input type="range" id="sliderWE" min="0" max="255" value="0">
+          <span class="val" id="wValE">0</span>
+        </div>
         <div class="lbl" style="margin-top:8px;">Quick</div>
         <div class="qcs-w" id="quickColorsE"></div>
       </div>
@@ -275,7 +289,7 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
   const state = {
     selectedModel: null,
     models: [],
-    colors: [{r:255,g:0,b:0}, {r:0,g:0,b:255}, {r:0,g:0,b:0}],
+    colors: [{r:255,g:0,b:0,w:0}, {r:0,g:0,b:255,w:0}, {r:0,g:0,b:0,w:0}],
     selectedSlot: 0,
     selectedPalette: 'Default',
     paletteCatalog: [],
@@ -288,7 +302,7 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
   // Ensure state.colors has at least n entries.
   function ensureColorSlots(n) {
     while (state.colors.length < n) {
-      state.colors.push({r:0, g:0, b:0});
+      state.colors.push({r:0, g:0, b:0, w:0});
     }
   }
 
@@ -299,14 +313,34 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
     return m ? Math.max(0, parseInt(m[1], 10) - 1) : 0;
   }
 
-  function rgbToHex({r,g,b}){
-    return ((r<<16) | (g<<8) | b).toString(16).padStart(6,'0').toUpperCase();
+  // Color objects optionally carry a `w` (white) component for RGBW
+  // overlay models. rgbToHex emits 6-char #RRGGBB when w is missing or
+  // 0 (compatible with normal RGB models and existing presets), and
+  // 8-char #RRGGBBWW when w is present and non-zero.
+  function rgbToHex(c){
+    const rgb = ((c.r<<16) | (c.g<<8) | c.b).toString(16).padStart(6,'0').toUpperCase();
+    if (c.w && c.w > 0) return rgb + (c.w & 0xff).toString(16).padStart(2,'0').toUpperCase();
+    return rgb;
   }
+  // hexToRgb accepts either 6 or 8 chars. 8-char form puts the trailing
+  // WW byte into the returned object's `w` field. Caller decides whether
+  // to use it (RGBW model) or ignore it (RGB model).
   function hexToRgb(h){
-    h = h.replace('#','').padStart(6,'0').slice(0,6);
+    h = h.replace('#','').toUpperCase();
+    if (h.length === 8) {
+      const n = parseInt(h.slice(0,6), 16);
+      const w = parseInt(h.slice(6,8), 16);
+      if (isNaN(n) || isNaN(w)) return null;
+      return {r:(n>>16)&255, g:(n>>8)&255, b:n&255, w:w&255};
+    }
+    h = h.padStart(6,'0').slice(0,6);
     const n = parseInt(h, 16);
     if (isNaN(n)) return null;
-    return {r:(n>>16)&255, g:(n>>8)&255, b:n&255};
+    return {r:(n>>16)&255, g:(n>>8)&255, b:n&255, w:0};
+  }
+  function modelIsRGBW(name){
+    const m = state.models.find(x => (x.Name||x.name) === name);
+    return m && (m.ChannelCountPerNode === 4);
   }
 
   function toast(msg, isErr){
@@ -351,7 +385,10 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
     });
     colorPicker.on('color:change', c => {
       const rgb = c.rgb;
-      state.colors[state.selectedSlot] = {r:rgb.r|0, g:rgb.g|0, b:rgb.b|0};
+      // Preserve any existing W when the wheel changes RGB (the W
+      // slider is independent on RGBW models).
+      const prevW = (state.colors[state.selectedSlot] || {}).w || 0;
+      state.colors[state.selectedSlot] = {r:rgb.r|0, g:rgb.g|0, b:rgb.b|0, w:prevW};
       $('#hexc').value = rgbToHex(state.colors[state.selectedSlot]);
       paintSlots();
     });
@@ -359,22 +396,35 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
 
   // Paint both slot rows (Color tab fixed-3 + Effects tab dynamic) —
   // they share state. Buttons may not exist for indices beyond what the
-  // current effect needs; skip cleanly in that case.
+  // current effect needs; skip cleanly in that case. Also reflects the
+  // active slot's W value into the W sliders, and shows/hides those
+  // sliders based on whether the current model is RGBW.
   function paintSlots(){
     state.colors.forEach((c, i) => {
-      const hex = '#' + rgbToHex(c);
+      // Slot button shows the RGB part only — visualizing W on a swatch
+      // would be misleading since white-channel maps to a separate LED.
+      const rgbHex = '#' + ((c.r<<16)|(c.g<<8)|c.b).toString(16).padStart(6,'0');
       [$('#csl' + i), $('#cslE' + i)].forEach(btn => {
         if (!btn) return;
-        btn.style.background = hex;
+        btn.style.background = rgbHex;
         btn.classList.toggle('sel', i === state.selectedSlot);
       });
     });
-    // Mirror the active slot's hex into both inputs.
     if (state.colors[state.selectedSlot]) {
-      const active = rgbToHex(state.colors[state.selectedSlot]);
-      if ($('#hexc'))  $('#hexc').value  = active;
-      if ($('#hexcE')) $('#hexcE').value = active;
+      const c = state.colors[state.selectedSlot];
+      const hex = rgbToHex(c);
+      if ($('#hexc'))  $('#hexc').value  = hex;
+      if ($('#hexcE')) $('#hexcE').value = hex;
+      const wVal = c.w || 0;
+      if ($('#sliderW'))  $('#sliderW').value  = wVal;
+      if ($('#sliderWE')) $('#sliderWE').value = wVal;
+      if ($('#wVal'))     $('#wVal').textContent  = wVal;
+      if ($('#wValE'))    $('#wValE').textContent = wVal;
     }
+    // Toggle W slider visibility based on whether selected model is RGBW.
+    const isRGBW = modelIsRGBW(state.selectedModel);
+    if ($('#wwrap'))  $('#wwrap').classList.toggle('hide',  !isRGBW);
+    if ($('#wwrapE')) $('#wwrapE').classList.toggle('hide', !isRGBW);
   }
 
   function selectSlot(i, openMini){
@@ -795,6 +845,9 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
                  '#0000ff','#00ffc8','#08ff00','#ff8000','#a000ff','#ff0080'];
   function applyQuickColor(c){
     const rgb = hexToRgb(c);
+    // Quick colors are RGB-only; preserve any existing W on the slot.
+    const prevW = (state.colors[state.selectedSlot] || {}).w || 0;
+    rgb.w = prevW;
     state.colors[state.selectedSlot] = rgb;
     if (colorPicker) colorPicker.color.set(c);
     paintSlots();
@@ -1016,14 +1069,31 @@ select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(
     function applyHex(input){
       const rgb = hexToRgb(input.value);
       if (!rgb) return;
+      // 6-char hex doesn't carry a W component — preserve existing.
+      if (input.value.length < 8) {
+        rgb.w = (state.colors[state.selectedSlot] || {}).w || 0;
+      }
       state.colors[state.selectedSlot] = rgb;
-      if (colorPicker) colorPicker.color.set('#' + rgbToHex(rgb));
+      // colorPicker takes the RGB part only.
+      const rgbHex = '#' + ((rgb.r<<16)|(rgb.g<<8)|rgb.b).toString(16).padStart(6,'0');
+      if (colorPicker) colorPicker.color.set(rgbHex);
       paintSlots();
     }
     $('#hexc').addEventListener('change',  () => applyHex($('#hexc')));
     $('#hexcE').addEventListener('change', () => applyHex($('#hexcE')));
     $('#hexc').value  = rgbToHex(state.colors[0]);
     $('#hexcE').value = rgbToHex(state.colors[0]);
+
+    // W slider — both Color tab and Effects tab. Updates the active
+    // slot's white component in shared state.
+    function applyW(val) {
+      const v = parseInt(val, 10) & 0xff;
+      if (!state.colors[state.selectedSlot]) return;
+      state.colors[state.selectedSlot].w = v;
+      paintSlots();
+    }
+    if ($('#sliderW'))  $('#sliderW').addEventListener('input',  e => applyW(e.target.value));
+    if ($('#sliderWE')) $('#sliderWE').addEventListener('input', e => applyW(e.target.value));
 
     // Presets
     $('#savePresetBtn').addEventListener('click', savePreset);

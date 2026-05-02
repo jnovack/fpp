@@ -1,5 +1,10 @@
 #pragma once
 
+// Forward declaration to avoid pulling in PixelOverlayModel.h in a header
+// that's transitively #included by FX.cpp.
+class PixelOverlayModel;
+PixelOverlayModel* currentBusModel();   // defined in wled.cpp
+
 class BusConfig {
 public:
     BusConfig(...) {}
@@ -14,7 +19,14 @@ class Bus {
 public:
     int getStart() const { return 0; }
     int getType() const { return 0; }
-    bool hasWhite() const { return false; }
+
+    // RGBW awareness: when the current overlay model has 4 bytes per
+    // pixel (RGBW), tell WLED that this bus has a white channel.
+    // Triggers Segment::refreshLightCapabilities() to flip on
+    // SEG_CAPABILITY_W and (with the auto-white mode below) makes
+    // every effect's setPixelColor call route the bright/white parts
+    // to the W channel rather than driving R+G+B together.
+    bool hasWhite() const;
     bool hasRGB() const { return true; }
 
     int getLength() const;
@@ -26,8 +38,12 @@ public:
 
     bool hasCCT() const { return false; }
     bool isOk() const { return true; }
-    uint8_t getAutoWhiteMode() const { return 0; }
-    static uint8_t getGlobalAWMode() { return 0; }
+    // Default to AUTO_BRIGHTER on RGBW models — every existing WLED
+    // effect emits pure RGB and relies on the bus to extract a W
+    // value. AUTO_BRIGHTER takes min(r,g,b) for W, leaving RGB intact;
+    // visually best on warm/neutral white LEDs.
+    uint8_t getAutoWhiteMode() const;
+    static uint8_t getGlobalAWMode() { return AW_GLOBAL_DISABLED; }
     bool isOffRefreshRequired() { return false; }
     bool isVirtual() const { return false; }
     bool isPWM() const { return false; }

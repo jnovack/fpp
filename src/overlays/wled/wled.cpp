@@ -482,6 +482,28 @@ void WS2812FXExt::popCurrent() {
     }
 }
 
+PixelOverlayModel* currentBusModel() {
+    return currentStrip ? currentStrip->model : nullptr;
+}
+
+// RGBW capability is per-overlay-model, since FPP overlay models can be
+// RGB (3bpp) or RGBW (4bpp). Whichever effect happens to be running
+// queries the current strip's underlying model to decide.
+bool Bus::hasWhite() const {
+    auto* m = currentBusModel();
+    return m && m->getBytesPerPixel() == 4;
+}
+
+// On RGBW models, default to AUTO_BRIGHTER so every existing WLED
+// effect benefits from the white channel without needing to know
+// about W. Effects that DO write W explicitly (Slow Transition's
+// W(SEGCOLOR(0)) reads, future RGBW-aware additions) still work
+// because the auto-white pass only fills W when the effect left it
+// at zero.
+uint8_t Bus::getAutoWhiteMode() const {
+    return hasWhite() ? RGBW_MODE_AUTO_BRIGHTER : RGBW_MODE_MANUAL_ONLY;
+}
+
 int Bus::getLength() const {
     if (currentStrip->model) {
         return currentStrip->model->getWidth() * currentStrip->model->getHeight();
@@ -535,6 +557,28 @@ void Bus::setPixelColor(int i, uint32_t c) {
     int g = G(c);
     int b = B(c);
     int wh = W(c);
+
+    // RGBW auto-white extraction. Almost every WLED effect emits pure
+    // RGB and leaves W=0; on RGBW overlay models we synthesize a W
+    // value from the RGB so the white channel actually drives the
+    // white LED. The bus reports its mode via getAutoWhiteMode():
+    //   AUTO_BRIGHTER  - W = min(R,G,B), RGB unchanged (brighter overall)
+    //   AUTO_ACCURATE  - W = min(R,G,B), subtract from RGB (color-faithful)
+    //   MAX            - W = max(R,G,B), best for white-only LEDs
+    //   MANUAL_ONLY    - leave W as-is (effect controls it directly)
+    if (wh == 0 && currentStrip->model && currentStrip->model->getBytesPerPixel() == 4) {
+        uint8_t aw = BusManager::bus.getAutoWhiteMode();
+        int mn = std::min({r, g, b});
+        if (aw == RGBW_MODE_AUTO_BRIGHTER) {
+            wh = mn;
+        } else if (aw == RGBW_MODE_AUTO_ACCURATE) {
+            wh = mn;
+            r -= mn; g -= mn; b -= mn;
+        } else if (aw == RGBW_MODE_MAX) {
+            wh = std::max({r, g, b});
+        }
+    }
+
     int brightness = currentStrip->brightness;
     r = r * brightness / 128;
     g = g * brightness / 128;
