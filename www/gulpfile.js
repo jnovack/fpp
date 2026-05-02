@@ -50,6 +50,54 @@ var paths = {
 	css: './css/fpp-bootstrap/dist'
 };
 
+function normalizeMapSource(source, outputPath) {
+	if (!source || !source.startsWith('file://')) {
+		return source;
+	}
+
+	var normalizedSource = decodeURIComponent(source.replace(/^file:\/\//, ''));
+	var srcMarker = `${path.sep}css${path.sep}fpp-bootstrap${path.sep}src${path.sep}`;
+	var markerIndex = normalizedSource.indexOf(srcMarker);
+
+	if (markerIndex === -1) {
+		return source;
+	}
+
+	var sourceWithinSrc = normalizedSource.slice(markerIndex + srcMarker.length);
+	var sourcePath = path.join(paths.scss, sourceWithinSrc);
+
+	return path
+		.relative(path.dirname(outputPath), sourcePath)
+		.split(path.sep)
+		.join('/');
+}
+
+function normalizeSourceMap(map, outputPath) {
+	var normalizedMap = {
+		...map,
+		sourceRoot: ''
+	};
+
+	normalizedMap.sources = (map.sources || []).map(function (source) {
+		return normalizeMapSource(source, outputPath);
+	});
+
+	return normalizedMap;
+}
+
+function ensureSourceMapAnnotation(css, outputName) {
+	var annotation = `/*# sourceMappingURL=${outputName}.map */`;
+
+	if (css.includes('sourceMappingURL=')) {
+		return css.replace(
+			/\/\*# sourceMappingURL=.*?\*\//,
+			annotation
+		);
+	}
+
+	return `${css}\n${annotation}\n`;
+}
+
 // Run:
 // gulp sass
 // Compiles SCSS files in CSS
@@ -69,22 +117,32 @@ gulp.task('sass', async function () {
 				var result = await sass.compileAsync(inputPath, {
 					sourceMap: true
 				});
-				var processed = await processor.process(result.css, {
-					from: inputPath,
-					to: outputPath,
-					map: {
-						inline: false,
-						prev: result.sourceMap
-					}
-				});
+					var processed = await processor.process(result.css, {
+						from: inputPath,
+						to: outputPath,
+						map: {
+							inline: false,
+							prev: result.sourceMap
+						}
+					});
+					var normalizedMap = processed.map
+						? normalizeSourceMap(processed.map.toJSON(), outputPath)
+						: null;
+					var outputCss = ensureSourceMapAnnotation(
+						processed.css,
+						outputName
+					);
 
-				await fs.mkdir(paths.css, { recursive: true });
-				await fs.writeFile(outputPath, processed.css);
-				if (processed.map) {
-					await fs.writeFile(outputPath + '.map', processed.map.toString());
-				}
-			})
-	);
+					await fs.mkdir(paths.css, { recursive: true });
+					await fs.writeFile(outputPath, outputCss);
+					if (normalizedMap) {
+						await fs.writeFile(
+							outputPath + '.map',
+							JSON.stringify(normalizedMap)
+						);
+					}
+				})
+		);
 });
 
 // Run:
