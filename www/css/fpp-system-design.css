@@ -1624,7 +1624,6 @@
    Enhanced card with accent bars and structured headers
    ========================================================================== */
 .fpp-card {
-	background: var(--fpp-bg-card);
 	border: 1px solid var(--fpp-border);
 	border-radius: var(--fpp-radius-lg);
 	box-shadow: var(--fpp-shadow-sm);
@@ -1767,7 +1766,7 @@
 /* Compact card modifier - tighter spacing for secondary content */
 .fpp-card--compact {
 	padding: var(--fpp-sp-lg);
-	margin-bottom: var(--fpp-sp-lg);
+	flex-direction: row;
 }
 
 .fpp-card--compact:hover {

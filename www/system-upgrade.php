@@ -929,8 +929,8 @@
                 <!-- Upgrade Options -->
                 <div class="row">
                     <!-- FPP Software Update -->
-                    <div class="col-md-6 fpp-col-flex">
-                        <div class="fpp-card fpp-card--accent fpp-card--accent-success fpp-card--flex">
+                    <div class="col-xl-6 fpp-col-flex">
+                        <div class="card fpp-card fpp-card--accent fpp-card--accent-success fpp-card--flex">
                             <div class="fpp-card__header">
                                 <div class="fpp-card__icon fpp-card__icon--success">
                                     <i class="fas fa-sync-alt"></i>
@@ -1067,8 +1067,8 @@
                     </div>
 
                     <!-- Operating System Upgrade -->
-                    <div class="col-md-6 fpp-col-flex">
-                        <div class="fpp-card fpp-card--accent fpp-card--accent-warning fpp-card--flex">
+                    <div class="col-xl-6 fpp-col-flex">
+                        <div class="card fpp-card fpp-card--accent fpp-card--accent-warning fpp-card--flex">
                             <div class="fpp-card__header">
                                 <div class="fpp-card__icon fpp-card__icon--warning">
                                     <i class="fas fa-hdd"></i>
@@ -1180,7 +1180,7 @@
 
                 <?php if (isset($settings['uiLevel']) && $settings['uiLevel'] >= 1) { ?>
                     <!-- Revert to Previous Commit Card -->
-                    <div class="fpp-card fpp-card--accent fpp-card--accent-neutral fpp-card--compact fpp-card--inline">
+                    <div class="card fpp-card fpp-card--accent fpp-card--accent-neutral fpp-card--compact fpp-card--inline">
                         <div class="fpp-card__content">
                             <h3 class="fpp-card__title">
                                 <i class="fas fa-history"></i>
@@ -1196,7 +1196,7 @@
                     </div>
 
                     <!-- Version Information -->
-                    <div class="fpp-card fpp-card--accent fpp-card--accent-neutral mt-4">
+                    <div class="card fpp-card fpp-card--accent fpp-card--accent-neutral">
                         <div class="fpp-card__header-simple">
                             <h3>
                                 <i class="fas fa-info-circle"></i>
