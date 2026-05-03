@@ -342,7 +342,7 @@
                         );
                         $('#osUpdateBanner .fpp-banner__icon i').removeClass('fa-exclamation-triangle').addClass('fa-arrow-circle-up');
 
-                        $('#fppVersionStatusBadge').removeClass('fpp-badge--neutral fpp-badge--success').addClass('fpp-badge--warning').text('OS Upgrade Required');
+                        $('#fppVersionStatusBadge').removeClass('text-bg-secondary text-bg-success').addClass('text-bg-warning').text('OS Upgrade Required');
                         // Signal that OS upgrade path should be used
                         osUpgradeAvailable = true;
 
@@ -350,7 +350,7 @@
                         $('#fppVersionStandardBranchUpgrade').show();
                         $('#fppTargetVersion').text('FPP ' + updateData.branchUpgradeVersion);
                         // Add visual indication that this requires OS upgrade
-                        $('#fppVersionStandardBranchUpgrade .fpp-badge').text('Requires OS Upgrade').removeClass('fpp-badge--warning').addClass('fpp-badge--info');
+                        $('#fppVersionStandardBranchUpgrade .badge').text('Requires OS Upgrade').removeClass('text-bg-warning').addClass('text-bg-primary');
 
                         // Advanced view
                         $('#fppVersionIndicator').show();
@@ -365,7 +365,7 @@
                         // Minor version branch upgrade
                         $('#gitUpdateBadge').text('Upgrade to ' + updateData.branchUpgradeTarget).show();
                         $('#fppUpdateBanner').show();
-                        $('#fppVersionStatusBadge').removeClass('fpp-badge--neutral fpp-badge--success').addClass('fpp-badge--warning').text('Upgrade Available');
+                        $('#fppVersionStatusBadge').removeClass('text-bg-secondary text-bg-success').addClass('text-bg-warning').text('Upgrade Available');
 
                         // Standard view: show branch upgrade
                         $('#fppVersionStandardBranchUpgrade').show();
@@ -394,7 +394,7 @@
                     $('#remoteGitShort').text(updateData.remoteCommit.substring(0, 9));
                     $('#gitUpdateBadge').text('Update Available').show();
                     $('#fppUpdateBanner').show();
-                    $('#fppVersionStatusBadge').removeClass('fpp-badge--neutral fpp-badge--success').addClass('fpp-badge--warning').text('Update Available');
+                    $('#fppVersionStatusBadge').removeClass('text-bg-secondary text-bg-success').addClass('text-bg-warning').text('Update Available');
 
                     // Standard view: show commit update (no version arrow)
                     $('#fppVersionStandardCommitUpdate').show();
@@ -436,7 +436,7 @@
                     $('#fppUpdateBanner').hide();
                     // Don't hide OS banner here - let checkUpgradeRecommendation() handle it
                     // based on whether osUpgradeAvailable is set
-                    $('#fppVersionStatusBadge').removeClass('fpp-badge--neutral fpp-badge--warning').addClass('fpp-badge--success').text('Up to Date');
+                    $('#fppVersionStatusBadge').removeClass('text-bg-secondary text-bg-warning').addClass('text-bg-success').text('Up to Date');
 
                     // When up to date: disable button for basic users, keep enabled for advanced
                     if (isAdvancedView) {
@@ -457,7 +457,7 @@
 
                 checkUpgradeRecommendation();
             }).fail(function () {
-                $('#fppVersionStatusBadge').removeClass('fpp-badge--neutral fpp-badge--success fpp-badge--warning').addClass('fpp-badge--neutral').text('Unknown');
+                $('#fppVersionStatusBadge').removeClass('text-bg-secondary text-bg-success text-bg-warning').addClass('text-bg-secondary').text('Unknown');
             });
         }
 
@@ -938,9 +938,9 @@
                                 <div>
                                     <h3 class="fpp-card__title">
                                         Update FPP Software
-                                        <span id="gitUpdateBadge" class="fpp-badge fpp-badge--success fpp-badge--sm"
+                                        <span id="gitUpdateBadge" class="badge text-bg-success text-bg-sm"
                                             style="display: none;">Update Available</span>
-                                        <span id="fppRecommendedBadge" class="fpp-badge fpp-badge--info fpp-badge--sm"
+                                        <span id="fppRecommendedBadge" class="badge text-bg-primary text-bg-sm"
                                             style="display: none;">Recommended</span>
                                     </h3>
                                     <p class="fpp-card__subtitle">Get the latest bug fixes and features. This is safe
@@ -976,7 +976,7 @@
                                     <span class="fpp-version-indicator__current"><?= $fppVersionDisplay ?></span>
                                     <i class="fas fa-arrow-right fpp-version-indicator__arrow"></i>
                                     <span class="fpp-version-indicator__to" id="fppTargetVersion">Latest</span>
-                                    <span class="fpp-badge fpp-badge--warning fpp-badge--sm">Upgrade Available</span>
+                                    <span class="badge text-bg-warning text-bg-sm">Upgrade Available</span>
                                     <span
                                         class="fpp-version-indicator__label fpp-version-indicator__label--subtle">Click
                                         to see release notes</span>
@@ -986,7 +986,7 @@
                                 <div id="fppVersionStandardCommitUpdate" class="fpp-version-indicator"
                                     style="display: none;">
                                     <span class="fpp-version-indicator__current"><?= $fppVersionDisplay ?></span>
-                                    <span class="fpp-badge fpp-badge--success fpp-badge--sm">Update Available</span>
+                                    <span class="badge text-bg-success text-bg-sm">Update Available</span>
                                     <span
                                         class="fpp-version-indicator__label fpp-version-indicator__label--subtle"><span
                                             id="commitCountStandard"></span> updates ready to install</span>
@@ -1057,7 +1057,7 @@
                                     }
                                     ?>
                                     <div class="fpp-advanced-options">
-                                        <span class="fpp-badge fpp-badge--info">Adv</span>
+                                        <span class="badge text-bg-primary">Adv</span>
                                         <span>Source:</span>
                                         <?php PrintSettingSelect("FPP Upgrade Source", "UpgradeSource", 0, 0, "github.com", $upgradeSources); ?>
                                     </div>
@@ -1076,7 +1076,7 @@
                                 <div>
                                     <h3 class="fpp-card__title">
                                         Upgrade Operating System
-                                        <span id="osRecommendedBadge" class="fpp-badge fpp-badge--info fpp-badge--sm"
+                                        <span id="osRecommendedBadge" class="badge text-bg-primary text-bg-sm"
                                             style="display: none;">Recommended</span>
                                     </h3>
                                     <p class="fpp-card__subtitle">Upgrade the entire FPP operating system with a new
@@ -1084,7 +1084,7 @@
                                 </div>
                                 <div class="fpp-card__header-status">
                                     <span class="fpp-card__header-status-label">Current OS</span>
-                                    <span class="fpp-badge fpp-badge--neutral" id="osCurrentVersionBadge">--</span>
+                                    <span class="badge text-bg-secondary" id="osCurrentVersionBadge">--</span>
                                 </div>
                             </div>
 
@@ -1151,14 +1151,14 @@
                                 <div class="fpp-checkbox-options">
                                     <label class="fpp-checkbox-option">
                                         <input type="checkbox" id="allPlatforms" onChange="PopulateOSSelect();">
-                                        <span class="fpp-badge fpp-badge--info">Adv</span>
+                                        <span class="badge text-bg-primary">Adv</span>
                                         Show All Platforms
                                         <img title='Show both BBB & Pi downloads' src='images/redesign/help-icon.svg'
                                             class='icon-help'>
                                     </label>
                                     <label class="fpp-checkbox-option">
                                         <input type="checkbox" id="LegacyOS" onChange="PopulateOSSelect();">
-                                        <span class="fpp-badge fpp-badge--info">Adv</span>
+                                        <span class="badge text-bg-primary">Adv</span>
                                         Show Legacy OS
                                         <img title='Include historic OS releases in listing'
                                             src='images/redesign/help-icon.svg' class='icon-help'>
@@ -1166,7 +1166,7 @@
                                     <?php if (isset($settings['uiLevel']) && $settings['uiLevel'] >= 3) { ?>
                                         <label class="fpp-checkbox-option fpp-checkbox-option--dev">
                                             <input type="checkbox" id="keepOptFPP">
-                                            <span class="fpp-badge fpp-badge--graceful">Dev</span>
+                                            <span class="badge text-bg-graceful">Dev</span>
                                             Keep /opt/fpp
                                             <img title='WARNING: This will upgrade the OS but will not upgrade the FPP version running in /opt/fpp. This is useful for developers who are developing the code in /opt/fpp and just want the underlying OS upgraded.'
                                                 src='images/redesign/help-icon.svg' class='icon-help'>
@@ -1185,7 +1185,7 @@
                             <h3 class="fpp-card__title">
                                 <i class="fas fa-history"></i>
                                 Revert to Previous Commit
-                                <span class="fpp-badge fpp-badge--neutral">Advanced</span>
+                                <span class="badge text-bg-secondary">Advanced</span>
                             </h3>
                             <p class="fpp-card__subtitle">Need to roll back changes? Use the changelog to revert to a
                                 previous git commit while keeping your configuration.</p>
@@ -1201,7 +1201,7 @@
                             <h3>
                                 <i class="fas fa-info-circle"></i>
                                 Version Information
-                                <span class="fpp-badge fpp-badge--neutral">Advanced</span>
+                                <span class="badge text-bg-secondary">Advanced</span>
                             </h3>
                         </div>
                         <div class="row">
@@ -1210,14 +1210,14 @@
                                     <span class="fpp-row__label">FPP Version:</span>
                                     <span class="fpp-row__value">
                                         <span id="fppVersionStatusBadge"
-                                            class="fpp-badge fpp-badge--neutral">Checking...</span>
+                                            class="badge text-bg-secondary">Checking...</span>
                                         <span id="fppVersionValue"><?= $fppVersion ?></span>
                                     </span>
                                 </div>
                                 <div class="fpp-row">
                                     <span class="fpp-row__label">OS Version:</span>
                                     <span class="fpp-row__value">
-                                        <span id="osVersionStatusBadge" class="fpp-badge fpp-badge--success"
+                                        <span id="osVersionStatusBadge" class="badge text-bg-success"
                                             style="display: none;">Up to Date</span>
                                         <span id="osVersionValue">--</span>
                                     </span>

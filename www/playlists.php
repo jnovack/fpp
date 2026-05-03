@@ -362,7 +362,7 @@
 
         function onPlaylistArrayLoaded() {
             $('.playlistSelectBody').html('');
-            $('.playlistSelectCount').html(playListArray.length);
+            $('#playlistSelectCount').html(playListArray.length);
             $.each(playListArray, function (i, playList) {
                 var $playlistCol = $('<div class="card-group col-md-4"/>');
                 var $playlistCard = $('<div class="card has-shadow playlistCard buttonActionsParent"/>');
@@ -650,7 +650,7 @@
 
                             <div class="row">
                                 <div class="col-md">
-                                    <h2>Your Playlists <div class="badge badge-light ms-1 playlistSelectCount"></div>
+                                    <h2>Your Playlists <span class="badge text-bg-danger ms-1" id="playlistSelectCount"></span>
                                     </h2>
                                     <select id='playlistSelect'
                                         class="hidden form-control form-control-lg form-control-rounded has-shadow"

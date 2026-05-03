@@ -3692,7 +3692,7 @@ a.api-anchor {
 /* Security badge styling */
 
 
-.badge {
+/* .badge {
 	display: inline-block;
 	padding: 0.25em 0.4em;
 	font-size: 11px;
@@ -3702,13 +3702,13 @@ a.api-anchor {
 	white-space: nowrap;
 	vertical-align: baseline;
 	border-radius: 0.25rem;
-}
+} */
 
-
+/*
 [data-bs-theme="light"] .badge-secondary {
 	color: #fff;
 	background-color: var(--bs-secondary);
-}
+} */
 
 
 /* ========================= */

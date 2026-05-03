@@ -13,8 +13,6 @@
 /* ------------------------------------------------------------- */
 
 [data-bs-theme="dark"] {
-    --bs-primary: #dee2e6;
-    --bs-secondary: #a6acb2;
     --fpp-text-muted: #83898f;
     --fpp-text-light: #a1a1a1;
     --fpp-bg-page: #212529;

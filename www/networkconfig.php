@@ -554,7 +554,7 @@
                         <tr class="wifi-network-row ${rowClass}" style="cursor: pointer;" onclick="selectWifiNetwork('${escapeHtml(n.SSID)}', '${security}')">
                             <td style="padding: 8px;">${selectedIcon}${escapeHtml(n.SSID)}</td>
                             <td style="padding: 8px; white-space: nowrap;" class="${signalClass}">${signalBars} ${signalStrength}dBm</td>
-                            <td style="padding: 8px;"><span class="badge badge-secondary" title="Raw data: ${escapeHtml(securityDetails)}">${security}</span></td>
+                            <td style="padding: 8px;"><span class="badge text-bg-secondary" title="Raw data: ${escapeHtml(securityDetails)}">${security}</span></td>
                         </tr>
                     `);
                 });
@@ -1523,7 +1523,7 @@
             // Check gateway availability after interface info is loaded
             checkGatewayAvailability();
 
-            // Initialize tooltips for newly loaded content  
+            // Initialize tooltips for newly loaded content
             setTimeout(function () {
                 initializeTooltips();
             }, 200);
