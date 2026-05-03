@@ -66,10 +66,9 @@
 	--fpp-bg-disabled: #e9ecef;
 
 	/* Neutral Colors - Borders */
-	--fpp-border: #ddd;
-	--fpp-border-light: #eee;
-	--fpp-border-medium: #dee2e6;
-	--fpp-border-dark: #ced4da;
+	--fpp-border: var(--bs-gray-300);
+	--fpp-border-light: var(--bs-gray-200);
+	--fpp-border-dark: var(--bs-gray-400);
 
 	/* Neutral Colors - Grays */
 	--fpp-gray: #6c757d;
@@ -258,10 +257,9 @@
 		--fpp-bg-disabled: #343a40;
 
 		/* Neutral Colors - Borders */
-		--fpp-border: #495057;
-		--fpp-border-light: #343a40;
-		--fpp-border-medium: #495057;
-		--fpp-border-dark: #6c757d;
+		--fpp-border: var(--bs-gray-700);
+		--fpp-border-light: var(--bs-gray-800);
+		--fpp-border-dark: var(--bs-gray-600);
 
 		/* Neutral Colors - Grays */
 		--fpp-gray: #adb5bd;

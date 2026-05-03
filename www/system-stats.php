@@ -144,7 +144,7 @@ if (isset($_GET['cpu'])) {
                 : '';
             return '<li class="fpp-health-check__item" data-check="' + check.id + '"' + hiddenStyle + '>' +
                 '<span class="fpp-health-check__label">' +
-                '<i class="fas ' + check.icon + '"></i> ' + check.label +
+                '<i class="fas me-1 ' + check.icon + '"></i> ' + check.label +
                 '</span>' +
                 '<span class="fpp-health-check__status" id="hc-' + check.id + '">' +
                 statusHtml +

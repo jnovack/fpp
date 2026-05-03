@@ -151,7 +151,7 @@
 
         .reorder-mode .ui-sortable-placeholder {
             background-color: var(--bs-tertiary-bg);
-            border: 2px dashed var(--fpp-border);
+            border: 2px dashed var(--bs-gray-700);
             visibility: visible !important;
             height: 2.5em;
         }

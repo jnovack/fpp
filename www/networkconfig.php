@@ -1707,7 +1707,7 @@
                                                     Scanning
                                                     for WiFi networks...</div>
                                                 <div id="wifiNetworksTable"
-                                                    style="max-height: 200px; overflow-y: auto; border: 1px solid var(--fpp-border); border-radius: 4px; margin-bottom: 10px;">
+                                                    style="max-height: 200px; overflow-y: auto; border: 1px solid var(--bs-gray-700); border-radius: 4px; margin-bottom: 10px;">
                                                     <table class="table table-sm table-hover" style="margin: 0;">
                                                         <thead style="background-color: var(--bs-tertiary-bg);">
                                                             <tr>
