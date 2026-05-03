@@ -646,8 +646,8 @@ std::string MultiSync::GetTypeString(MultiSyncSystemType type, bool local) {
         return "Genius PRO 32";
     case kSysTypeExperienceAURORACORE16:
         return "LOR AURORA CORE 16";
-    case kSysTypeExperienceVIDID8:
-        return "YPS VIDID 8";
+    case kSysTypeExperienceVIVID8:
+        return "YPS VIVID 8";
     case kSysTypeExperiencePIXELLINK4:
         return "Genius PIXEL LINK 4";
     case kSysTypeExperienceGenius:
