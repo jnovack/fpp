@@ -103,7 +103,7 @@ typedef enum systemType {
     kSysTypeExperienceG16Pro = 0xA3,
     kSysTypeExperienceG32Pro = 0xA4,
     kSysTypeExperienceAURORACORE16 = 0xA5,
-    kSysTypeExperienceVIDID8 = 0xA6,
+    kSysTypeExperienceVIVID8 = 0xA6,
     kSysTypeExperiencePIXELLINK4 = 0xA7,
     kSysTypeExperienceGenius = 0xAF,
     kSysTypeOtherSystem = 0xC0,
