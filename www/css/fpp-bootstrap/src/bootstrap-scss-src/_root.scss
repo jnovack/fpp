@@ -116,40 +116,6 @@
   @include color-mode(dark, true) {
     color-scheme: dark;
 
-    --#{$prefix}blue: #8fb1f2;
-    --#{$prefix}indigo: #8c68f6;
-    --#{$prefix}purple: #8e63cf;
-    --#{$prefix}pink: #e06aa2;
-    --#{$prefix}red: #f87171;
-    --#{$prefix}orange: #ff944d;
-    --#{$prefix}yellow: #f4c97d;
-    --#{$prefix}green: #6fc879;
-    --#{$prefix}teal: #4dd4ad;
-    --#{$prefix}cyan: #4fc3d7;
-    --#{$prefix}white: #fff;
-    --#{$prefix}gray: #adb5bd;
-    --#{$prefix}gray-dark: #dee2e6;
-    --#{$prefix}gray-100: #212529;
-    --#{$prefix}gray-200: #343a40;
-    --#{$prefix}gray-300: #495057;
-    --#{$prefix}gray-400: #6c757d;
-    --#{$prefix}gray-500: #adb5bd;
-    --#{$prefix}gray-600: #ced4da;
-    --#{$prefix}gray-700: #dee2e6;
-    --#{$prefix}gray-800: #e9ecef;
-    --#{$prefix}gray-900: #f2f6f6;
-    --#{$prefix}primary: #dee2e6;
-    --#{$prefix}secondary: #a6acb2;
-    --#{$prefix}tertiary: #6c757d;
-    --#{$prefix}success: #6fc879;
-    --#{$prefix}info: #4fc3d7;
-    --#{$prefix}warning: #f4c97d;
-    --#{$prefix}danger: #f87171;
-    --#{$prefix}light: #f2f6f6;
-    --#{$prefix}dark: #343a40;
-    --#{$prefix}graceful: #8e63cf;
-    --#{$prefix}pleasant: #8fb1f2;
-
     // scss-docs-start root-dark-mode-vars
     --#{$prefix}body-color: #{$body-color-dark};
     --#{$prefix}body-bg: #{$body-bg-dark};
