@@ -27,8 +27,14 @@ jobs:
 
       - name: Fetch Git tags
         run: |
-          git fetch --force --tags origin
-          git describe --tags --dirty || git describe --tags
+          git fetch --force --prune origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/tags/*:refs/tags/*'
+          echo "HEAD=$(git rev-parse HEAD)"
+          echo "--- recent tags ---"
+          git tag --sort=-creatordate | sed -n '1,20p'
+          echo "--- describe ---"
+          git describe --tags --dirty
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
