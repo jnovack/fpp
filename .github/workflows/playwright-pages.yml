@@ -86,6 +86,7 @@ jobs:
         run: |
           for attempt in $(seq 1 60); do
             if curl -fsSI http://127.0.0.1:8080/ >/dev/null; then
+              docker compose -f Docker/docker-compose-dev.yml ps
               exit 0
             fi
             sleep 10
@@ -93,6 +94,14 @@ jobs:
           echo "FPP web UI did not become ready on http://127.0.0.1:8080"
           docker compose -f Docker/docker-compose-dev.yml ps
           exit 1
+
+      - name: Complete initial setup gate for CI
+        run: |
+          curl -fsS -X PUT \
+            -H 'Content-Type: text/plain' \
+            --data-binary '1' \
+            http://127.0.0.1:8080/api/settings/initialSetup-02
+          sleep 2
 
       - name: Run Playwright tests
         id: playwright
