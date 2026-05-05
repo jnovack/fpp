@@ -36,6 +36,11 @@ if ($_fpp_mediaDir !== '' && is_readable($_fpp_mediaDir . '/settings')) {
         theme = mq.matches ? 'dark' : 'light';
       }
       document.documentElement.setAttribute('data-bs-theme', theme);
+      // Also drive the CSS color-scheme so the browser renders native
+      // form controls (inputs, selects, scrollbars, date/color pickers)
+      // in the chosen theme. Without this, an OS preference of dark
+      // combined with a light themeOverride leaves native widgets dark.
+      document.documentElement.style.colorScheme = theme;
     }
     applyTheme();
     if (mq.addEventListener) {
