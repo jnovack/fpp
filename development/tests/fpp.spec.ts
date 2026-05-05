@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { test, type Page } from '@playwright/test';
 
 const SETTINGS_TABS = [
   { slug: 'playback', title: 'Playback' },
@@ -10,22 +10,41 @@ const SETTINGS_TABS = [
   { slug: 'system', title: 'System' }
 ];
 
+async function gotoPage(page: Page, path: string) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      await page.goto(path, { waitUntil: 'commit', timeout: 5_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 4) {
+        break;
+      }
+      await page.waitForTimeout(750);
+    }
+  }
+
+  throw lastError;
+}
+
 test('Index Overview', async ({ page }) => {
-  await page.goto('/index.php');
-  await page.locator('#bodyWrapper').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/index.php');
+  await page.locator('#bodyWrapper').first().waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForTimeout(1200);
   await page.evaluate(() => window.scrollTo(0, 0));
 });
 
 test('Initial Setup Overview', async ({ page }) => {
-  await page.goto('/initialSetup.php');
-  await page.locator('#initialSetup').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/initialSetup.php');
+  await page.locator('#initialSetup').first().waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForTimeout(250);
 });
 
 test('Backup File Copy Error State', async ({ page }) => {
-  await page.goto('/backup.php');
-  await page.locator('#fppBackupTabs').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/backup.php');
+  await page.locator('#fppBackupTabs').first().waitFor({ state: 'visible', timeout: 10_000 });
   await page.click('#backups-fileCopy-tab');
   await page.waitForTimeout(300);
   await page.click('input[value="Copy"]');
@@ -33,8 +52,8 @@ test('Backup File Copy Error State', async ({ page }) => {
 });
 
 test('Backup JSON Backup Tab', async ({ page }) => {
-  await page.goto('/backup.php');
-  await page.locator('#fppBackupTabs').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/backup.php');
+  await page.locator('#fppBackupTabs').first().waitFor({ state: 'visible', timeout: 10_000 });
 
   const jsonBackupTab = page.locator('#backups-jsonBackup-tab').first();
   if (await jsonBackupTab.count()) {
@@ -45,8 +64,8 @@ test('Backup JSON Backup Tab', async ({ page }) => {
 });
 
 test('File Manager Logs', async ({ page }) => {
-  await page.goto('/filemanager.php');
-  await page.locator('#fileManagerTabs').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/filemanager.php');
+  await page.locator('#fileManagerTabs').first().waitFor({ state: 'visible', timeout: 10_000 });
 
   const logsTab = page.locator('#tab-logs-tab').first();
   if (await logsTab.count()) {
@@ -57,8 +76,8 @@ test('File Manager Logs', async ({ page }) => {
 });
 
 test('Network Overview', async ({ page }) => {
-  await page.goto('/networkconfig.php');
-  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/networkconfig.php');
+  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 10_000 });
 
   const interfaceSettingsTab = page.locator('#interface-settings-tab').first();
   if (await interfaceSettingsTab.count()) {
@@ -69,8 +88,8 @@ test('Network Overview', async ({ page }) => {
 });
 
 test('Plugins Overview', async ({ page }) => {
-  await page.goto('/plugins.php');
-  await page.locator('#bodyWrapper').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/plugins.php');
+  await page.locator('#bodyWrapper').first().waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForTimeout(1500);
 
   const checkAllUpdatesButton = page.locator('#checkAllUpdatesBtn').first();
@@ -82,8 +101,8 @@ test('Plugins Overview', async ({ page }) => {
 });
 
 test('Scheduler Overview', async ({ page }) => {
-  await page.goto('/scheduler.php');
-  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/scheduler.php');
+  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 10_000 });
 
   const addScheduleButton = page.locator('button[onclick="AddScheduleEntry();"]').first();
   if (await addScheduleButton.count()) {
@@ -94,21 +113,21 @@ test('Scheduler Overview', async ({ page }) => {
 });
 
 test('System Stats Overview', async ({ page }) => {
-  await page.goto('/system-stats.php');
-  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/system-stats.php');
+  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForTimeout(400);
 });
 
 test('System Upgrade Overview', async ({ page }) => {
-  await page.goto('/system-upgrade.php');
-  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 30_000 });
+  await gotoPage(page, '/system-upgrade.php');
+  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForTimeout(400);
 });
 
 for (const tab of SETTINGS_TABS) {
   test(`Settings Tab - ${tab.title}`, async ({ page }) => {
-    await page.goto('/settings.php');
-    await page.locator('#settingsManagerTabs').first().waitFor({ state: 'visible', timeout: 30_000 });
+    await gotoPage(page, '/settings.php');
+    await page.locator('#settingsManagerTabs').first().waitFor({ state: 'visible', timeout: 10_000 });
 
     const tabLocator = page.locator(`#settings-${tab.slug}-tab`).first();
     await tabLocator.click();

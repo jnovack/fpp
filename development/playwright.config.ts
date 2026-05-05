@@ -15,10 +15,7 @@ export default defineConfig({
     trace: 'on',
     screenshot: 'on',
     video: 'on',
-    actionTimeout: 10_000,
-    navigationTimeout: 10_000,
     viewport: { width: 1920, height: 1080 },
-
   },
   projects: [
     {

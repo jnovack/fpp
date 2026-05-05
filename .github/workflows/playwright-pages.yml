@@ -25,6 +25,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Fetch Git tags
+        run: |
+          git fetch --force --tags origin
+          git describe --tags --dirty || git describe --tags
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -39,43 +44,6 @@ jobs:
       - name: Install Chromium
         working-directory: development
         run: npx playwright install --with-deps chromium
-
-      - name: Generate src/EXPORTED_VERSION
-        shell: bash
-        run: |
-          SOURCE_VERSION="$(git describe --tags --dirty 2>/dev/null || git describe --tags 2>/dev/null || echo "${GITHUB_REF_NAME}")"
-          MAJOR_VERSION="$(echo "${SOURCE_VERSION}" | cut -f1 -d.)"
-          MINOR_VERSION="$(echo "${SOURCE_VERSION}" | cut -f1 -d- | cut -f2 -d.)"
-          PATCH_VERSION="$(echo "${SOURCE_VERSION}" | cut -f1 -d- | cut -f3 -d.)"
-
-          if [ -z "${MINOR_VERSION}" ]; then
-            SUBV="$(echo "${SOURCE_VERSION}" | cut -f2 -d-)"
-            if [[ "${SUBV}" =~ ^[0-9]+$ ]]; then
-              MINOR_VERSION="$((1000 + SUBV))"
-              PATCH_VERSION=""
-              TRIPLET_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}"
-            else
-              MINOR_VERSION="0"
-              PATCH_VERSION="0"
-              TRIPLET_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
-            fi
-          elif [ -z "${PATCH_VERSION}" ]; then
-            PATCH_VERSION="0"
-            TRIPLET_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
-          else
-            TRIPLET_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
-          fi
-
-          cat > src/EXPORTED_VERSION <<EOF
-          SOURCE_VERSION='${SOURCE_VERSION}'
-          MAJOR_VERSION='${MAJOR_VERSION}'
-          MINOR_VERSION='${MINOR_VERSION}'
-          PATCH_VERSION='${PATCH_VERSION}'
-          TRIPLET_VERSION='${TRIPLET_VERSION}'
-          BRANCH='${GITHUB_REF_NAME}'
-          EOF
-
-          cat src/EXPORTED_VERSION
 
       - name: Build and start FPP
         env:
