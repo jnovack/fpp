@@ -103,6 +103,80 @@ jobs:
             http://127.0.0.1:8080/api/settings/initialSetup-02
           sleep 2
 
+      - name: Wait for index.php to render
+        run: |
+          for attempt in $(seq 1 30); do
+            body="$(curl -fsS http://127.0.0.1:8080/index.php || true)"
+            if printf '%s' "${body}" | grep -q 'id="bodyWrapper"'; then
+              if ! printf '%s' "${body}" | grep -q 'initialSetup.php?redirect='; then
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+
+          echo "index.php did not reach the expected ready state"
+          echo "--- index.php response (first 200 lines) ---"
+          curl -sS http://127.0.0.1:8080/index.php | sed -n '1,200p'
+          echo "--- initialSetup.php response (first 120 lines) ---"
+          curl -sS http://127.0.0.1:8080/initialSetup.php | sed -n '1,120p'
+          exit 1
+
+      - name: Browser preflight diagnostics
+        working-directory: development
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8080
+        run: |
+          node <<'EOF'
+          const { chromium } = require('@playwright/test');
+          const fs = require('fs');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage({ baseURL: process.env.PLAYWRIGHT_BASE_URL });
+
+            const requests = [];
+            page.on('requestfailed', request => {
+              requests.push(`FAILED ${request.method()} ${request.url()} :: ${request.failure()?.errorText || 'unknown'}`);
+            });
+            page.on('response', response => {
+              const status = response.status();
+              if (status >= 400) {
+                requests.push(`HTTP ${status} ${response.request().method()} ${response.url()}`);
+              }
+            });
+            page.on('pageerror', error => {
+              requests.push(`PAGEERROR ${error.message}`);
+            });
+            page.on('console', message => {
+              if (message.type() === 'error') {
+                requests.push(`CONSOLE ${message.type()} ${message.text()}`);
+              }
+            });
+
+            await page.goto('/index.php', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.waitForTimeout(3000);
+
+            const html = await page.content();
+            fs.writeFileSync('preflight-index.html', html);
+            await page.screenshot({ path: 'preflight-index.png', fullPage: true });
+
+            console.log(`FINAL_URL=${page.url()}`);
+            console.log(`PAGE_TITLE=${await page.title()}`);
+            console.log(`BODY_WRAPPER_COUNT=${await page.locator('#bodyWrapper').count()}`);
+            console.log(`INITIAL_SETUP_COUNT=${await page.locator('#initialSetup').count()}`);
+            console.log('--- PRELIGHT EVENTS ---');
+            for (const line of requests) {
+              console.log(line);
+            }
+
+            await browser.close();
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          EOF
+
       - name: Run Playwright tests
         id: playwright
         continue-on-error: true
@@ -110,6 +184,18 @@ jobs:
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8080
         run: npm test
+
+      - name: Upload Playwright debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-debug
+          path: |
+            development/preflight-index.html
+            development/preflight-index.png
+            development/test-results
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload Playwright report artifact
         if: always()
