@@ -227,74 +227,71 @@
 	--fpp-alert-radius: var(--fpp-radius-lg);
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		/* ==========================================================================
-		   COLOR TOKENS
-		   ========================================================================== */
+[data-bs-theme='dark'] {
+	/* ==========================================================================
+	   COLOR TOKENS
+	   ========================================================================== */
 
-		--fpp-primary: #8fb1f2;
-		--fpp-primary-hover: #6b95ec;
-		--fpp-success-dark: #6fc879;
-		--fpp-success-light: #1f3a28;
-		--fpp-warning-dark: #f4c97d;
-		--fpp-warning-light: #4a3b14;
-		--fpp-danger-dark: #f87171;
-		--fpp-danger-light: #4a1f24;
-		--fpp-info: var(--bs-info);
-		--fpp-info-light: #1e2f52;
+	--fpp-primary: #8fb1f2;
+	--fpp-primary-hover: #6b95ec;
+	--fpp-success-dark: #6fc879;
+	--fpp-success-light: #1f3a28;
+	--fpp-warning-dark: #f4c97d;
+	--fpp-warning-light: #4a3b14;
+	--fpp-danger-dark: #f87171;
+	--fpp-danger-light: #4a1f24;
+	--fpp-info: var(--bs-info);
+	--fpp-info-light: #1e2f52;
 
-		/* Neutral Colors - Text */
-		--fpp-text-primary: #dee2e6;
-		--fpp-text-secondary: #adb5bd;
-		--fpp-text-muted: #83898f;
-		--fpp-text-light: #a1a1a1;
+	/* Neutral Colors - Text */
+	--fpp-text-primary: #dee2e6;
+	--fpp-text-secondary: #adb5bd;
+	--fpp-text-muted: #83898f;
+	--fpp-text-light: #a1a1a1;
 
-		/* Neutral Colors - Backgrounds */
-		--fpp-bg-page: #212529;
-		--fpp-bg-card: #2c3034;
-		--fpp-bg-hover: #343a40;
-		--fpp-bg-disabled: #343a40;
+	/* Neutral Colors - Backgrounds */
+	--fpp-bg-page: #212529;
+	--fpp-bg-card: #2c3034;
+	--fpp-bg-hover: #343a40;
+	--fpp-bg-disabled: #343a40;
 
-		/* Neutral Colors - Borders */
-		--fpp-border: var(--bs-gray-700);
-		--fpp-border-light: var(--bs-gray-800);
-		--fpp-border-dark: var(--bs-gray-600);
+	/* Neutral Colors - Borders */
+	--fpp-border: var(--bs-gray-700);
+	--fpp-border-light: var(--bs-gray-800);
+	--fpp-border-dark: var(--bs-gray-600);
 
-		/* Neutral Colors - Grays */
-		--fpp-gray: #adb5bd;
+	/* Neutral Colors - Grays */
+	--fpp-gray: #adb5bd;
 
-		/* Alert Text Colors */
-		--fpp-success-text: #8fd19e;
-		--fpp-warning-text: #f4d58d;
-		--fpp-info-text: #9ec5fe;
+	/* Alert Text Colors */
+	--fpp-success-text: #8fd19e;
+	--fpp-warning-text: #f4d58d;
+	--fpp-info-text: #9ec5fe;
 
-		/* ==========================================================================
-		   COMPONENT TOKENS
-		   ========================================================================== */
+	/* ==========================================================================
+	   COMPONENT TOKENS
+	   ========================================================================== */
 
-		--fpp-thead-bg: #343a40;
-		--fpp-thead-color: #dee2e6;
+	--fpp-thead-bg: #343a40;
+	--fpp-thead-color: #dee2e6;
 
-		--fpp-selected-row-bg: #495057;
+	--fpp-selected-row-bg: #495057;
 
-		/* ==========================================================================
-		   SHADOW TOKENS
-		   ========================================================================== */
+	/* ==========================================================================
+	   SHADOW TOKENS
+	   ========================================================================== */
 
-		--fpp-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
-		--fpp-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
-		--fpp-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
+	--fpp-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+	--fpp-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+	--fpp-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
 
-		/* ==========================================================================
-		   Standard FPP COMPONENT TOKENS
-		   ========================================================================== */
+	/* ==========================================================================
+	   Standard FPP COMPONENT TOKENS
+	   ========================================================================== */
 
-		--fpp-progress-bg: #343a40;
-		--fpp-gauge-bg-color: #343a40;
-	}
+	--fpp-progress-bg: #343a40;
+	--fpp-gauge-bg-color: #343a40;
 }
-
 
 /* ==========================================================================
    Genericly Templated Overrides
@@ -302,7 +299,6 @@
 .badge {
 	text-transform: uppercase;
 }
-
 
 /* ==========================================================================
    UTILITY: Standard FPP Color Classes
