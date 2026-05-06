@@ -554,6 +554,36 @@
         [mp.panelWidth, mp.panelHeight, mp.panelScan, mp.LEDPanelAddressing] = sizeparts.map(Number);
     }
 
+    function GetLEDPanelOrientationRotation(orientation) {
+        switch (orientation) {
+            case 'R':
+                return 90;
+            case 'U':
+                return 180;
+            case 'L':
+                return 270;
+            case 'N':
+            default:
+                return 0;
+        }
+    }
+
+    function SetLEDPanelOrientationIcon(icon, orientation) {
+        const normalizedOrientation = orientation || 'N';
+        $(icon)
+            .attr('data-orientation', normalizedOrientation)
+            .css('transform', 'rotate(' + GetLEDPanelOrientationRotation(normalizedOrientation) + 'deg)');
+    }
+
+    function GetLEDPanelOrientationValue(icon) {
+        return $(icon).attr('data-orientation') || 'N';
+    }
+
+    function GetLEDPanelOrientationHTML(className, orientation) {
+        const normalizedOrientation = orientation || 'N';
+        return "<i class='fa fa-xl fa-circle-chevron-up " + className + "' data-orientation='" + normalizedOrientation + "' style='cursor: pointer; transform: rotate(" + GetLEDPanelOrientationRotation(normalizedOrientation) + "deg);" + "' onClick='LEDPanelOrientationClicked(\"" + className + "\");'></i>";
+    }
+
 
     function LEDPanelOrientationClicked(id) {
         if (verboseDebug) {
@@ -561,31 +591,32 @@
         }
         //get currently visible panelMatrixID
         panelMatrixID = GetCurrentActiveMatrixPanelID();
-        var src = $(`#panelMatrix${panelMatrixID} .${id}`).attr('src');
+        const icon = $(`#panelMatrix${panelMatrixID} .${id}`);
+        const orientation = GetLEDPanelOrientationValue(icon);
         var frontView = 0;
         if ($(`#panelMatrix${panelMatrixID} .LEDPanelUIFrontView`).is(":checked")) {
             frontView = 1;
         }
 
         if (frontView === 0) { //backview
-            if (src == 'images/arrow_N.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_R.png');
-            else if (src == 'images/arrow_R.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_U.png');
-            else if (src == 'images/arrow_U.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_L.png');
-            else if (src == 'images/arrow_L.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_N.png');
+            if (orientation == 'N')
+                SetLEDPanelOrientationIcon(icon, 'R');
+            else if (orientation == 'R')
+                SetLEDPanelOrientationIcon(icon, 'U');
+            else if (orientation == 'U')
+                SetLEDPanelOrientationIcon(icon, 'L');
+            else if (orientation == 'L')
+                SetLEDPanelOrientationIcon(icon, 'N');
         }
         else { // front view
-            if (src === 'images/arrow_N.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_L.png');
-            else if (src == 'images/arrow_L.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_U.png');
-            else if (src == 'images/arrow_U.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_R.png');
-            else if (src == 'images/arrow_R.png')
-                $(`#panelMatrix${panelMatrixID} .${id}`).attr('src', 'images/arrow_N.png');
+            if (orientation == 'N')
+                SetLEDPanelOrientationIcon(icon, 'L');
+            else if (orientation == 'L')
+                SetLEDPanelOrientationIcon(icon, 'U');
+            else if (orientation == 'U')
+                SetLEDPanelOrientationIcon(icon, 'R');
+            else if (orientation == 'R')
+                SetLEDPanelOrientationIcon(icon, 'N');
         }
         HandleChangesInUIValues();
     }
@@ -756,15 +787,13 @@
 
         //mirror the panel orientation
         $(`#panelMatrix${panelMatrixID} [class^="LEDPanelOrientation_"]`).each(function () {
-            var src = $(this).attr('src');
-            if (src === 'images/arrow_N.png') {
-                $(this).attr('src', 'images/arrow_N.png');
-            } else if (src === 'images/arrow_L.png') {
-                $(this).attr('src', 'images/arrow_R.png');
-            } else if (src === 'images/arrow_U.png') {
-                $(this).attr('src', 'images/arrow_U.png');
-            } else if (src === 'images/arrow_R.png') {
-                $(this).attr('src', 'images/arrow_L.png');
+            var orientation = GetLEDPanelOrientationValue(this);
+            if (orientation === 'L') {
+                SetLEDPanelOrientationIcon(this, 'R');
+            } else if (orientation === 'R') {
+                SetLEDPanelOrientationIcon(this, 'L');
+            } else {
+                SetLEDPanelOrientationIcon(this, orientation);
             }
         });
 
@@ -809,7 +838,7 @@
                 //Update display
                 $(`#panelMatrix${panelMatrixID} .LEDPanelPanelNumber_${y}_${panel}`).val(x);
                 $(`#panelMatrix${panelMatrixID} .LEDPanelOutputNumber_${y}_${panel}`).val(y);
-                $(`#panelMatrix${panelMatrixID} .LEDPanelOrientation_${y}_${panel}`).attr('src', 'images/arrow_N.png');
+                SetLEDPanelOrientationIcon($(`#panelMatrix${panelMatrixID} .LEDPanelOrientation_${y}_${panel}`), 'N');
                 $(`#panelMatrix${panelMatrixID} .LEDPanelColorOrder_${y}_${panel}`).val('');
 
                 //update panels config
@@ -863,7 +892,7 @@
                 else
                     c = mp.LEDPanelCols - 1 - i;
 
-                html += "<td><table cellspacing=0 cellpadding=0><tr><td>";
+                html += "<td><table cellspacing=0 cellpadding=0 style='width:10em'><tr><td style='width:8em'>";
 
                 const targetPanel = mp.panels.find(p => p.row === r && p.col === c);
 
@@ -874,36 +903,36 @@
                     html += GetLEDPanelNumberSetting("O", htmlClassKey, mp.ledPanelsOutputs, 0);
                 }
 
-                html += "<img src='images/arrow_";
-
                 //Config for rotation is saved to JSON as the view from the front
 
+                let orientation = "N";
                 if (typeof targetPanel !== 'undefined' && typeof targetPanel.orientation !== 'undefined') {
                     if (frontView == 1) {
                         // Front view orientation now displayed in UI so pull from saved config
-                        html += targetPanel.orientation
+                        orientation = targetPanel.orientation;
                     }
                     if (frontView == 0) { // Back view
                         // Back view orientation now displayed in UI so need to Map from saved config
                         // Map Front Saved config to Back view orientation
                         if (targetPanel.orientation == "N") {
-                            html += "N";
+                            orientation = "N";
                         } else if (targetPanel.orientation == "R") {
-                            html += "L";
+                            orientation = "L";
                         } else if (targetPanel.orientation == "U") {
-                            html += "U";
+                            orientation = "U";
                         } else if (targetPanel.orientation == "L") {
-                            html += "R";
+                            orientation = "R";
                         }
                     }
                 }
                 else {
                     //default unset values to N
-                    html += "N";
+                    orientation = "N";
                 }
+                html += "</td><td>"
+                html += GetLEDPanelOrientationHTML("LEDPanelOrientation_" + r + "_" + c, orientation);
 
-
-                html += ".png' height=17 width=17 class='LEDPanelOrientation_" + r + "_" + c + "' onClick='LEDPanelOrientationClicked(\"LEDPanelOrientation_" + r + "_" + c + "\");'><br>";
+                html +="</td></tr><tr><td colspan=2>";
 
                 htmlClassKey = "form-select LEDPanelPanelNumber_" + r + "_" + c;
                 if (typeof targetPanel !== 'undefined' && typeof targetPanel.panelNumber !== 'undefined') {
@@ -911,7 +940,7 @@
                 } else {
                     html += GetLEDPanelNumberSetting("P", htmlClassKey, mp.ledPanelsPanelsPerOutput, 0);
                 }
-                html += "<br>";
+                html +="</td></tr><tr><td colspan=2>";
 
                 htmlClassKey = "form-select LEDPanelColorOrder_" + r + "_" + c;
                 if (typeof targetPanel !== 'undefined' && typeof targetPanel.colorOrder !== 'undefined') {
@@ -1243,29 +1272,29 @@
                     panel.colorOrder = matrixDiv.find(id).val();
 
                     id = ".LEDPanelOrientation_" + r + "_" + c;
-                    var src = matrixDiv.find(id).attr('src');
+                    var orientation = GetLEDPanelOrientationValue(matrixDiv.find(id));
 
                     panel.xOffset = xOffset;
                     panel.yOffset = yOffset;
 
                     if (config.LEDPanelUIFrontView === true) {
                         // Front view
-                        if (src == 'images/arrow_N.png') {
+                        if (orientation == 'N') {
                             panel.orientation = "N";
                             xOffset += mp.panelWidth;
                             yDiff = mp.panelHeight;
                         }
-                        else if (src == 'images/arrow_R.png') {
+                        else if (orientation == 'R') {
                             panel.orientation = "R";
                             xOffset += mp.panelHeight;
                             yDiff = mp.panelWidth;
                         }
-                        else if (src == 'images/arrow_U.png') {
+                        else if (orientation == 'U') {
                             panel.orientation = "U";
                             xOffset += mp.panelWidth;
                             yDiff = mp.panelHeight;
                         }
-                        else if (src == 'images/arrow_L.png') {
+                        else if (orientation == 'L') {
                             panel.orientation = "L";
                             xOffset += mp.panelHeight;
                             yDiff = mp.panelWidth;
@@ -1273,22 +1302,22 @@
                     } // Back view
                     else {
                         // Back view orientation now displayed in UI so need to Map to save config
-                        if (src == 'images/arrow_N.png') {
+                        if (orientation == 'N') {
                             panel.orientation = "N";
                             xOffset += mp.panelWidth;
                             yDiff = mp.panelHeight;
                         }
-                        else if (src == 'images/arrow_R.png') {
+                        else if (orientation == 'R') {
                             panel.orientation = "L";
                             xOffset += mp.panelHeight;
                             yDiff = mp.panelWidth;
                         }
-                        else if (src == 'images/arrow_U.png') {
+                        else if (orientation == 'U') {
                             panel.orientation = "U";
                             xOffset += mp.panelWidth;
                             yDiff = mp.panelHeight;
                         }
-                        else if (src == 'images/arrow_L.png') {
+                        else if (orientation == 'L') {
                             panel.orientation = "R";
                             xOffset += mp.panelHeight;
                             yDiff = mp.panelWidth;
@@ -3489,7 +3518,7 @@
                         - O-# is physical output number.<br>
                         - P-# is panel number on physical output.<br>
                         - C-(color) is color order if panel has different color order than default (C-Def).<br>
-                        - Arrow <img src='images/arrow_N.png' height=17 width=17 alt="panel orientation"> indicates
+                        - Arrow <i class="fas fa-circle-chevron-up" style="display: inline-block;"></i> indicates
                         panel orientation, click arrow to rotate.<br>
                     </div>
                 </div>
