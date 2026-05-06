@@ -8,11 +8,11 @@ require_once '../common/mqtthelp.php';
 </script>
 <center><b>MQTT Settings</b></center>
 <hr>
+Your FPP player name is important, commands sent to MQTT have your player name (<code><?echo GetSettingValue('HostName', 'FPP'); ?></code>) in them.  This will be different for each player.
 <ul>
-<li>MQTT events will be published to "<?echo GetSettingValue('MQTTPrefix', '', '', '/'); ?>falcon/player/<?echo GetSettingValue('HostName', 'FPP'); ?>/" with playlist events being in the "playlist" subtopic.
-<li><b>CA file</b> is the full path to the signer certificate.  Only needed if using mqtts server that is self signed.
-<li><b>Publish Frequence</b> should be zero (disabled) or the number of seconds between periodic mqtt publish events<br/>
-<li>The <b>Subscribe Topic</b> can be used to bring variables into FPP for Playlist branching or accessing via the REST API: api/fppd/mqtt/cache.
+<li>MQTT events will be published to <code><?echo GetSettingValue('MQTTPrefix', '', '', '/'); ?>falcon/player/<?echo GetSettingValue('HostName', 'FPP'); ?>/</code> with playlist events being in the <code>playlist</code> subtopic.
+<li><b>CA file</b> is the full path to the signer certificate.  Only needed if using an MQTTS server that is self signed.
+<li>The <b>Subscribe Topic</b> can be used to bring variables into FPP for Playlist branching or accessing via the REST API: <code>api/fppd/mqtt/cache</code>
 <li>FPP will respond to certain events:
 </ul>
 <div class='fppTableWrapper selectable'>
