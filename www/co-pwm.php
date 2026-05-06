@@ -76,12 +76,13 @@ if (is_dir($mediaDirectory . "/tmp/pwm/")) {
 <style>
     #PWM thead th {
         font-weight: bold;
-        background: #fff;
+        background: var(--fpp-thead-bg);
+        color: var(--fpp-thead-color);
         position: sticky;
         top: 0;
         z-index: 20;
         padding: 8px 0 0 5px;
-        border-bottom: 2px solid #d5d7da;
+        border-bottom: 2px solid var(--fpp-border);
     }
 </style>
 

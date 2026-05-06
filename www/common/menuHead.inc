@@ -80,6 +80,7 @@ if (isset($themeInfo["preFPPStyleSheet"])) {
 
 <link rel="stylesheet"
     href="css/fpp-bootstrap/dist/fpp-bootstrap-5-3.css?ref=<?php echo filemtime('css/fpp-bootstrap/dist/fpp-bootstrap-5-3.css'); ?>">
+<link rel="stylesheet" href="css/fpp-system-design.css?ref=<?php echo filemtime('css/fpp-system-design.css'); ?>">
 <link rel="stylesheet" href="css/fpp.css?ref=<?php echo filemtime('css/fpp.css'); ?>">
 <link rel="stylesheet" href="css/fpp-dark.css?ref=<?php echo filemtime('css/fpp-dark.css'); ?>">
 
