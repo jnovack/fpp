@@ -1739,7 +1739,19 @@ fi
 
 echo "FPP - Compiling binaries"
 cd /opt/fpp/src/
-make clean ; make -j ${CPUS} optimized
+BUILD_TARGET=optimized
+if [ -n "${FPP_BUILD_PROFILE:-}" ]; then
+    case "${FPP_BUILD_PROFILE}" in
+        ci-web-base)
+            BUILD_TARGET="ci-web-base"
+            ;;
+        *)
+            echo "FPP - Unknown build profile '${FPP_BUILD_PROFILE}', defaulting to optimized"
+            ;;
+    esac
+fi
+echo "FPP - Using build target '${BUILD_TARGET}'"
+make clean ; make -j ${CPUS} ${BUILD_TARGET}
 
 
 configure_hostapd() {

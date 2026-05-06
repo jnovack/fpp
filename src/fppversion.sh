@@ -31,14 +31,14 @@ GITREPOPATH="exported"
 cd ${GITTREEDIR}
 
 git status > /dev/null 2>&1
-SOURCE_VERSION=$(git describe --dirty || git describe || echo Unknown)
-MAJOR_VERSION=$(echo ${SOURCE_VERSION} | cut -f1 -d\.)
-MINOR_VERSION=$(echo ${SOURCE_VERSION} | cut -f1 -d- | cut -f2 -d\.)
-PATCH_VERSION=$(echo ${SOURCE_VERSION} | cut -f1 -d- | cut -f3 -d\.)
+SOURCE_VERSION_BASE=$(git describe --dirty || git describe || echo Unknown)
+MAJOR_VERSION=$(echo ${SOURCE_VERSION_BASE} | cut -f1 -d\.)
+MINOR_VERSION=$(echo ${SOURCE_VERSION_BASE} | cut -f1 -d- | cut -f2 -d\.)
+PATCH_VERSION=$(echo ${SOURCE_VERSION_BASE} | cut -f1 -d- | cut -f3 -d\.)
 
 
 if [ "x${MINOR_VERSION}" = "xx" ]; then
-	SUBV=$(echo ${SOURCE_VERSION} | cut -f2 -d-)
+	SUBV=$(echo ${SOURCE_VERSION_BASE} | cut -f2 -d-)
 	MINOR_VERSION=$((1000 + $SUBV))
     PATCH_VERSION=""
     TRIPLET_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}"
@@ -48,7 +48,7 @@ else
     TRIPLET_VERSION="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}"
 fi
 
-case "${SOURCE_VERSION}" in
+case "${SOURCE_VERSION_BASE}" in
     exported|Unknown)
         if ! grep -q Format $GITTREEDIR/EXPORTED_VERSION; then
             . $GITTREEDIR/EXPORTED_VERSION
@@ -64,6 +64,8 @@ case "${SOURCE_VERSION}" in
         fi
     ;;
 esac
+
+SOURCE_VERSION="${SOURCE_VERSION_BASE}${FPP_VERSION_SUFFIX}"
 
 cat > fppversion.c.new <<EOF
 #include <stdio.h>

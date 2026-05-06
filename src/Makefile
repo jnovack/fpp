@@ -72,6 +72,18 @@ tsan: all
 
 local: $(TARGETS)
 
+CI_WEB_BASE_TARGETS := fpp fppd
+ifeq '$(BUILD_FPPINIT)' '1'
+CI_WEB_BASE_TARGETS += fppinit
+endif
+
+.PHONY: ci-web-base
+# ADR: ci-web-base is a CI-only profile that builds only the binaries the
+# Playwright Docker workflow needs, without changing the default optimized flow.
+# See adr/0001-ci-web-base-playwright-docker-profile.md
+ci-web-base: export FPP_VERSION_SUFFIX=-ci-web-base
+ci-web-base: $(CI_WEB_BASE_TARGETS)
+
 fppversion.c: fppversion.sh
 	sh $(SRCDIR)fppversion.sh $(PWD)
 	php fppdefines.php > ../www/fppdefines.php
@@ -122,5 +134,3 @@ clean::
 restart: fppd
 	sudo ../scripts/fppd_stop
 	sudo ../scripts/fppd_start
-
-

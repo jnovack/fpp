@@ -74,10 +74,11 @@ ARG EXTRA_INSTALL_FLAG=
 
 # branch being build
 ARG FPPBRANCH
+ARG FPP_BUILD_PROFILE=
 
 COPY ./ /opt/fpp/
 COPY SD/FPP_Install.sh /root/FPP_Install.sh
-RUN ( yes | bash /root/FPP_Install.sh $EXTRA_INSTALL_FLAG --branch ${FPPBRANCH:-master} --skip-apt-install --skip-vlc )
+RUN ( yes | FPP_BUILD_PROFILE=${FPP_BUILD_PROFILE} bash /root/FPP_Install.sh $EXTRA_INSTALL_FLAG --branch ${FPPBRANCH:-master} --skip-apt-install --skip-vlc )
 RUN rm -rf /tmp/*
 RUN cp /opt/fpp/etc/asoundrc.plain /root/.asoundrc
 RUN echo "docker" > /etc/fpp/container

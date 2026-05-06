@@ -1,4 +1,4 @@
-import { test } from './fixtures';
+import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const SETTINGS_TABS = [
@@ -117,6 +117,17 @@ test('System Stats Overview', async ({ page }) => {
   await gotoPage(page, '/system-stats.php');
   await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 10_000 });
   await page.waitForTimeout(400);
+});
+
+test('System Stats Health Check Shows FPPD Running', async ({ page }) => {
+  await gotoPage(page, '/system-stats.php');
+  await page.locator('h1.title').first().waitFor({ state: 'visible', timeout: 10_000 });
+
+  await page.locator('#btnStartHealthCheck').click();
+
+  await expect(page.locator('#hc-fppd .fpp-health-check__status-text')).toContainText('Running', {
+    timeout: 20_000,
+  });
 });
 
 test('System Upgrade Overview', async ({ page }) => {

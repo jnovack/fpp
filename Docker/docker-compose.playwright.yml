@@ -4,11 +4,14 @@ services:
       args:
         EXTRA_INSTALL_FLAG: --skip-clone --skip-vlc --skip-apt-install --yes
         FPPBRANCH: ${FPPBRANCH}
+        FPP_BUILD_PROFILE: ci-web-base
       context: ../
       dockerfile: ./Docker/Dockerfile
     hostname: fpp-docker
     volumes:
       - ../:/opt/fpp
+    environment:
+      FPP_BUILD_PROFILE: ci-web-base
     restart: always
     ports:
       - "8080:80/tcp"
