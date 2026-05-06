@@ -1271,8 +1271,7 @@
         "VirtualDisplay": { label: "Virtuals" },
         "SPI": { label: "SPI" },
         "PWM": { label: "PWM" },
-        "ControlSignal": { label: "Control Signal" },
-        "ExternalMatrix": { label: "External Matrix" }
+        "ControlSignal": { label: "Control Signal" }
     };
 
     var typeToCategoryMap = {

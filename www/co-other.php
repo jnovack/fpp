@@ -638,7 +638,7 @@
     function PopulateAddOutputMenu() {
         var menu = $('#addOutputCategoryMenu');
         menu.empty();
-        var orderedCategories = ["DMXSerial", "GPIO", "VirtualDisplay", "SPI", "PWM", "ControlSignal", "ExternalMatrix"];
+        var orderedCategories = ["DMXSerial", "GPIO", "VirtualDisplay", "SPI", "PWM", "ControlSignal"];
         for (var i = 0; i < orderedCategories.length; i++) {
             var cat = orderedCategories[i];
             var catInfo = outputCategories[cat];
@@ -1071,11 +1071,6 @@
             if (category == "SPI") {
                 if (Object.keys(SPIDevices).length > 0) {
                     types.push({ value: "SPI-nRF24L01", label: "SPI-nRF24L01" });
-                }
-            }
-            // Legacy External Matrix types (Raspberry Pi only)
-            if (category == "ExternalMatrix") {
-                if (Object.keys(SPIDevices).length > 0) {
                     types.push({ value: "MAX7219Matrix", label: "MAX7219 Matrix" });
                 }
             }
