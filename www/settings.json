@@ -776,7 +776,7 @@
 		"MediaBackend": {
 			"name": "MediaBackend",
 			"description": "Media Backend",
-			"tip": "Select how FPP handles audio and video playback. Hardware Direct talks directly to ALSA for audio and sends video to a single output device. PipeWire routes all media through the PipeWire stack, enabling multi-device audio groups, video fan-out, and advanced routing.",
+			"tip": "Select how FPP handles audio and video playback. Hardware Direct talks directly to ALSA for audio and sends video to a single output device. Simple PipeWire offers the same single-card / single-display selection but routes media through PipeWire and GStreamer (recommended for most users who want the modern stack without complexity). PipeWire (Advanced) exposes the full PipeWire stack with multi-device audio groups, video fan-out, AES67, and routing matrix.",
 			"gatherStats": true,
 			"restart": 0,
 			"reboot": 1,
@@ -784,7 +784,8 @@
 			"type": "select",
 			"options": {
 				"Hardware Direct": "alsa",
-				"PipeWire": "pipewire"
+				"Simple PipeWire": "pipewire-simple",
+				"PipeWire (Advanced)": "pipewire"
 			},
 			"children": {
 				"pipewire": [
@@ -795,6 +796,10 @@
 					"PipeWireVideoInputSources",
 					"PipeWireAES67Config",
 					"PipeWireGraph"
+				],
+				"pipewire-simple": [
+					"ForceHDMIResolution",
+					"ForceHDMIResolutionPort2"
 				],
 				"alsa": [
 					"AudioOutput",

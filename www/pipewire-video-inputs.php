@@ -174,14 +174,20 @@
 
                 <?php
                 $mediaBackend = isset($settings['MediaBackend']) ? $settings['MediaBackend'] : 'alsa';
+                $mediaBackendLabel = array(
+                    'alsa' => 'Hardware Direct',
+                    'pipewire-simple' => 'Simple PipeWire',
+                    'pipewire' => 'PipeWire (Advanced)'
+                );
+                $mbDisplay = isset($mediaBackendLabel[$mediaBackend]) ? $mediaBackendLabel[$mediaBackend] : ucfirst($mediaBackend);
                 if ($mediaBackend !== 'pipewire') {
                     ?>
                     <div class="alsa-warning">
                         <i class="fas fa-exclamation-triangle fa-2x" style="color: var(--bs-warning, #ffc107);"></i>
-                        <h4>PipeWire Backend Required</h4>
-                        <p>Video Input Sources require the PipeWire audio backend to be active.<br>
-                            Currently using: <strong><?= htmlspecialchars(ucfirst($mediaBackend)) ?></strong></p>
-                        <p>Change to PipeWire in <a href="settings.php?tab=Audio%2FVideo">FPP Settings &rarr;
+                        <h4>Advanced PipeWire Required</h4>
+                        <p>Video Input Sources require the Advanced PipeWire backend.<br>
+                            Currently using: <strong><?= htmlspecialchars($mbDisplay) ?></strong></p>
+                        <p>Change to PipeWire (Advanced) in <a href="settings.php?tab=Audio%2FVideo">FPP Settings &rarr;
                                 Audio/Video</a>,
                             then return here to configure video input sources.</p>
                     </div>
@@ -408,20 +414,20 @@
             var presetVal = (source.width || 320) + 'x' + (source.height || 240);
             html += '<select class="form-select form-select-sm" style="width:auto;display:inline-block;" onchange="ApplyResolutionPreset(' + index + ',this.value)">';
             var presets = [
-                {label:'Custom',w:0,h:0},
-                {label:'240p',w:426,h:240},
-                {label:'360p',w:640,h:360},
-                {label:'480p SD',w:854,h:480},
-                {label:'720p HD',w:1280,h:720},
-                {label:'1080p Full HD',w:1920,h:1080},
-                {label:'1440p 2K',w:2560,h:1440},
-                {label:'2160p 4K',w:3840,h:2160},
-                {label:'4320p 8K',w:7680,h:4320}
+                { label: 'Custom', w: 0, h: 0 },
+                { label: '240p', w: 426, h: 240 },
+                { label: '360p', w: 640, h: 360 },
+                { label: '480p SD', w: 854, h: 480 },
+                { label: '720p HD', w: 1280, h: 720 },
+                { label: '1080p Full HD', w: 1920, h: 1080 },
+                { label: '1440p 2K', w: 2560, h: 1440 },
+                { label: '2160p 4K', w: 3840, h: 2160 },
+                { label: '4320p 8K', w: 7680, h: 4320 }
             ];
             var matched = false;
             for (var p = 0; p < presets.length; p++) {
                 var sel = '';
-                if (presets[p].w > 0 && presets[p].w == (source.width||0) && presets[p].h == (source.height||0)) {
+                if (presets[p].w > 0 && presets[p].w == (source.width || 0) && presets[p].h == (source.height || 0)) {
                     sel = ' selected'; matched = true;
                 }
                 html += '<option value="' + presets[p].w + 'x' + presets[p].h + '"' + sel + '>' + presets[p].label + (presets[p].w > 0 ? ' (' + presets[p].w + 'x' + presets[p].h + ')' : '') + '</option>';

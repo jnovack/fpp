@@ -679,7 +679,7 @@ int main(int argc, char* argv[]) {
     // Align runtime audio library backend defaults with configured FPP backend.
     // This is a safety net in case the service env file is stale/missing.
     std::string mediaBackend = toLowerCopy(getSetting("MediaBackend"));
-    if (mediaBackend == "pipewire") {
+    if (mediaBackend == "pipewire" || mediaBackend == "pipewire-simple") {
         ensureEnvDefault("SDL_AUDIODRIVER", "pulse");
         ensureEnvDefault("ALSOFT_DRIVERS", "pulse");
     } else {

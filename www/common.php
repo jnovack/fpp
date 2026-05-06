@@ -70,6 +70,34 @@ function ScrubFile($filename, $taboo = array("emailpass", "emailgpass", "MQTTPas
     return $dataStr;
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// Returns true if the active MediaBackend uses the PipeWire/GStreamer stack
+// (either the simple or advanced mode).  Both modes share the same runtime
+// pipeline; only the configuration UI differs.
+function IsPipeWireBackend($settingsArray = null)
+{
+    global $settings;
+    if ($settingsArray === null) {
+        $settingsArray = $settings;
+    }
+    $mb = isset($settingsArray['MediaBackend']) ? strtolower($settingsArray['MediaBackend']) : '';
+    return ($mb === 'pipewire' || $mb === 'pipewire-simple');
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Returns true only when the user has selected the Simple PipeWire UI mode.
+// Used by the auto-config generator that converts the legacy AudioOutput /
+// VideoOutput single-card selections into a one-group PipeWire config.
+function IsSimplePipeWireBackend($settingsArray = null)
+{
+    global $settings;
+    if ($settingsArray === null) {
+        $settingsArray = $settings;
+    }
+    $mb = isset($settingsArray['MediaBackend']) ? strtolower($settingsArray['MediaBackend']) : '';
+    return ($mb === 'pipewire-simple');
+}
+
 function ReadSettingFromFile($settingName, $plugin = "")
 {
     global $settingsFile;

@@ -1365,7 +1365,7 @@ static bool waitForInterfacesUp(bool flite, int timeOut) {
             std::transform(abLower.begin(), abLower.end(), abLower.begin(),
                            [](unsigned char c) { return std::tolower(c); });
             std::string fliteCmd;
-            if (abLower == "pipewire") {
+            if (abLower == "pipewire" || abLower == "pipewire-simple") {
                 fliteCmd = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp "
                            "XDG_RUNTIME_DIR=/run/pipewire-fpp "
                            "/usr/bin/flite -voice awb -t \"" + announce + "\" &";
@@ -1636,7 +1636,7 @@ static void setupAudio() {
     std::transform(mediaBackendLower.begin(), mediaBackendLower.end(), mediaBackendLower.begin(), [](unsigned char c) {
         return std::tolower(c);
     });
-    bool usePipeWireBackend = (mediaBackendLower == "pipewire");
+    bool usePipeWireBackend = (mediaBackendLower == "pipewire" || mediaBackendLower == "pipewire-simple");
     bool runningInDocker = FileExists("/.dockerenv");
     const std::string audioEnvPath = "/run/fppd/fpp-audio.env";
     printf("FPP - Audio backend: %s\n", usePipeWireBackend ? "PipeWire" : "ALSA");

@@ -58,7 +58,10 @@ $_SERVER['PHP_SELF'] = 'regenerate_pipewire_groups';
 
 // Define json() stub for CLI (API functions call dispatch framework's json())
 if (!function_exists('json')) {
-    function json($data) { return json_encode($data); }
+    function json($data)
+    {
+        return json_encode($data);
+    }
 }
 
 // Source the needed functions
@@ -70,9 +73,20 @@ ob_end_clean();
 
 $force = in_array('--force', $argv);
 
-$groupsJsonPath = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+// In Simple PipeWire mode the user-facing audio config lives in
+// pipewire-audio-groups-simple.json (a single auto-generated group based on
+// the selected AudioOutput card).  Use that file instead of the advanced
+// JSON so the cached .conf reflects the simple group at boot.
+$mediaBackend = isset($settings['MediaBackend']) ? strtolower(trim($settings['MediaBackend'])) : 'alsa';
+$isSimplePipeWire = ($mediaBackend === 'pipewire-simple');
+
+if ($isSimplePipeWire) {
+    $groupsJsonPath = $settings['mediaDirectory'] . "/config/pipewire-audio-groups-simple.json";
+} else {
+    $groupsJsonPath = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
+}
 $cachedConfPath = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.conf";
-$destConfPath   = "/etc/pipewire/pipewire.conf.d/97-fpp-audio-groups.conf";
+$destConfPath = "/etc/pipewire/pipewire.conf.d/97-fpp-audio-groups.conf";
 
 if (!file_exists($groupsJsonPath)) {
     // No groups configured — nothing to do
@@ -118,7 +132,7 @@ foreach ($data['groups'] as &$grp) {
     unset($mbr);
 }
 unset($grp);
-if ($jsonDirty) {
+if ($jsonDirty && !$isSimplePipeWire) {
     file_put_contents($groupsJsonPath, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 
@@ -143,7 +157,18 @@ unlink($tmpFile);
 
 // Also regenerate input groups config if present
 $igJsonPath = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
-if (file_exists($igJsonPath)) {
+if ($isSimplePipeWire) {
+    // Simple PipeWire mode never uses input groups — remove any leftover
+    // conf so the previous Advanced setup doesn't bleed through at boot.
+    $igConfDest = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
+    if (file_exists($igConfDest)) {
+        exec(($SUDO ? "$SUDO " : "") . "rm -f " . escapeshellarg($igConfDest));
+    }
+    $igConfCache = $settings['mediaDirectory'] . "/config/pipewire-input-groups.conf";
+    if (file_exists($igConfCache)) {
+        @unlink($igConfCache);
+    }
+} else if (file_exists($igJsonPath)) {
     $igData = json_decode(file_get_contents($igJsonPath), true);
     if (is_array($igData) && isset($igData['inputGroups']) && !empty($igData['inputGroups'])) {
         $igConf = GeneratePipeWireInputGroupsConfig($igData['inputGroups'], $data['groups']);

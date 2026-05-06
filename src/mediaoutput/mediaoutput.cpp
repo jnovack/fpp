@@ -89,7 +89,7 @@ void setVolume(int vol) {
     std::string audio0Type = getSetting("AudioCard0Type");
     std::string mediaBackend = toLowerCopy(getSetting("MediaBackend"));
 
-    bool usePipeWireBackend = (mediaBackend == "pipewire");
+    bool usePipeWireBackend = (mediaBackend == "pipewire" || mediaBackend == "pipewire-simple");
 
 #ifndef PLATFORM_OSX
     volume = vol;

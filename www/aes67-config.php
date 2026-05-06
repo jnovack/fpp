@@ -180,9 +180,10 @@
                     <!-- PipeWire status bar -->
                     <?php if (!isset($settings['MediaBackend']) || $settings['MediaBackend'] != 'pipewire') { ?>
                         <div class="callout callout-warning" style="padding:1rem;">
-                            <h4>PipeWire Backend Required</h4>
-                            <p>AES67 audio-over-IP requires the PipeWire audio backend.<br>
-                                Go to <b>Settings → Audio/Video</b> and set <b>Audio Backend</b> to <b>PipeWire</b>,
+                            <h4>Advanced PipeWire Required</h4>
+                            <p>AES67 audio-over-IP requires the Advanced PipeWire backend.<br>
+                                Go to <b>Settings → Audio/Video</b> and set <b>Media Backend</b> to <b>PipeWire
+                                    (Advanced)</b>,
                                 then reboot.</p>
                         </div>
                     <?php } else { ?>

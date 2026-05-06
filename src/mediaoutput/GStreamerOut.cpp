@@ -55,14 +55,15 @@ static bool gst_initialized = false;
 void GStreamerOutput::EnsureGStreamerInit() {
     if (!gst_initialized) {
         LogWarn(VB_MEDIAOUT, "GStreamer: EnsureGStreamerInit() entered\n");
-        // Set PipeWire env vars so pipewiresink can find the FPP PipeWire runtime
-        std::string mediaBackend = getSetting("MediaBackend");
-        if (mediaBackend == "pipewire") {
+        // Set PipeWire env vars so pipewiresink can find the FPP PipeWire runtime.
+        // Both Simple PipeWire and PipeWire Advanced share the same runtime stack.
+        if (isPipeWireBackend()) {
             setenv("PIPEWIRE_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("XDG_RUNTIME_DIR", "/run/pipewire-fpp", 1);
             setenv("PULSE_RUNTIME_PATH", "/run/pipewire-fpp/pulse", 1);
             LogWarn(VB_MEDIAOUT, "GStreamer: Set PipeWire env (PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp)\n");
         } else {
+            std::string mediaBackend = getSetting("MediaBackend");
             LogWarn(VB_MEDIAOUT, "GStreamer: MediaBackend='%s', not setting PipeWire env\n", mediaBackend.c_str());
         }
         LogWarn(VB_MEDIAOUT, "GStreamer: Calling gst_init()...\n");
@@ -347,7 +348,8 @@ int GStreamerOutput::Start(int msTime) {
     // mode PipeWire isn't running so pipewiresink would fail to connect and
     // block the pipeline (causing audio stall / playback abort).
     std::string mediaBackend = toLowerCopy(getSetting("MediaBackend"));
-    if (mediaBackend == "pipewire") {
+    bool usePipeWireBackendLocal = (mediaBackend == "pipewire" || mediaBackend == "pipewire-simple");
+    if (usePipeWireBackendLocal) {
         m_pwVideoSinkName = getSetting("PipeWireVideoSinkName");
         if (m_streamSlot > 1) {
             std::string slotSetting = "PipeWireVideoSinkName_" + std::to_string(m_streamSlot);
@@ -459,7 +461,7 @@ int GStreamerOutput::Start(int msTime) {
 
     LogWarn(VB_MEDIAOUT, "GStreamer: Start() building pipeline...");
 
-    bool usePipeWire = (mediaBackend == "pipewire");
+    bool usePipeWire = usePipeWireBackendLocal;
 
     std::string pipelineSinkName;
     if (usePipeWire) {

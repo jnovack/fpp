@@ -130,16 +130,21 @@ function SavePipeWireAudioGroups()
 /////////////////////////////////////////////////////////////////////////////
 // POST /api/pipewire/audio/groups/apply
 // Generates PipeWire config files and restarts PipeWire services
-function ApplyPipeWireAudioGroups()
+function ApplyPipeWireAudioGroups($overrideData = null)
 {
     global $settings, $SUDO;
 
     $configFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
-    if (!file_exists($configFile)) {
-        return json(array("status" => "OK", "message" => "No audio groups configured"));
-    }
+    $useOverride = ($overrideData !== null);
 
-    $data = json_decode(file_get_contents($configFile), true);
+    if ($useOverride) {
+        $data = $overrideData;
+    } else {
+        if (!file_exists($configFile)) {
+            return json(array("status" => "OK", "message" => "No audio groups configured"));
+        }
+        $data = json_decode(file_get_contents($configFile), true);
+    }
     if ($data === null || !isset($data['groups']) || empty($data['groups'])) {
         // Remove any existing combine config
         $confPath = "/etc/pipewire/pipewire.conf.d/97-fpp-audio-groups.conf";
@@ -187,7 +192,7 @@ function ApplyPipeWireAudioGroups()
         unset($mbr);
     }
     unset($grp);
-    if ($jsonDirty) {
+    if ($jsonDirty && !$useOverride) {
         $configFile = $settings['mediaDirectory'] . "/config/pipewire-audio-groups.json";
         file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
@@ -195,19 +200,33 @@ function ApplyPipeWireAudioGroups()
     // Ensure directory exists
     exec($SUDO . " /bin/mkdir -p /etc/pipewire/pipewire.conf.d");
 
-    // Also regenerate input group config (96-) so it stays in sync
-    $igFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
-    if (file_exists($igFile)) {
-        $igData = json_decode(file_get_contents($igFile), true);
-        if (is_array($igData) && isset($igData['inputGroups']) && !empty($igData['inputGroups'])) {
-            $igConf = GeneratePipeWireInputGroupsConfig($igData['inputGroups'], $data['groups']);
-            $igConfPath = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
-            $igTmpFile = tempnam(sys_get_temp_dir(), 'fpp_pw_ig_');
-            file_put_contents($igTmpFile, $igConf);
-            exec($SUDO . " cp " . escapeshellarg($igTmpFile) . " " . escapeshellarg($igConfPath));
-            exec($SUDO . " chmod 644 " . escapeshellarg($igConfPath));
-            unlink($igTmpFile);
-            file_put_contents($settings['mediaDirectory'] . "/config/pipewire-input-groups.conf", $igConf);
+    // Simple PipeWire mode has no user-defined input groups — the simple
+    // synthetic groups won't have ids matching the advanced input-groups
+    // JSON, so skip input-groups regeneration and remove any leftover conf.
+    if ($useOverride) {
+        $igConfPath = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
+        if (file_exists($igConfPath)) {
+            exec($SUDO . " rm -f " . escapeshellarg($igConfPath));
+        }
+        $cachedIgConf = $settings['mediaDirectory'] . "/config/pipewire-input-groups.conf";
+        if (file_exists($cachedIgConf)) {
+            @unlink($cachedIgConf);
+        }
+    } else {
+        // Also regenerate input group config (96-) so it stays in sync
+        $igFile = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
+        if (file_exists($igFile)) {
+            $igData = json_decode(file_get_contents($igFile), true);
+            if (is_array($igData) && isset($igData['inputGroups']) && !empty($igData['inputGroups'])) {
+                $igConf = GeneratePipeWireInputGroupsConfig($igData['inputGroups'], $data['groups']);
+                $igConfPath = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
+                $igTmpFile = tempnam(sys_get_temp_dir(), 'fpp_pw_ig_');
+                file_put_contents($igTmpFile, $igConf);
+                exec($SUDO . " cp " . escapeshellarg($igTmpFile) . " " . escapeshellarg($igConfPath));
+                exec($SUDO . " chmod 644 " . escapeshellarg($igConfPath));
+                unlink($igTmpFile);
+                file_put_contents($settings['mediaDirectory'] . "/config/pipewire-input-groups.conf", $igConf);
+            }
         }
     }
 
@@ -245,7 +264,9 @@ function ApplyPipeWireAudioGroups()
     $igSlotGroupCount = array();
     $igSlotSourceIds = array();
     $igFile2 = $settings['mediaDirectory'] . "/config/pipewire-input-groups.json";
-    if (file_exists($igFile2)) {
+    // Simple mode has no input groups — route fppd streams direct to the
+    // synthesised group sink. Skip the advanced input-groups lookup.
+    if (!$useOverride && file_exists($igFile2)) {
         $igData2 = json_decode(file_get_contents($igFile2), true);
         if (is_array($igData2) && isset($igData2['inputGroups'])) {
             foreach ($igData2['inputGroups'] as $ig) {
@@ -5440,11 +5461,12 @@ function SavePipeWireVideoGroups()
 // The primary HDMI output is handled directly by GStreamerOut's kmssink
 // (not through PipeWire), so the PipeWire video stream is available for
 // ADDITIONAL outputs: a second HDMI port, a PixelOverlay, a network stream.
-function ApplyPipeWireVideoGroups()
+function ApplyPipeWireVideoGroups($overrideData = null)
 {
     global $settings, $SUDO;
 
     $configFile = $settings['mediaDirectory'] . "/config/pipewire-video-groups.json";
+    $useOverride = ($overrideData !== null);
 
     // Helper: clear all video sink settings
     $clearSettings = function () {
@@ -5455,15 +5477,23 @@ function ApplyPipeWireVideoGroups()
         }
     };
 
-    if (!file_exists($configFile)) {
-        $clearSettings();
-        return json(array("status" => "OK", "message" => "No video output groups configured"));
-    }
+    if ($useOverride) {
+        $data = $overrideData;
+        if ($data === null || !isset($data['videoOutputGroups']) || empty($data['videoOutputGroups'])) {
+            $clearSettings();
+            return json(array("status" => "OK", "message" => "No video output groups configured"));
+        }
+    } else {
+        if (!file_exists($configFile)) {
+            $clearSettings();
+            return json(array("status" => "OK", "message" => "No video output groups configured"));
+        }
 
-    $data = json_decode(file_get_contents($configFile), true);
-    if ($data === null || !isset($data['videoOutputGroups']) || empty($data['videoOutputGroups'])) {
-        $clearSettings();
-        return json(array("status" => "OK", "message" => "Video output groups cleared"));
+        $data = json_decode(file_get_contents($configFile), true);
+        if ($data === null || !isset($data['videoOutputGroups']) || empty($data['videoOutputGroups'])) {
+            $clearSettings();
+            return json(array("status" => "OK", "message" => "Video output groups cleared"));
+        }
     }
 
     // Resolve hardware info once
@@ -5560,7 +5590,9 @@ function ApplyPipeWireVideoGroups()
     unset($grp);
 
     // Save back with generated node names
-    file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    if (!$useOverride) {
+        file_put_contents($configFile, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
 
     // Write consumer config (read by fppd VideoOutputManager)
     $consumerFile = $settings['mediaDirectory'] . "/config/pipewire-video-consumers.json";
@@ -5967,4 +5999,161 @@ function SaveVideoRoutingMatrix()
     GenerateBackupViaAPI('Video routing matrix was modified.');
 
     return json(array("status" => "OK", "message" => "$updated video group(s) updated"));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SIMPLE PIPEWIRE MODE — single sound card + single video output
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// The Simple PipeWire backend provides the same UI experience as the
+// Hardware Direct backend (one AudioOutput card selector, one VideoOutput
+// connector selector) while reusing the PipeWire/GStreamer runtime.
+//
+// On Apply, the user's AudioOutput/VideoOutput selections are translated
+// into a single-group PipeWire audio config and a single-output PipeWire
+// video config, then handed to ApplyPipeWireAudioGroups/Video via in-memory
+// override data.  Advanced-mode JSON files (pipewire-audio-groups.json /
+// pipewire-video-groups.json) are NOT touched, so users can switch back to
+// Advanced mode without losing their custom configuration.
+//
+// Records of the synthesised configs are kept at:
+//   $mediaDirectory/config/pipewire-audio-groups-simple.json
+//   $mediaDirectory/config/pipewire-video-groups-simple.json
+/////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////
+// Helper: Resolve an ALSA card number (e.g. "0", "1") to its stable
+// ALSA card ID (read from /proc/asound/cardN/id).  Used by Simple PipeWire
+// mode to translate the legacy AudioOutput numeric setting into the cardId
+// string consumed by PipeWire audio groups.
+function ResolveAlsaCardNumberToId($cardNum)
+{
+    $cardNum = (string) intval($cardNum);
+    $idFile = "/proc/asound/card{$cardNum}/id";
+    if (file_exists($idFile)) {
+        $id = trim(@file_get_contents($idFile));
+        if ($id !== '')
+            return $id;
+    }
+    return '';
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Build a single-group audio data structure from the AudioOutput setting.
+// Returns an array shaped like the contents of pipewire-audio-groups.json.
+function BuildSimpleAudioGroupsData($audioOutput)
+{
+    $cardId = ResolveAlsaCardNumberToId($audioOutput);
+    if ($cardId === '') {
+        return array("groups" => array());
+    }
+
+    return array(
+        "groups" => array(
+            array(
+                "id" => 1,
+                "name" => "Default",
+                "enabled" => true,
+                "channels" => 2,
+                "volume" => 100,
+                "activeGroup" => true,
+                "members" => array(
+                    array(
+                        "cardId" => $cardId,
+                        "channels" => 2,
+                        "delayMs" => 0,
+                        "volume" => 100,
+                    ),
+                ),
+            ),
+        ),
+    );
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Build a single-output video data structure from the VideoOutput setting.
+// Returns an array shaped like pipewire-video-groups.json, or null if the
+// VideoOutput value does not map to a real DRM connector (Disabled,
+// --Default--, etc.) — in which case the video pipeline is skipped.
+function BuildSimpleVideoGroupsData($videoOutput)
+{
+    if (empty($videoOutput) || $videoOutput === 'Disabled' || $videoOutput === '--Default--') {
+        return array("videoOutputGroups" => array());
+    }
+
+    // Validate the connector exists; bail out if not (e.g. Composite-1 on
+    // a board without that connector).
+    $connectors = GetVideoConnectors();
+    $found = false;
+    foreach ($connectors as $c) {
+        if ($c['connector'] === $videoOutput) {
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) {
+        return array("videoOutputGroups" => array());
+    }
+
+    return array(
+        "videoOutputGroups" => array(
+            array(
+                "id" => 1,
+                "name" => "Default",
+                "enabled" => true,
+                "members" => array(
+                    array(
+                        "type" => "hdmi",
+                        "connector" => $videoOutput,
+                        "scaling" => "fit",
+                    ),
+                ),
+            ),
+        ),
+    );
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Apply the Simple PipeWire configuration derived from the AudioOutput and
+// VideoOutput settings.  This is invoked automatically by the settings
+// save handler whenever MediaBackend, AudioOutput, or VideoOutput changes
+// while MediaBackend == 'pipewire-simple'.
+//
+// Returns a JSON-encoded status response (compatible with the existing
+// /api/pipewire/audio/groups/apply contract).
+function ApplyPipeWireSimpleConfig()
+{
+    global $settings;
+
+    $audioOutput = isset($settings['AudioOutput']) ? $settings['AudioOutput'] : '0';
+    $videoOutput = isset($settings['VideoOutput']) ? $settings['VideoOutput'] : '';
+
+    $audioData = BuildSimpleAudioGroupsData($audioOutput);
+    $videoData = BuildSimpleVideoGroupsData($videoOutput);
+
+    // Persist a record of the synthesised config so the boot-time apply
+    // (and any future debugging) can see what Simple mode produced.
+    $audioRecord = $settings['mediaDirectory'] . "/config/pipewire-audio-groups-simple.json";
+    $videoRecord = $settings['mediaDirectory'] . "/config/pipewire-video-groups-simple.json";
+    @file_put_contents($audioRecord, json_encode($audioData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    @file_put_contents($videoRecord, json_encode($videoData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+    // Apply audio first (restarts pipewire services), then video.
+    // Both functions accept an in-memory override and skip writing to the
+    // advanced-mode JSON files when invoked this way.
+    ob_start();
+    ApplyPipeWireAudioGroups($audioData);
+    ob_end_clean();
+
+    ob_start();
+    ApplyPipeWireVideoGroups($videoData);
+    ob_end_clean();
+
+    $cardId = ResolveAlsaCardNumberToId($audioOutput);
+    return json(array(
+        "status" => "OK",
+        "message" => "Simple PipeWire config applied",
+        "audioCardId" => $cardId,
+        "videoConnector" => $videoOutput,
+    ));
 }

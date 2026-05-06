@@ -307,8 +307,7 @@ public:
     void openAudioDevice(const std::string& dev) {
 #ifdef HAS_GSTREAMER
         // In PipeWire mode, dev is a PipeWire node.name — use GStreamer pipewiresrc
-        std::string mediaBackend = getSetting("MediaBackend");
-        if (mediaBackend == "pipewire") {
+        if (isPipeWireBackend()) {
             openGStreamerCapture(dev);
             return;
         }

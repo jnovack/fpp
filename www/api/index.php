@@ -137,6 +137,7 @@ dispatch_post('/pipewire/audio/sync/stop', 'StopSyncCalibration');
 dispatch_get('/pipewire/video/groups', 'GetPipeWireVideoGroups');
 dispatch_post('/pipewire/video/groups', 'SavePipeWireVideoGroups');
 dispatch_post('/pipewire/video/groups/apply', 'ApplyPipeWireVideoGroups');
+dispatch_post('/pipewire/simple/apply', 'ApplyPipeWireSimpleConfig');
 dispatch_get('/pipewire/video/connectors', 'GetVideoOutputTargets');
 dispatch_get('/pipewire/video/routing', 'GetVideoRoutingMatrix');
 dispatch_post('/pipewire/video/routing', 'SaveVideoRoutingMatrix');

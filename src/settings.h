@@ -59,6 +59,10 @@ int setSetting(const std::string& key, const int value);
 int SetSetting(const std::string& key, const std::string& value);
 int SetSetting(const std::string& key, const int value);
 
+// Returns true if MediaBackend is using the PipeWire/GStreamer stack
+// (either Simple PipeWire or PipeWire Advanced — both share the same runtime).
+bool isPipeWireBackend();
+
 // listeners
 void registerSettingsListener(const std::string& id, const std::string& setting, std::function<void(const std::string&)>&& cb);
 void unregisterSettingsListener(const std::string& id, const std::string& setting);

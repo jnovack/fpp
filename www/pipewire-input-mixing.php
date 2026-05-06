@@ -291,14 +291,20 @@
 
                 <?php
                 $mediaBackend = isset($settings['MediaBackend']) ? $settings['MediaBackend'] : 'alsa';
+                $mediaBackendLabel = array(
+                    'alsa' => 'Hardware Direct',
+                    'pipewire-simple' => 'Simple PipeWire',
+                    'pipewire' => 'PipeWire (Advanced)'
+                );
+                $mbDisplay = isset($mediaBackendLabel[$mediaBackend]) ? $mediaBackendLabel[$mediaBackend] : ucfirst($mediaBackend);
                 if ($mediaBackend !== 'pipewire') {
                     ?>
                     <div class="alsa-warning">
                         <i class="fas fa-exclamation-triangle fa-2x" style="color: var(--bs-warning, #ffc107);"></i>
-                        <h4>PipeWire Backend Required</h4>
-                        <p>Input Mixing requires the PipeWire audio backend.<br>
-                            Currently using: <strong><?= htmlspecialchars(ucfirst($mediaBackend)) ?></strong></p>
-                        <p>Change to PipeWire in <a href="settings.php?tab=Audio%2FVideo">FPP Settings &rarr;
+                        <h4>Advanced PipeWire Required</h4>
+                        <p>Input Mixing requires the Advanced PipeWire backend.<br>
+                            Currently using: <strong><?= htmlspecialchars($mbDisplay) ?></strong></p>
+                        <p>Change to PipeWire (Advanced) in <a href="settings.php?tab=Audio%2FVideo">FPP Settings &rarr;
                                 Audio/Video</a>,
                             then return here to configure input mixing.</p>
                     </div>
