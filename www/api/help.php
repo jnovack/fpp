@@ -262,7 +262,6 @@ if (!isset($apiDir)) {
             });
         }
 
-
         function defaultForArg(arg, json) {
             if (typeof arg["default"] != "undefined") {
                 var def = arg["default"];
@@ -281,8 +280,6 @@ if (!isset($apiDir)) {
                 json["args"].push(arg["name"]);
             }
         }
-
-
 
         /*
          * Anchors are dynamically via ajax thus auto scrolling if anchor is in url
@@ -315,7 +312,6 @@ if (!isset($apiDir)) {
             border-bottom: 2px solid #E2E2E2;
         }
 
-
         td,
         th {
             vertical-align: top;
@@ -325,7 +321,6 @@ if (!isset($apiDir)) {
         .endpoint {
             white-space: nowrap;
         }
-
 
         #bodyWrapper {
             width: 100%;

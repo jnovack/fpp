@@ -1,6 +1,13 @@
 <?
 require_once(__DIR__ . "/../../config.php");
 
+/**
+ * Proxies a named action to a remote FPP instance by IP address.
+ * Supported actions: `listUpgrades`, `reboot`, `restartFppd`, `upgradeOS`.
+ *
+ * @route GET /api/remoteAction
+ * @response 400 {"error": "Invalid action given: badaction"}
+ */
 function remoteAction()
 {
     global $settings;
@@ -48,6 +55,12 @@ function remoteAction()
 
 }
 
+/**
+ * Reads the proxy config file and merges in active DHCP leases, marking each
+ * entry with `dhcp` and `pending` flags.
+ *
+ * @return array Array of proxy entries, each with host, description, dhcp, and pending keys.
+ */
 function LoadProxyList()
 {
     global $settings;
@@ -105,6 +118,15 @@ function LoadProxyList()
     return $proxies;
 }
 
+/**
+ * Replaces the proxy list with the submitted array of `host`/`description` objects,
+ * validates each entry, and triggers an Apache graceful reload.
+ *
+ * @route POST /api/proxies
+ * @body [{"host": "192.168.1.2", "description": "Mega Tree"}]
+ * @response [{"host": "192.168.1.2", "description": "Mega Tree"}, {"host": "192.168.1.146", "description": "Yard"}, {"host": "192.168.1.148", "description": "Left House"}]
+ * @response 400 {"error": "No valid proxies provided"}
+ */
 function PostProxies()
 {
     $proxies = $_POST;
@@ -145,6 +167,13 @@ function PostProxies()
     }
 }
 
+/**
+ * Writes the proxy list to `proxy-config.conf` and triggers an Apache
+ * graceful reload. DHCP leases are merged in automatically.
+ *
+ * @param array $proxies Array of proxy entries with host and description keys.
+ * @return void
+ */
 function WriteProxyFile($proxies)
 {
     global $settings;
@@ -188,14 +217,25 @@ function WriteProxyFile($proxies)
     system($SUDO . " $fppDir/scripts/common gracefullyReloadApacheConf > /dev/null 2>&1");
     // exec('/opt/fpp/scripts/common gracefullyReloadApacheConf');
 }
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/proxies
+
+/**
+ * Returns the list of IP addresses this FPP instance can proxy.
+ *
+ * @route GET /api/proxies
+ * @response [{"host": "192.168.1.2", "description": "Mega Tree"}, {"host": "192.168.1.146", "description": "Yard"}, {"host": "192.168.1.148", "description": "Left House"}]
+ */
 function GetProxies()
 {
     $proxies = LoadProxyList();
     return json($proxies, true);
 }
 
+/**
+ * Adds a single IP address to the FPP proxy list if it does not already exist.
+ *
+ * @route POST /api/proxies/{ProxyIp}
+ * @response [{"host": "192.168.1.2", "description": "Mega Tree"}]
+ */
 function AddProxy()
 {
     $pip = params('ProxyIp');
@@ -216,6 +256,12 @@ function AddProxy()
     return json($proxies);
 }
 
+/**
+ * Removes a single IP address from the FPP proxy list.
+ *
+ * @route DELETE /api/proxies/{ProxyIp}
+ * @response []
+ */
 function DeleteProxy()
 {
     $pip = params('ProxyIp');
@@ -231,6 +277,12 @@ function DeleteProxy()
     return json($newproxies);
 }
 
+/**
+ * Returns the list of known remote FPP systems from `fppd` multiSync discovery.
+ *
+ * @route GET /api/remotes
+ * @response {"192.168.1.10": "192.168.1.10 - remote-fpp", "192.168.1.11": "192.168.1.11"}
+ */
 function GetRemotes()
 {
     $curl = curl_init('http://localhost:32322/fppd/multiSyncSystems');
@@ -252,6 +304,13 @@ function GetRemotes()
     return json($remotes);
 }
 
+/**
+ * Fetches a URL on a remote FPP instance via server-side proxy to avoid CSP restrictions.
+ *
+ * @route GET /api/proxy/{Ip}/{urlPart}
+ * @response 400 {"error": "Invalid IP address"}
+ * @response 502 {"error": "Failed to fetch proxied URL"}
+ */
 function GetProxiedURL()
 {
     $ip = params('Ip');
@@ -284,6 +343,12 @@ function GetProxiedURL()
     echo $data;
     return;
 }
+
+/**
+ * Returns the list of IP addresses currently offered as DHCP leases by this FPP instance.
+ *
+ * @return array Array of IPv4 address strings.
+ */
 function getDHCPLeases()
 {
     $dhcpIps = array();
@@ -316,6 +381,13 @@ function getDHCPLeases()
     return $dhcpIps;
 }
 
+/**
+ * Deletes all proxy entries by writing an empty `proxy-config.conf` and
+ * triggering an Apache graceful reload.
+ *
+ * @route DELETE /api/proxies
+ * @response []
+ */
 function DeleteAllProxies()
 {
     global $settings;
@@ -331,4 +403,3 @@ function DeleteAllProxies()
     GenerateBackupViaAPI('All proxies were deleted.');
     return json([]);
 }
-

@@ -1,7 +1,11 @@
 <?
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/plugin
+/**
+ * Get list of installed plugins.
+ *
+ * @route GET /api/plugin
+ * @response ["fpp-brightness", "fpp-matrixtools", "fpp-vastfmt"]
+ */
 function GetInstalledPlugins()
 {
 	global $settings;
@@ -24,8 +28,15 @@ function GetInstalledPlugins()
 	return json($plugins);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/plugin
+/**
+ * Install a new plugin. The request body is a `pluginInfo.json` structure
+ * with `branch` and `sha` fields added to specify which branch and commit
+ * to install.
+ *
+ * @route POST /api/plugin
+ * @body {"repoName": "fpp-matrixtools", "name": "MatrixTools", "author": "Chris Pinkham (CaptainMurdoch)", "srcURL": "https://github.com/cpinkham/fpp-matrixtools.git", "branch": "master", "sha": ""}
+ * @response {"Status": "OK", "Message": ""}
+ */
 function InstallPlugin()
 {
 	global $settings, $fppDir, $SUDO, $_REQUEST;
@@ -110,8 +121,14 @@ function InstallPlugin()
 	return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/plugin/:RepoName
+/**
+ * Get `pluginInfo.json` for installed plugin `{RepoName}`. An additional
+ * `updatesAvailable` field indicates whether the plugin has commits that
+ * have been fetched but not yet merged.
+ *
+ * @route GET /api/plugin/{RepoName}
+ * @response {"repoName": "fpp-matrixtools", "name": "MatrixTools", "author": "Chris Pinkham (CaptainMurdoch)", "srcURL": "https://github.com/cpinkham/fpp-matrixtools.git", "updatesAvailable": 0, "versions": [{"minFPPVersion": 0, "maxFPPVersion": 0, "branch": "master", "sha": ""}]}
+ */
 function GetPluginInfo()
 {
 	global $settings;
@@ -139,8 +156,12 @@ function GetPluginInfo()
 	return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// DELETE /api/plugin/:RepoName
+/**
+ * Uninstall plugin {RepoName}.
+ *
+ * @route DELETE /api/plugin/{RepoName}
+ * @response {"Status": "OK", "Message": ""}
+ */
 function UninstallPlugin()
 {
 	global $settings, $fppDir, $SUDO, $_REQUEST;
@@ -186,8 +207,13 @@ function UninstallPlugin()
 	return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/plugin/:RepoName/updates
+/**
+ * Check plugin `{RepoName}` for available updates by running `git fetch` in
+ * the plugin directory and checking for any unmerged commits.
+ *
+ * @route POST /api/plugin/{RepoName}/updates
+ * @response {"Status": "OK", "Message": "", "updatesAvailable": 1}
+ */
 function CheckForPluginUpdates()
 {
 	global $settings, $SUDO;
@@ -210,9 +236,14 @@ function CheckForPluginUpdates()
 	return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/plugin/:RepoName/upgrade
-// GET /api/plugin/:RepoName/upgrade
+/**
+ * Pull in git updates for plugin `{RepoName}`. Supports an optional
+ * `?stream=true` query parameter for streaming output.
+ *
+ * @route GET /api/plugin/{RepoName}/upgrade
+ * @route POST /api/plugin/{RepoName}/upgrade
+ * @response {"Status": "OK", "Message": ""}
+ */
 function UpgradePlugin()
 {
 	global $settings, $SUDO, $_REQUEST, $fppDir;
@@ -264,14 +295,17 @@ function UpgradePlugin()
 	return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////
 // Helper functions
 
-// Inject GitHub credentials (user + Personal Access Token) into a GitHub
-// HTTPS URL so git clone / curl can authenticate against private repositories.
-// Returns the modified URL on success, or false if credentials are not
-// configured or the URL is not a recognized GitHub URL.
+/**
+ * Injects GitHub credentials (username + Personal Access Token) into a
+ * GitHub HTTPS URL so `git clone` and `curl` can authenticate against
+ * private repositories.
+ *
+ * @param string $url GitHub HTTPS URL to inject credentials into.
+ * @return string|false Modified URL on success, or false if credentials are not
+ *                      configured or the URL is not a recognized GitHub URL.
+ */
 function InjectGitHubCredentials($url)
 {
 	global $settings;
@@ -290,14 +324,17 @@ function InjectGitHubCredentials($url)
 	return preg_replace('#^https://#i', 'https://' . rawurlencode($user) . ':' . rawurlencode($pat) . '@', $url, 1);
 }
 
-// Fetch the contents of a URL with GitHub credentials. Falls back to
-// file_get_contents when credentials are not configured.
-//
-// raw.githubusercontent.com does NOT accept HTTP Basic auth for private
-// content; we must use an "Authorization: token <PAT>" header instead.
-// We also normalize URLs that came from GitHub's "Raw" share-link UI which
-// embed a temporary "?token=GHSAT..." query parameter -- those expire quickly
-// and can shadow the configured PAT, so we strip them before fetching.
+/**
+ * Fetches the contents of a URL using GitHub credentials when available.
+ * Falls back to `file_get_contents` when credentials are not configured.
+ * `raw.githubusercontent.com` requires an `Authorization: token <PAT>`
+ * header rather than HTTP Basic auth for private content. Temporary
+ * share-link tokens (`?token=GHSAT...`) are stripped and replaced with
+ * the configured PAT.
+ *
+ * @param string $url URL to fetch.
+ * @return string|false Response body on success, or false on failure.
+ */
 function FetchURLWithGitHubCredentials($url)
 {
 	global $GitHubFetchLastError;
@@ -393,11 +430,16 @@ function FetchURLWithGitHubCredentials($url)
 	return @file_get_contents($url);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/plugin/fetchInfo
-// Server-side proxy for fetching a pluginInfo.json from a private GitHub
-// repository using the credentials configured on the Developer settings page.
-// Body: { "url": "<raw pluginInfo.json URL>", "useCredentials": 1 }
+/**
+ * Server-side proxy for fetching a `pluginInfo.json` from a remote URL.
+ * Used to retrieve plugin repository info without CORS issues, and to
+ * authenticate against private GitHub repositories using credentials
+ * configured on the Developer settings page.
+ *
+ * @route POST /api/plugin/fetchInfo
+ * @body {"url": "https://example.com/pluginInfo.json", "useCredentials": 1}
+ * @response {}
+ */
 function FetchPluginInfoProxy()
 {
 	$body = '';
@@ -441,6 +483,13 @@ function FetchPluginInfoProxy()
 	return json($decoded);
 }
 
+/**
+ * Checks whether the installed plugin has commits that have been fetched
+ * but not yet merged into the local branch.
+ *
+ * @param string $plugin Plugin directory name (repo name).
+ * @return int 1 if updates are available, 0 otherwise.
+ */
 function PluginHasUpdates($plugin)
 {
 	global $settings;
@@ -455,8 +504,12 @@ function PluginHasUpdates($plugin)
 	return 0;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-
+/**
+ * Returns the value of setting `{SettingName}` from plugin `{RepoName}`.
+ *
+ * @route GET /api/plugin/{RepoName}/settings/{SettingName}
+ * @response {"status": "OK", "SettingName": "SettingValue"}
+ */
 function PluginGetSetting()
 {
 	$setting = params("SettingName");
@@ -471,6 +524,14 @@ function PluginGetSetting()
 
 }
 
+/**
+ * Sets `{SettingName}` for plugin `{RepoName}` and returns the updated value.
+ *
+ * @route POST /api/plugin/{RepoName}/settings/{SettingName}
+ * @route PUT /api/plugin/{RepoName}/settings/{SettingName}
+ * @body SettingValue
+ * @response {"status": "OK", "SettingName": "SettingValue"}
+ */
 function PluginSetSetting()
 {
 
@@ -482,6 +543,5 @@ function PluginSetSetting()
 
 	return PluginGetSetting();
 }
-
 
 ?>

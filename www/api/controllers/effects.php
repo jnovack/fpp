@@ -1,9 +1,15 @@
 <?
 
+/**
+ * Returns a list of effect (`*.eseq`) files available in the effects directory.
+ *
+ * @route GET /api/effects
+ * @response ["rainbow", "twinkle"]
+ */
 function effects_list()
 {
     global $effectDirectory;
-    
+
     $effects = array();
     if ($d = opendir($effectDirectory)) {
         while (($file = readdir($d)) !== false) {
@@ -18,11 +24,18 @@ function effects_list()
     return json($effects);
 }
 
+/**
+ * Returns a combined list of all effect (`*.eseq`) files from both the effects directory
+ * and the sequences directory.
+ *
+ * @route GET /api/effects/ALL
+ * @response ["rainbow", "twinkle", "MySequence"]
+ */
 function effects_list_ALL()
 {
     global $effectDirectory;
     global $sequenceDirectory;
-    
+
     $effects = array();
     if ($d = opendir($effectDirectory)) {
         while (($file = readdir($d)) !== false) {

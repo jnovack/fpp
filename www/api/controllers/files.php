@@ -1,5 +1,12 @@
 <?
 
+/**
+ * Maps a filename to its media directory based on file extension.
+ * Falls back to plugin-registered extension mappings in `pluginInfo.json` if no built-in match is found.
+ *
+ * @param string $filename Filename to inspect.
+ * @return string Absolute directory path, or empty string if no match found.
+ */
 function MapExtention($filename)
 {
     global $mediaDirectory, $settings;
@@ -38,6 +45,14 @@ function MapExtention($filename)
         return "";
     }
 }
+
+/**
+ * Resolves a directory key name to its absolute path using settings, then
+ * falls back to extension-based mapping.
+ *
+ * @param string $dirName Logical directory name (e.g. "music", "sequences").
+ * @return string Absolute directory path, or empty string if not found.
+ */
 function MapDirectoryKey($dirName)
 {
     $dir = GetDirSetting($dirName);
@@ -47,8 +62,12 @@ function MapDirectoryKey($dirName)
     return $dir;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /file/:DirName/copy/:source/:dest
+/**
+ * Copies the specified file from `:source` to `:dest` within the given directory.
+ *
+ * @route POST /api/file/{DirName}/copy/{source}/{dest}
+ * @response {"status": "success", "original": "test.py", "new": "test2.py"}
+ */
 function files_copy()
 {
     $filename = params("source");
@@ -75,6 +94,12 @@ function files_copy()
     return json($result);
 }
 
+/**
+ * Renames the specified file from `:source` to `:dest` within the given directory.
+ *
+ * @route POST /api/file/{DirName}/rename/{source}/{dest}
+ * @response {"status": "success", "original": "test.py", "new": "test2.py"}
+ */
 function files_rename()
 {
     $filename = params("source");
@@ -100,8 +125,15 @@ function files_rename()
     return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/files/:DirName
+/**
+ * Builds the file listing for a directory. Supports `?nameOnly=1` for a flat
+ * name array, otherwise returns an array of file detail objects. For `music`
+ * and `video` directories, playtime metadata is appended from `ffprobe`.
+ *
+ * @param string $dirName Absolute path to the directory to scan.
+ * @param string $prefix  Optional prefix to prepend to each returned filename.
+ * @return array Array of filename strings (nameOnly mode) or file detail arrays.
+ */
 function GetFilesHelper($dirName, $prefix = '')
 {
     global $SUDO;
@@ -206,13 +238,11 @@ function GetFilesHelper($dirName, $prefix = '')
 
             }
 
-
             $entries = array($current);
 
             $files = array_merge($files, $entries);
 
         }
-
 
         if (strtolower(params("DirName")) == "logs") {
             if (file_exists("/var/log/messages")) {
@@ -229,6 +259,13 @@ function GetFilesHelper($dirName, $prefix = '')
     }
 }
 
+/**
+ * Returns a list of files in the specified media directory. Supports
+ * `?nameOnly=1` to return a flat array of filenames.
+ *
+ * @route GET /api/files/{DirName}
+ * @response {"status": "ok", "files": [{"name": "Christmas Every Day.mp3", "mtime": "09/23/20  07:47 PM", "sizeBytes": 7929000, "sizeHuman": "7.56MB", "playtimeSeconds": "03m:46s"}]}
+ */
 function GetFiles()
 {
     $dirName = params("DirName");
@@ -244,6 +281,15 @@ function GetFiles()
         return json(array("status" => "ok", "files" => GetFilesHelper($dirName)));
     }
 }
+
+/**
+ * Returns plugin-specific file info for the specified file path. The plugin
+ * name, extension category, and file path are read from route parameters.
+ * The metadata command is defined in the plugin's `pluginInfo.json`.
+ *
+ * @route GET /api/file/info/{plugin}/{ext}/**
+ * @response {}
+ */
 function GetPluginFileInfo()
 {
     global $mediaDirectory;
@@ -276,6 +322,15 @@ function GetPluginFileInfo()
     }
     return json(array("status" => "ERROR: Could not find information for file $fileName"));
 }
+
+/**
+ * Notifies the first matching plugin that a file has been uploaded by running
+ * that plugin's registered `onUpload` handler command.
+ *
+ * @param string $dir      Absolute directory path where the file was placed.
+ * @param string $filename Filename that was uploaded.
+ * @return string Output from the plugin handler, or an error string if no handler found.
+ */
 function CallPluginFileUploaded($dir, $filename)
 {
     $pluginDirectory = GetDirSetting("plugins");
@@ -304,6 +359,14 @@ function CallPluginFileUploaded($dir, $filename)
     }
     return "Could not find plugin to handle " . $filename;
 }
+
+/**
+ * Notifies any plugin that has registered an `onUpload` handler for the given
+ * file extension. `:ext` is the extension category and `**` is the file path.
+ *
+ * @route GET /api/file/onUpload/{ext}/**
+ * @response {"status": "OK"}
+ */
 function PluginFileOnUpload()
 {
     global $mediaDirectory;
@@ -313,7 +376,15 @@ function PluginFileOnUpload()
     return CallPluginFileUploaded($mediaDirectory . "/" . $ext, $fileName);
 }
 
-
+/**
+ * Moves a newly uploaded file from the upload staging directory to the correct
+ * media subdirectory as registered by a plugin's `pluginInfo.json`, then fires
+ * the plugin's `onUpload` handler.
+ *
+ * @param string $uploadDir Absolute path to the staging upload directory.
+ * @param string $filename  Filename to move.
+ * @return bool True on success, false if the rename failed.
+ */
 function MovePluginFile($uploadDir, $filename)
 {
     global $mediaDirectory;
@@ -341,6 +412,15 @@ function MovePluginFile($uploadDir, $filename)
     return true;
 }
 
+/**
+ * Downloads the specified file from a media directory. Supports optional query
+ * params: `?tail=N` (return last N lines), `?play=1` (set playback content type),
+ * `?attach=1` (force attachment download for images).
+ *
+ * @route GET /api/file/{DirName}/**
+ * @response "The File Contents"
+ * @response 404 "File <path> does not exist."
+ */
 function GetFile()
 {
     $dirName = params("DirName");
@@ -364,6 +444,18 @@ function GetFile()
     GetFileImpl($dirName, $fileName, $lines, $play, $attach);
 }
 
+/**
+ * Core implementation for file download. Resolves the logical directory name,
+ * sets appropriate `Content-Type` and `Content-Disposition` headers based on mode,
+ * and streams the file (or its tail) to the response.
+ *
+ * @param string $dir      Logical directory name (e.g. "Images", "Logs").
+ * @param string $filename Relative filename within the directory.
+ * @param int    $lines    Number of tail lines to return; -1 for the full file.
+ * @param int    $play     1 to set a playback content type instead of download.
+ * @param int    $attach   1 to force attachment Content-Disposition for images.
+ * @return void
+ */
 function GetFileImpl($dir, $filename, $lines, $play, $attach)
 {
     $isImage = 0;
@@ -439,6 +531,14 @@ function GetFileImpl($dir, $filename, $lines, $play, $attach)
     }
 }
 
+/**
+ * Locates a file within a directory, trying the raw name, URL-decoded name,
+ * sanitized name, and ISO-8859-1 to UTF-8 conversion in order.
+ *
+ * @param string $dir      Absolute directory path to search in.
+ * @param string $filename Filename to locate.
+ * @return string The resolved filename (possibly transformed), or the original if not found.
+ */
 function findFile($dir, $filename)
 {
     if (file_exists($dir . "/" . $filename)) {
@@ -466,6 +566,14 @@ function findFile($dir, $filename)
     return $filename;
 }
 
+/**
+ * Moves the specified file from the `uploads` directory to the correct media
+ * subfolder based on its extension, returning a status of `OK` or an error
+ * message if not successful.
+ *
+ * @route GET /api/file/move/{fileName}
+ * @response {"status": "OK"}
+ */
 function MoveFile()
 {
     global $mediaDirectory, $uploadDirectory, $musicDirectory, $sequenceDirectory, $videoDirectory, $effectDirectory, $scriptDirectory, $imageDirectory, $configDirectory, $SUDO;
@@ -550,7 +658,14 @@ function MoveFile()
     return json(array("status" => $status));
 }
 
-/// GET /api/files/zip/:DirNames
+/**
+ * Downloads all files in the specified directory (or comma-separated list of
+ * directories) as a zip archive. `logs` and `config` are handled specially to
+ * include system log and config files.
+ *
+ * @route GET /api/files/zip/{DirNames}
+ * @response "A Zip file"
+ */
 function GetZipDir()
 {
     global $mediaDirectory;
@@ -604,6 +719,13 @@ function GetZipDir()
     exit();
 }
 
+/**
+ * Adds log files and configuration files to the given `ZipArchive`. Includes
+ * system logs, FPP config files, ALSA configuration, and `git` status/diff.
+ *
+ * @param ZipArchive $zip The archive to add files to.
+ * @return void
+ */
 function ZipLogs($zip)
 {
     global $SUDO;
@@ -664,6 +786,13 @@ function ZipLogs($zip)
     unset($output);
 }
 
+/**
+ * Adds FPP configuration files (channel outputs, schedules, settings, etc.)
+ * to the given `ZipArchive`, scrubbing sensitive values from `JSON` files.
+ *
+ * @param ZipArchive $zip The archive to add files to.
+ * @return void
+ */
 function ZipConfigs($zip)
 {
     global $SUDO;
@@ -717,6 +846,15 @@ function ZipConfigs($zip)
     unset($output);
 }
 
+/**
+ * Adds all files in a directory to the given `ZipArchive` under the specified
+ * archive name prefix.
+ *
+ * @param ZipArchive $zip       The archive to add files to.
+ * @param string     $name      Archive path prefix for the files.
+ * @param string     $directory Absolute path to the directory to add.
+ * @return void
+ */
 function ZipDirectory($zip, $name, $directory)
 {
     global $mediaDirectory;
@@ -728,6 +866,12 @@ function ZipDirectory($zip, $name, $directory)
     }
 }
 
+/**
+ * Recursively removes a directory and all of its contents.
+ *
+ * @param string $dir Absolute path to the directory to remove.
+ * @return void
+ */
 function removeDir(string $dir): void
 {
     $it = new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS);
@@ -745,6 +889,13 @@ function removeDir(string $dir): void
     rmdir($dir);
 }
 
+/**
+ * Deletes the specified file or directory from a media directory. Validates
+ * the resolved path against the allowed base directory to prevent path traversal.
+ *
+ * @route DELETE /api/file/{DirName}/**
+ * @response {"status": "OK", "file": "block_driveways.xbkp", "dir": "uploads"}
+ */
 function DeleteFile()
 {
     global $uploadDirectory;
@@ -783,7 +934,14 @@ function DeleteFile()
     return json(array("status" => $status, "file" => $fileName, "dir" => $dirName));
 }
 
-// emulate large fseek($fp, $pos, SEEK_SET) on 32-bit system
+/**
+ * Emulates `fseek()` for positions beyond `PHP_INT_MAX` on 32-bit systems by
+ * seeking to `PHP_INT_MAX` and then advancing in 8 KB chunks.
+ *
+ * @param resource $fp  File handle to seek.
+ * @param string   $pos BC math string representing the byte offset to seek to.
+ * @return void
+ */
 function emulated_fseek_for_big_files($fp, $pos)
 {
     if (bccomp((string) PHP_INT_MAX, $pos, 0) > -1) {
@@ -812,6 +970,16 @@ function emulated_fseek_for_big_files($fp, $pos)
     }
 }
 
+/**
+ * Handles chunked file uploads via `PATCH` (TUS-style). A `POST` to the same route
+ * initiates the session and returns a unique upload ID. Each `PATCH` request
+ * delivers a chunk identified by `Upload-Name`, `Upload-Offset`, and `Upload-Length`
+ * headers; when all chunks arrive, the file is assembled.
+ *
+ * @route POST /api/file/{DirName}
+ * @route PATCH /api/file/{DirName}
+ * @response {"status": "OK", "file": "block_driveways.xbkp", "dir": "uploads", "size": 1048576}
+ */
 function PatchFile()
 {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -917,6 +1085,14 @@ function PatchFile()
     return json(array("status" => $status, "file" => $fileName, "dir" => $dirName, "size" => $size));
 }
 
+/**
+ * Uploads a file to the specified media directory. Supports optional query
+ * params `bs` (block size) and `sb` (start block) for fragment uploads on systems
+ * with large file requirements.
+ *
+ * @route POST /api/file/{DirName}/{Name}
+ * @response {"status": "OK", "file": "beepbeep.fseq", "dir": "sequences"}
+ */
 function PostFile()
 {
     $status = "OK";
@@ -968,6 +1144,16 @@ function PostFile()
     return json(array("status" => $status, "file" => $fileName, "dir" => $dirName, "written" => $size, "size" => $totalSize, "offset" => $offset));
 }
 
+/**
+ * Appends a file detail entry to a list array. Includes name, mtime, size,
+ * and (for `music`/`video` directories) playtime metadata from the `ffprobe` cache.
+ *
+ * @param array  &$list    The list to append the file entry to.
+ * @param string $dirName  Absolute path to the directory containing the file.
+ * @param string $fileName Relative filename within the directory.
+ * @param string $prefix   Optional prefix to prepend to the returned filename.
+ * @return void
+ */
 function GetFileInfo(&$list, $dirName, $fileName, $prefix = '')
 {
     $fileFullName = $dirName . '/' . $fileName;
@@ -1009,6 +1195,12 @@ function GetFileInfo(&$list, $dirName, $fileName, $prefix = '')
     array_push($list, $current);
 }
 
+/**
+ * Creates a subdirectory inside the specified media directory.
+ *
+ * @route POST /api/dir/{DirName}/{SubDir}
+ * @response {"status": "OK", "subdir": "mySubDir", "dir": "sequences"}
+ */
 function CreateDir()
 {
     $status = "Unable to create directory";
@@ -1036,6 +1228,12 @@ function CreateDir()
     return json(array("status" => $status, "subdir" => $subDir, "dir" => $dirName));
 }
 
+/**
+ * Deletes an empty subdirectory from the specified media directory.
+ *
+ * @route DELETE /api/dir/{DirName}/{SubDir}
+ * @response {"status": "OK", "subdir": "mySubDir", "dir": "sequences"}
+ */
 function DeleteDir()
 {
     $status = "SubDir not found";
@@ -1062,10 +1260,16 @@ function DeleteDir()
     return json(array("status" => $status, "subdir" => $subDir, "dir" => $dirName));
 }
 
-/*
- * GET /api/file/:DirName/tailfollow/*
- * Streams log file content in real-time using Server-Sent Events (SSE)
- * Optional query param: ?lines=N (default 50, max 500)
+/**
+ * Streams the tail of a log file using Server-Sent Events (SSE). Only works
+ * for files in the `logs` directory. Accepts optional `?lines=N` query param
+ * (default 50, max 500). Sends a heartbeat comment every 30 seconds to keep
+ * the connection alive, and wraps `tail` in a 300-second timeout.
+ *
+ * @route GET /api/file/{DirName}/tailfollow/**
+ * @response "Server-sent event stream of new log lines as they are appended"
+ * @response 403 "Tail follow is only allowed for log files."
+ * @response 404 "File not found: <filename>"
  */
 function TailFollowFile()
 {

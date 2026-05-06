@@ -61,7 +61,7 @@
                         <div class="backdrop">
                             <ul class="no-bullets">
                                 <li>
-                                    <a class="dropdown-item" href="apihelp.php"><i class="fas fa-plug"></i> REST API
+                                    <a class="dropdown-item" href="/api/"><i class="fas fa-plug"></i> REST API
                                         Help</a>
                                 </li>
                                 <li>

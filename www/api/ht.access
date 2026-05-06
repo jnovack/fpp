@@ -15,9 +15,11 @@ RewriteRule ^player(.*)$  "http://localhost:32322/player$1"  [P]
 RewriteRule ^gpio(.*)$  "http://localhost:32322/gpio$1"  [P]
 RewriteRule ^plugin-apis/(.*)$  "http://localhost:32322/$1"  [P]
 RewriteRule ^index.php - [L,NC]
-RewriteRule ^help ../apihelp.php [R=301,L,NC]
-RewriteRule ^help/.* ../apihelp.php [R=301,L,NC]
+RewriteRule ^help ../api/ [R=301,L,NC]
+RewriteRule ^help/.* ../api/ [R=301,L,NC]
 RewriteRule ^endpoints.json - [L,NC]
+RewriteRule ^openapi.yaml - [L,NC]
+RewriteRule ^api.html - [L,NC]
 RewriteRule ^(.*)$   /api/index.php?uri=/$1    [NC,L,QSA,B]
 
 Header add Access-Control-Allow-Origin "*"

@@ -151,7 +151,6 @@ function showTestInputs(item) {
     $(item).parent().html(testInputs);
 }
 
-
 function defaultForArg(arg, json) {
     if (typeof arg["default"] != "undefined") {
         var def = arg["default"];
@@ -246,7 +245,6 @@ td {
 .endpoint .command {
 	white-space: nowrap;
 }
-
 
 #bodyWrapper {
     width: 100%;

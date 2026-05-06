@@ -1,6 +1,11 @@
 <?
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Get list of playlist names.
+ *
+ * @route GET /api/playlists
+ * @response ["Playlist_1", "Playlist_2", "Playlist_3"]
+ */
 function playlist_list()
 {
     global $settings;
@@ -18,6 +23,12 @@ function playlist_list()
     return json($playlists);
 }
 
+/**
+ * Loads all media filenames from video, sequence, music, and image directories
+ * for use in playlist validation.
+ *
+ * @return array Flat list of all media file names across all media directories.
+ */
 function loadValidateFiles()
 {
     global $settings;
@@ -34,9 +45,13 @@ function loadValidateFiles()
     return $files;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// Helper function to update playlistInfo with section-level stats (v4 format)
-// Handles both v3 (backwards compatible) and v4 formats
+/**
+ * Updates the `playlistInfo` array with section-level item counts and durations
+ * in v4 format. Handles both v3 (backwards compatible) and v4 formats.
+ *
+ * @param array $playlist Playlist data array, modified in place.
+ * @return void
+ */
 function updatePlaylistInfo(&$playlist)
 {
     // Initialize playlistInfo if not present
@@ -93,6 +108,16 @@ function updatePlaylistInfo(&$playlist)
     $playlist['playlistInfo']['total_duration'] = $leadInDuration + $mainDuration + $leadOutDuration;
 }
 
+/**
+ * Validates entries in a playlist section against known media files and
+ * playlist names, appending error messages for any missing references.
+ *
+ * @param array $entries  Playlist section entries to validate.
+ * @param array $media    List of known media file names.
+ * @param array $playlist List of known playlist names.
+ * @param array $rc       Error message array, modified in place.
+ * @return void
+ */
 function validatePlayListEntries(&$entries, &$media, &$playlist, &$rc)
 {
     foreach ($entries as $e) {
@@ -131,6 +156,13 @@ function validatePlayListEntries(&$entries, &$media, &$playlist, &$rc)
     }
 }
 
+/**
+ * Returns a list of all playlists with any validation errors, total item
+ * counts, and total duration.
+ *
+ * @route GET /api/playlists/validate
+ * @response [{"name": "Test1", "description": "User entered playlist description", "valid": true, "messages": [], "total_duration": 10, "total_items": 3, "version": 4, "leadIn_items": 0, "mainPlaylist_items": 3, "leadOut_items": 0}]
+ */
 function playlist_list_validate()
 {
     global $settings;
@@ -208,6 +240,12 @@ function playlist_list_validate()
     return json($rc);
 }
 
+/**
+ * Get a combined list of playlist names and `*.fseq` sequence filenames that are playable.
+ *
+ * @route GET /api/playlists/playable
+ * @response ["Playlist_1", "Playlist_2", "MySequence.fseq"]
+ */
 function playlist_playable()
 {
     global $settings;
@@ -238,10 +276,15 @@ function playlist_playable()
     return json($playlists);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// The sole purpose of this function is to ensure that media uploaded from
-// xlights fppConnect removes special characters.  FPP UI only allows
-// valid names to be selected, so less of a problem
+/**
+ * Sanitizes media filenames within a playlist section to remove special
+ * characters introduced by xLights fppConnect uploads. The FPP UI only allows
+ * valid names to be selected, so this is less of a concern for normal use.
+ *
+ * @param array  $playlistObj Playlist data array, modified in place.
+ * @param string $section     Section name to clean (e.g. "leadIn", "mainPlaylist").
+ * @return void
+ */
 function cleanMedialNamesInPlaylist(&$playlistObj, $section)
 {
     global $settings;
@@ -271,7 +314,13 @@ function cleanMedialNamesInPlaylist(&$playlistObj, $section)
 
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Insert a new playlist.
+ *
+ * @route POST /api/playlists
+ * @body {"name": "UploadTest", "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ * @response {"name": "UploadTest", "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ */
 function playlist_insert()
 {
     global $settings;
@@ -300,7 +349,15 @@ function playlist_insert()
     return json($playlist);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Recursively loads and splices a sub-playlist's entries in place of a
+ * `playlist`-type entry within a parent section array.
+ *
+ * @param array  $playlist Playlist section array being built, modified in place.
+ * @param int    $i        Current index of the sub-playlist entry, updated in place.
+ * @param object $plentry  Playlist entry object containing the sub-playlist name.
+ * @return void
+ */
 function LoadSubPlaylist(&$playlist, &$i, $plentry)
 {
     $data = GetPlaylist($plentry->name);
@@ -333,6 +390,14 @@ function LoadSubPlaylist(&$playlist, &$i, $plentry)
     $i += count($subPlaylist) - 1;
 }
 
+/**
+ * Loads a playlist's full details from disk, optionally merging all
+ * sub-playlist entries recursively into the parent sections.
+ *
+ * @param string $file      Playlist name (without .json extension).
+ * @param bool   $mergeSubs When true, recursively merges sub-playlists into parent sections.
+ * @return object|string    Decoded playlist object, or empty string if the file does not exist.
+ */
 function LoadPlayListDetails($file, $mergeSubs)
 {
     global $settings;
@@ -387,7 +452,12 @@ function LoadPlayListDetails($file, $mergeSubs)
     return $data;
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Reads a playlist `*.json` file from disk and returns the decoded object.
+ *
+ * @param string $playlistName Playlist name (without .json extension).
+ * @return object Decoded playlist object.
+ */
 function GetPlaylist($playlistName)
 {
     global $settings;
@@ -397,7 +467,14 @@ function GetPlaylist($playlistName)
     return json_decode($jsonStr);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Get the playlist named `{PlaylistName}` in FPP JSON format. If
+ * `?mergeSubs=1` is specified, sub-playlists are recursively merged into
+ * the parent sections.
+ *
+ * @route GET /api/playlist/{PlaylistName}
+ * @response {"name": "UploadTest", "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ */
 function playlist_get()
 {
     global $settings;
@@ -413,7 +490,13 @@ function playlist_get()
     return json($data);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Update/Insert the playlist named {PlaylistName}.
+ *
+ * @route POST /api/playlist/{PlaylistName}
+ * @body {"name": "UploadTest", "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ * @response {"name": "UploadTest", "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ */
 function playlist_update()
 {
     global $settings;
@@ -475,7 +558,12 @@ function playlist_update()
     return json($playlist);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Delete the playlist named {PlaylistName}.
+ *
+ * @route DELETE /api/playlist/{PlaylistName}
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_delete()
 {
     global $settings;
@@ -504,7 +592,13 @@ function playlist_delete()
     return json($resp);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Insert an item into the `{SectionName}` section of playlist `{PlaylistName}`.
+ *
+ * @route POST /api/playlist/{PlaylistName}/{SectionName}/item
+ * @body {"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}
+ * @response {"Status": "OK", "Message": ""}
+ */
 function PlaylistSectionInsertItem()
 {
     global $settings;
@@ -552,6 +646,14 @@ function PlaylistSectionInsertItem()
     return json($resp);
 }
 
+/**
+ * Immediately stop the currently running playlist.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlists/stop
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_stop()
 {
     global $settings;
@@ -564,6 +666,15 @@ function playlist_stop()
     $request_content = curl_exec($curl);
     return $request_content;
 }
+
+/**
+ * Gracefully stop the currently running playlist.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlists/stopgracefully
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_stopgracefully()
 {
     global $settings;
@@ -576,6 +687,16 @@ function playlist_stopgracefully()
     $request_content = curl_exec($curl);
     return $request_content;
 }
+
+/**
+ * Gracefully stop the currently running playlist after completion of the
+ * current loop.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlists/stopgracefullyafterloop
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_stopgracefullyafterloop()
 {
     global $settings;
@@ -588,6 +709,17 @@ function playlist_stopgracefullyafterloop()
     $request_content = curl_exec($curl);
     return $request_content;
 }
+
+/**
+ * Start the playlist named `{PlaylistName}`. The optional query parameter
+ * `scheduleProtected` (`true`/`false`) prevents the scheduler from stopping
+ * this playlist.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlist/{PlaylistName}/start
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_start()
 {
     global $settings;
@@ -603,6 +735,17 @@ function playlist_start()
     $request_content = curl_exec($curl);
     return $request_content;
 }
+
+/**
+ * Start the playlist named `{PlaylistName}` with repeat mode. The optional
+ * query parameter `scheduleProtected` (`true`/`false`) prevents the
+ * scheduler from stopping this playlist.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlist/{PlaylistName}/start/{Repeat}
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_start_repeat()
 {
     global $settings;
@@ -619,6 +762,17 @@ function playlist_start_repeat()
     $request_content = curl_exec($curl);
     return $request_content;
 }
+
+/**
+ * Start the playlist named `{PlaylistName}` with repeat mode and schedule
+ * protection. When `{ScheduleProtected}` is `true`, the scheduler cannot
+ * stop this playlist.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlist/{PlaylistName}/start/{Repeat}/{ScheduleProtected}
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_start_repeat_protected()
 {
     global $settings;
@@ -635,6 +789,15 @@ function playlist_start_repeat_protected()
     $request_content = curl_exec($curl);
     return $request_content;
 }
+
+/**
+ * Pause the currently running playlist.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlists/pause
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_pause()
 {
     global $settings;
@@ -647,6 +810,15 @@ function playlist_pause()
     $request_content = curl_exec($curl);
     return $request_content;
 }
+
+/**
+ * Resume a previously paused playlist.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/playlists/resume
+ * @response {"Status": "OK", "Message": ""}
+ */
 function playlist_resume()
 {
     global $settings;
@@ -659,5 +831,3 @@ function playlist_resume()
     $request_content = curl_exec($curl);
     return $request_content;
 }
-
-/////////////////////////////////////////////////////////////////////////////

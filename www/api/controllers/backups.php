@@ -1,10 +1,11 @@
 <?
-/////////////////////////////////////////////////////////////////////////////
+
 /**
- * Returns a list of backups in the specified location
- * GET /api/backups/list
- * @param $backupDir
- * @return array
+ * Returns a list of full system backup directories within the given path,
+ * excluding directories that exist in the media root.
+ *
+ * @param string $backupDir Absolute path to the directory to scan.
+ * @return array List of relative directory paths found under $backupDir.
  */
 function GetAvailableBackupsFromDir($backupDir)
 {
@@ -44,9 +45,10 @@ function GetAvailableBackupsFromDir($backupDir)
 }
 
 /**
- * Returns a list of local FPP file backup directories
- * GET api/backups/list
- * @return string
+ * Returns a list of full system backup files stored in the local `backups/` directory.
+ *
+ * @route GET /api/backups/list
+ * @response ["/", "FPPDevP4", "FPPDevP4_2026_05_02"]
  */
 function GetAvailableBackups()
 {
@@ -55,9 +57,10 @@ function GetAvailableBackups()
 }
 
 /**
- * Returns a list of devices like USB's or SSD's attached to the system
- * GET api/backups/devices
- * @return string
+ * Returns a list of devices (e.g. USB drives, SSDs) attached to the system that can be used for backups.
+ *
+ * @route GET /api/backups/devices
+ * @response [{"name": "sda1", "size": 7.5, "model": "Cruzer Blade", "vendor": "SanDisk"}]
  */
 function RetrieveAvailableBackupsDevices()
 {
@@ -67,9 +70,10 @@ function RetrieveAvailableBackupsDevices()
 }
 
 /**
- * Returns a list of FPP file backups on a specified device like USB or SSD attached to the system
- * GET api/backups/list/:DeviceName
- * @return string
+ * Returns a list of full system backup files stored on the specified device (e.g. a USB drive).
+ *
+ * @route GET /api/backups/list/{DeviceName}
+ * @response ["/", "FPPDevP4", "FPPDevP4_2026_05_02"]
  */
 function GetAvailableBackupsOnDevice()
 {
@@ -83,16 +87,16 @@ function GetAvailableBackupsOnDevice()
 }
 
 /**
- * Handles mounting the specified device and performing a task via the callback function (if specified)
+ * Mounts the specified device and performs a task via the callback function (if specified).
  *
- * @param $deviceName string The device to be mounted
- * @param $usercallback_function string The function we should call once mounting is completed so we can do something in the directory
- * @param $functionArgs array Order AND Number arguments MUST!! match the arguments required by the supplied user function
- * @param $mountPath string Path/Folder where the device will be mounted, DEFAULT: /mnt/tmp
- * @param $unmountWhenDone string Whether to automatically unmount the device when done
- * @param $globalNameSpace string Whether to use 'nsenter' to mount the device under the root mount namespace
- * @param $returnResultCodes string Whether to return output and result codes of the commands that were run
- * @return mixed|string
+ * @param string $deviceName              The device to be mounted.
+ * @param string $usercallback_function   The function to call once mounting is completed.
+ * @param array  $functionArgs            Arguments passed to the callback; order and count MUST match the callback signature.
+ * @param string $mountPath               Path where the device will be mounted. Default: /mnt/tmp.
+ * @param bool   $unmountWhenDone         Whether to automatically unmount the device when done.
+ * @param bool   $globalNameSpace         Whether to use nsenter to mount under the root mount namespace.
+ * @param bool   $returnResultCodes       Whether to return output and result codes of the commands that were run.
+ * @return mixed Callback return value, or an array with detailed command results when $returnResultCodes is true.
  */
 function DriveMountHelper($deviceName, $usercallback_function, $functionArgs = array(), $mountPath = '/mnt/tmp', $unmountWhenDone = true, $globalNameSpace = false, $returnResultCodes = false)
 {
@@ -162,9 +166,10 @@ function DriveMountHelper($deviceName, $usercallback_function, $functionArgs = a
 }
 
 /**
- * Mounts the specified device to the specified mount location /mnt/<MountLocation>, Defaults to /mnt/api_mount
- * POST /backups/devices/mount/:DeviceName/:MountLocation
- * @return string
+ * Mounts the specified device to `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).
+ *
+ * @route POST /api/backups/devices/mount/{DeviceName}/{MountLocation}
+ * @response {"Status": "OK", "Message": "Device (sda1) mounted at (/mnt/api_mount)", "MountLocation": "/mnt/api_mount"}
  */
 function MountDevice()
 {
@@ -211,9 +216,10 @@ function MountDevice()
 }
 
 /**
- * Unmounts the drive mounted to the supplied mount location e.g /mnt/<MountLocation>, Defaults to /mnt/api_mount
- * POST /backups/devices/unmount/:DeviceName/:MountLocation
- * @return string
+ * Unmounts the drive at `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).
+ *
+ * @route POST /api/backups/devices/unmount/{DeviceName}/{MountLocation}
+ * @response {"Status": "OK", "Message": "Device (sda1) unmounted from (/mnt/api_mount)", "MountLocation": "/mnt/api_mount"}
  */
 function UnmountDevice()
 {
@@ -263,9 +269,11 @@ function UnmountDevice()
 ////
 //Functions for JSON Configuration Backup API
 /**
- * Returns a list of JSON Configuration backups stored locally or if set the 'JSON Configuration Device'
- * GET /api/backups/configuration/list
- * @return string
+ * Returns a list of JSON configuration backups stored locally, or — if `jsonConfigBackupUSBLocation`
+ * is set — a combined list from local storage and the configured USB device.
+ *
+ * @route GET /api/backups/configuration/list
+ * @response [{"backup_alternative_location": false, "backup_filedirectory": "/home/fpp/media/config/backups", "backup_filename": "FPP_all-backup_v6_20230124212305.json", "backup_comment": "FPP Settings - Disable Scheduler setting was set to ( 0 ).", "backup_time": "Tue Jan 24 21:23:05 2023", "backup_time_unix": "1674559385"}, {"backup_alternative_location": true, "backup_filedirectory": "/mnt/tmp/Automatic_Backups/config/backups", "backup_filename": "FPP_all-backup_v6_20230124210519.json", "backup_comment": "Schedule was modified.", "backup_time": "Tue Jan 24 21:05:19 2023", "backup_time_unix": "1674558319"}]
  */
 function GetAvailableJSONBackups(){
 	global $settings;
@@ -300,10 +308,11 @@ function GetAvailableJSONBackups(){
 }
 
 /**
- * Helper function to extact some metadata out of the backup files
- * @param $json_config_backup_Data
- * @param $source_directory
- * @return array
+ * Extracts metadata (comment, trigger source, timestamp) from a list of backup filenames.
+ *
+ * @param array  $json_config_backup_Data Associative array of backup filenames to raw file data.
+ * @param string $source_directory        Absolute path to the directory containing the backup files.
+ * @return array Processed array keyed by clean backup name with metadata fields.
  */
 function process_jsonbackup_file_data_helper($json_config_backup_Data, $source_directory)
 {
@@ -363,9 +372,12 @@ function process_jsonbackup_file_data_helper($json_config_backup_Data, $source_d
 }
 
 /**
- * Generates a JSON Configuration backup containing all config data
- * GET /api/backups/configuration/
- * @return string
+ * Generates a new JSON settings backup for all settings areas. If an alternate backup location has been
+ * set, the backup is also copied to that location.
+ *
+ * @route POST /api/backups/configuration
+ * @body "The describing comment to be added to the backup"
+ * @response {"success": true, "backup_file_path": "/home/fpp/media/config/backups/FPP_all-backup_v6_20230124212305.json", "copied_to_usb": true}
  */
 function MakeJSONBackup()
 {
@@ -423,11 +435,12 @@ function MakeJSONBackup()
 }
 
 /**
- * Returns a list of JSON Configuration files on a specified device (i.e a alternate storage device)
- * Reuses some above functions to mount check and mount the device
- * Overrides the default behaviour of GetAvailableJSONBackups, so we can check specific devices if needed
- * GET /api/backups/configuration/list/:DeviceName
- * @return string
+ * Returns a list of JSON configuration files on a specified alternate storage device.
+ * Available devices can be obtained from `/backups/devices`, or the currently configured device
+ * is stored in the `jsonConfigBackupUSBLocation` setting.
+ *
+ * @route GET /api/backups/configuration/list/{DeviceName}
+ * @response ["FPP_all-backup_v6_20230114025351.json", "FPP_all-backup_v6_20230114025354.json", "FPP_all-backup_v6_20230114214459.json", "FPP_all-backup_v6_20230114215622.json"]
  */
 function GetAvailableJSONBackupsOnDevice(){
 	global $SUDO, $settings;
@@ -445,9 +458,13 @@ function GetAvailableJSONBackupsOnDevice(){
 }
 
 /**
- * Restored the specified JSON Backup
- * POST /api/backups/configuration/restore/:Directory/:BackupFilename
- * @return string
+ * Restores the specified JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate`
+ * (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid
+ * directory and filename combinations.
+ *
+ * @route POST /api/backups/configuration/restore/{Directory}/{BackupFilename}
+ * @body "all"
+ * @response {"Success": true, "Message": {"success": true, "message": {"channelInputs": {"VALID_DATA": true, "ATTEMPT": true, "SUCCESS": true}}}}
  */
 function RestoreJsonBackup(){
 	global $SUDO, $settings, $skipJSsettings,
@@ -534,9 +551,13 @@ function RestoreJsonBackup(){
 }
 
 /**
- * Downloads a specific JSON Backup
- * Extracted from file.php GetFile() and modified to deal with mounting the selected USB drive to delete the JSON backup stored on it
- * @return string
+ * Downloads a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate`
+ * (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid
+ * directories and filenames.
+ *
+ * @route GET /api/backups/configuration/{Directory}/{BackupFilename}
+ * @response "Contents of the specified JSON Settings backup as a download"
+ * @response 404 {"Status": "File Not Found", "file": "FPP_all-backup_v6_20230124210514.json", "dir": "JsonBackups"}
  */
 function DownloadJsonBackup(){
 	global $settings;
@@ -589,9 +610,12 @@ function DownloadJsonBackup(){
 }
 
 /**
- * Deletes a specific JSON Backup
- * Extracted from file.php DeleteFile() and modified to deal with mounting the selected USB drive to delete the JSON backup stored on it
- * @return string
+ * Deletes a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate`
+ * (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid
+ * directories and filenames.
+ *
+ * @route DELETE /api/backups/configuration/{Directory}/{BackupFilename}
+ * @response {"Status": "OK", "file": "FPP_all-backup_v6_20230124210514.json", "dir": "JsonBackupsAlternate"}
  */
 function DeleteJsonBackup(){
 	global $settings;
@@ -618,7 +642,6 @@ function DeleteJsonBackup(){
 		//Mount the drive and see if the file exists
 		$fileExists = DriveMountHelper($settings['jsonConfigBackupUSBLocation'], 'file_exists', array($fullPath));
 	}
-
 
 	if ($dir == "") {
 		$status = "Invalid Directory";
@@ -658,10 +681,11 @@ function DeleteJsonBackup(){
 }
 
 /**
- * Callback function to sort backups by their backup time
- * @param $a
- * @param $b
- * @return mixed
+ * Comparison function to sort backup entries by `backup_time_unix` in descending order.
+ *
+ * @param array $a First backup entry.
+ * @param array $b Second backup entry.
+ * @return int Negative, zero, or positive.
  */
 function sort_backup_time_asc($a, $b)
 {
@@ -669,9 +693,10 @@ function sort_backup_time_asc($a, $b)
 }
 
 /**
- * Maps the mount commands return codes to text
- * @param $returnCode
- * @return string
+ * Maps a `mount` command return code to a human-readable description.
+ *
+ * @param int $returnCode The numeric return code from the mount command.
+ * @return string Human-readable status string.
  */
 function MountReturnCodeMap($returnCode)
 {

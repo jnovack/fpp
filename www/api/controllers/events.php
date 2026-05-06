@@ -1,5 +1,11 @@
 <?
 
+/**
+ * Returns a map of all event (`*.fevt`) files, keyed by event ID (filename without extension).
+ *
+ * @route GET /api/events
+ * @response {"1_1": {"name": "My Event", "effect": "rainbow", "startChannel": 1}}
+ */
 function events_list()
 {
     global $settings;
@@ -11,9 +17,9 @@ function events_list()
             if (preg_match('/\.fevt$/', $file)) {
                 $string = file_get_contents($dir . "/" . $file);
                 $json_a = json_decode($string, false);
-                
+
                 $file = preg_replace('/\.fevt$/', '', $file);
-                
+
                 $events[$file] = $json_a;
             }
         }
@@ -22,6 +28,13 @@ function events_list()
     return json($events);
 }
 
+/**
+ * Returns the contents of a specific event file. If `{eventId}` is `ids`, returns a map
+ * of event IDs to display names.
+ *
+ * @route GET /api/events/{eventId}
+ * @response {"name": "My Event", "effect": "rainbow", "startChannel": 1}
+ */
 function event_get()
 {
     global $settings;
@@ -33,7 +46,7 @@ function event_get()
         $events = array();
         if ($d = opendir($dir)) {
             while (($file = readdir($d)) !== false) {
-                if (preg_match('/\.fevt$/', $file)) {                    
+                if (preg_match('/\.fevt$/', $file)) {
                     $e = file_get_contents($dir . "/" . $file);
                     $file = preg_replace('/\.fevt$/', '', $file);
                     $j = json_decode($e, true);
@@ -55,6 +68,12 @@ function event_get()
     render_file($filename);
 }
 
+/**
+ * Triggers the specified event by sending a `Trigger Event` command to `fppd`.
+ *
+ * @route GET /api/events/{eventId}/trigger
+ * @response {"status": "OK"}
+ */
 function event_trigger()
 {
     global $settings;

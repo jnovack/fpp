@@ -1,6 +1,10 @@
 <?
-/////////////////////////////////////////////////////////////////////////////
 
+/**
+ * Returns the name of the currently selected audio output card.
+ *
+ * @return string Card name or card number string.
+ */
 function GetAudioCurrentCard()
 {
     global $SUDO, $settings;
@@ -40,7 +44,11 @@ function GetAudioCurrentCard()
     return $CurrentCard;
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the available audio mixer device options for the current card.
+ *
+ * @return string JSON object mapping mixer device names to themselves.
+ */
 function GetOptions_AudioMixerDevice()
 {
     global $SUDO;
@@ -66,7 +74,12 @@ function GetOptions_AudioMixerDevice()
     return json($MixerDevices);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the available audio output device options.
+ *
+ * @param bool $fulllist When true, returns detailed card/subdevice list; otherwise returns unique card names.
+ * @return string JSON object or array of available audio output devices.
+ */
 function GetOptions_AudioOutputDevice($fulllist = false)
 {
     global $SUDO, $GET, $settings;
@@ -139,7 +152,13 @@ function GetOptions_AudioOutputDevice($fulllist = false)
     }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the available audio input device options.
+ *
+ * @param bool $fulllist    When true, returns detailed card/subdevice list; otherwise returns unique card names.
+ * @param bool $allowMedia  When true, prepends a "Playing Media" pseudo-device to the list.
+ * @return string JSON array or object of available audio input devices.
+ */
 function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
 {
 
@@ -177,7 +196,11 @@ function GetOptions_AudioInputDevice($fulllist = false, $allowMedia = false)
     return json($AlsaCards);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the available framebuffer device options from `fppd`.
+ *
+ * @return string Raw output string from the fpp -FB command.
+ */
 function GetOptions_FrameBuffer()
 {
     global $settings, $SUDO;
@@ -186,7 +209,11 @@ function GetOptions_FrameBuffer()
     return $output[0];
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the available locale options from the FPP `etc/locale` directory.
+ *
+ * @return string JSON object mapping locale names to themselves, sorted alphabetically.
+ */
 function GetOptions_Locale()
 {
     global $settings;
@@ -203,7 +230,11 @@ function GetOptions_Locale()
     return json($locales);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the available real-time clock (RTC) module options.
+ *
+ * @return string JSON object mapping RTC chip names to their driver identifiers.
+ */
 function GetOptions_RTC()
 {
     global $settings;
@@ -220,7 +251,11 @@ function GetOptions_RTC()
     return json($rtcOptions);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns all available timezone strings from `/usr/share/zoneinfo`.
+ *
+ * @return string JSON array of timezone name strings.
+ */
 function GetOptions_TimeZone()
 {
     global $settings;
@@ -239,7 +274,12 @@ function GetOptions_TimeZone()
     return json($zones);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the available video output options from DRM and the `fppd` model list.
+ *
+ * @param bool $playlist When true, prepends a "--Default--" entry for playlist use.
+ * @return string JSON object mapping output names to themselves.
+ */
 function GetOptions_VideoOutput($playlist)
 {
     global $settings;
@@ -283,7 +323,11 @@ function GetOptions_VideoOutput($playlist)
     return json($VideoOutputModels);
 }
 
-
+/**
+ * Returns the available BeagleBone Black LED trigger mode options.
+ *
+ * @return string JSON object mapping human-readable LED mode names to their trigger identifiers.
+ */
 function GetOptions_BBBLeds()
 {
     global $settings;
@@ -301,6 +345,12 @@ function GetOptions_BBBLeds()
     return json($options);
 }
 
+/**
+ * Returns available GPIO pins, optionally filtered by `cape-info` show/hide rules.
+ *
+ * @param bool $list When true, returns a name => label map; when false, returns the raw GPIO objects.
+ * @return string JSON object or array of GPIO pin data.
+ */
 function GetOptions_GPIOS($list)
 {
     global $settings;
@@ -348,9 +398,13 @@ function GetOptions_GPIOS($list)
     return json($ret);
 }
 
-
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/options/:SettingName
+/**
+ * Returns the available options for the specified setting.
+ * Supports `AudioMixerDevice`, `AudioOutput`, `AudioInput`, and other platform-specific option sets.
+ *
+ * @route GET /api/options/{SettingName}
+ * @response {"Dummy": "0"}
+ */
 function GetOptions()
 {
     $SettingName = params('SettingName');

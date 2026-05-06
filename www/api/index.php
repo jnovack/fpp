@@ -5,6 +5,9 @@ $skipJSsettings = 1;
 require_once '../config.php';
 require_once '../common.php';
 
+dispatch_get('/', 'ServeApiDocs');
+dispatch_get('/openapi.yaml', 'ServeOpenApiSpec');
+
 dispatch_get('/backups/list', 'GetAvailableBackups');
 dispatch_get('/backups/list/:DeviceName', 'GetAvailableBackupsOnDevice');
 dispatch_get('/backups/devices', 'RetrieveAvailableBackupsDevices');
@@ -260,4 +263,16 @@ function addPluginEndpoints()
             }
         }
     }
+}
+
+function ServeApiDocs() {
+    header('Content-Type: text/html; charset=utf-8');
+    readfile(__DIR__ . '/api.html');
+    exit;
+}
+
+function ServeOpenApiSpec() {
+    header('Content-Type: application/yaml; charset=utf-8');
+    readfile(__DIR__ . '/openapi.yaml');
+    exit;
 }

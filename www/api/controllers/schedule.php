@@ -2,8 +2,12 @@
 
 require_once('../commandsocket.php');
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/schedule
+/**
+ * Returns the current FPP schedule configuration from `schedule.json`.
+ *
+ * @route GET /api/schedule
+ * @response [{"day": 7, "enabled": 0, "endDate": "2099-12-31", "endTime": "23:00:00", "playlist": "Main Show", "repeat": 1, "startDate": "2014-01-01", "startTime": "17:00:00", "stopType": 0}]
+ */
 function GetSchedule() {
     global $settings;
 
@@ -18,8 +22,14 @@ function GetSchedule() {
     return json(json_decode($data, true));
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/schedule
+/**
+ * Saves the new schedule configuration to `schedule.json`.
+ *
+ * @route POST /api/schedule
+ * @body [{"day": 7, "enabled": 0, "endDate": "2099-12-31", "endTime": "23:00:00", "playlist": "Main Show", "repeat": 1, "startDate": "2014-01-01", "startTime": "17:00:00", "stopType": 0}]
+ * @response [{"day": 7, "enabled": 0, "endDate": "2099-12-31", "endTime": "23:00:00", "playlist": "Main Show", "repeat": 1, "startDate": "2014-01-01", "startTime": "17:00:00", "stopType": 0}]
+ * @response 404 "Unable to open schedule.json for writing."
+ */
 function SaveSchedule() {
     global $settings;
     $result = Array();
@@ -45,8 +55,14 @@ function SaveSchedule() {
     halt(404, 'Unable to open schedule.json for writing.');
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/schedule/reload
+/**
+ * Sends a reload command to `fppd` to re-read the schedule configuration.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route POST /api/schedule/reload
+ * @response {"Status": "OK", "Message": ""}
+ */
 function ReloadSchedule() {
     SendCommand('R');
 
@@ -56,7 +72,5 @@ function ReloadSchedule() {
 
     return json($result);
 }
-
-/////////////////////////////////////////////////////////////////////////////
 
 ?>

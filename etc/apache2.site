@@ -95,7 +95,7 @@ ServerTokens Prod
     RewriteRule ^player(.*)$ http://localhost:32322/player$1 [P]
     RewriteRule ^gpio(.*)$ http://localhost:32322/gpio$1 [P]
     RewriteRule ^plugin-apis/(.*)$ http://localhost:32322/$1 [P]
-    
+
     # SSE endpoints - use dedicated proxy rules with immediate flushing
     # Do NOT use RewriteRule [P] for SSE - it causes buffering issues
     # These are handled by ProxyPass below
@@ -104,8 +104,8 @@ ServerTokens Prod
 
     # Static and redirect rules
     RewriteRule ^index.php - [L,NC]
-    RewriteRule ^help ../apihelp.php [R=301,L,NC]
-    RewriteRule ^help/.* ../apihelp.php [R=301,L,NC]
+    RewriteRule ^help ../api/ [R=301,L,NC]
+    RewriteRule ^help/.* ../api/ [R=301,L,NC]
     RewriteRule ^endpoints.json - [L,NC]
 
     # Catch-all rewrite to index.php
@@ -389,7 +389,7 @@ AddDefaultCharset utf-8
 
   Header always set X-Content-Type-Options "nosniff"
 	header always set X-XSS-Protection "1; mode=block"
-	
+
 	Header unset Expires
     Header unset Host
     Header unset P3P
