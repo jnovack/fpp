@@ -105,7 +105,7 @@
     $LEDPanelDefaults["maxLEDPanels"] = $LEDPanelDefaults["LEDPanelOutputs"] * $LEDPanelDefaults["LEDPanelsPanelsPerOutput"];
     $LEDPanelDefaults["maxLEDPanels"] = 96; // Override to allow different panel configs using ColorLight cards
     // End of Default Value Logic
-    
+
     //Setup PHP MatricesArray
     $matricesArray = [];
     if (isset($channelOutputs["channelOutputs"]) && !empty($channelOutputs["channelOutputs"])) {
@@ -116,8 +116,8 @@
         }
 
         for ($z = 0; $z < count($matricesArray); $z++) {
-            //Temporary Code to help handle migrating from old LEDPanelMatrix to new LEDPanelMatrix v2 ->v3 
-    
+            //Temporary Code to help handle migrating from old LEDPanelMatrix to new LEDPanelMatrix v2 ->v3
+
             if (!isset($matricesArray[$z]["panelMatrixID"])) {
                 $matricesArray[$z]["panelMatrixID"] = $z + 1;
             }
@@ -165,7 +165,7 @@
                 $matricesArray[$z]["LEDPanelRows"] = $parts[1];
             }
 
-            // If panelWidth, panelHeight, and panelScan exist (from legacy channelOutputs), 
+            // If panelWidth, panelHeight, and panelScan exist (from legacy channelOutputs),
             // reconstruct LEDPanelsSize from them
             if (isset($matricesArray[$z]["panelWidth"]) && isset($matricesArray[$z]["panelHeight"]) && isset($matricesArray[$z]["panelScan"])) {
                 $matricesArray[$z]["LEDPanelsSize"] = $matricesArray[$z]["panelWidth"] . "x" . $matricesArray[$z]["panelHeight"] . "x" . $matricesArray[$z]["panelScan"];
@@ -509,7 +509,7 @@
             mp.LEDPanelCanvasUIPixelsHigh ||= LEDPanelDefaults.LEDPanelCanvasUIPixelsHigh;
             mp.LEDPanelCanvasUIPixelsWide ||= LEDPanelDefaults.LEDPanelCanvasUIPixelsWide;
 
-            // If panelWidth, panelHeight, and panelScan exist (from legacy channelOutputs), 
+            // If panelWidth, panelHeight, and panelScan exist (from legacy channelOutputs),
             // reconstruct ledPanelsSize from them instead of using defaults
             // This handles the upgrade path from pre-v3 configs
             if (mp.panelWidth && mp.panelHeight && mp.panelScan) {
@@ -936,7 +936,7 @@
             var key = "";
             var frontView = 0;
             let mp = channelOutputsLookup.LEDPanelMatrices?.["panelMatrix" + panelMatrixID];
-    
+
             var tbody = $(`#panelMatrix${panelMatrixID} .LEDPanelTable tbody`);
             tbody.empty();
             if ($(`#panelMatrix${panelMatrixID} .LEDPanelUIFrontView`).is(":checked")) {
@@ -945,7 +945,7 @@
             } else {
                 tbody[0].insertRow(0).innerHTML = "<th colspan='" + mp.LEDPanelCols + "'>Back View</th>";
             }
-    
+
             for (r = 0; r < mp.LEDPanelRows; r++) {
                 var html = "<tr>";
                 for (i = 0; i < mp.LEDPanelCols; i++) {
@@ -953,18 +953,18 @@
                         c = i;
                     else
                         c = mp.LEDPanelCols - 1 - i;
-    
+
                     html += "<td><table cellspacing=0 cellpadding=0><tr><td>";
-    
+
                     key = "LEDPanelOutputNumber_" + r + "_" + c;
                     if (typeof mp[key] !== 'undefined') {
                         html += GetLEDPanelNumberSetting("O", key, mp.ledPanelsOutputs, mp[key].outputNumber);
                     } else {
                         html += GetLEDPanelNumberSetting("O", key, mp.ledPanelsOutputs, 0);
                     }
-    
+
                     html += "<img src='images/arrow_";
-    
+
                     if (typeof mp[key] !== 'undefined' && typeof mp[key].orientation !== 'undefined') {
                         if (frontView == 1) {
                             // Front view orientation
@@ -993,9 +993,9 @@
                         //default unset to N
                         html += "N";
                     }
-    
+
                     html += ".png' height=17 width=17 class='LEDPanelOrientation_" + r + "_" + c + "' onClick='LEDPanelOrientationClicked(\"LEDPanelOrientation_" + r + "_" + c + "\");'><br>";
-    
+
                     key = "LEDPanelPanelNumber_" + r + "_" + c;
                     if (typeof mp[key] !== 'undefined') {
                         html += GetLEDPanelNumberSetting("P", key, mp.ledPanelsPanelsPerOutput, mp[key].panelNumber);
@@ -1003,14 +1003,14 @@
                         html += GetLEDPanelNumberSetting("P", key, mp.ledPanelsPanelsPerOutput, 0);
                     }
                     html += "<br>";
-    
+
                     key = "LEDPanelColorOrder_" + r + "_" + c;
                     if (typeof mp[key] !== 'undefined') {
                         html += GetLEDPanelColorOrder(key, mp[key].colorOrder);
                     } else {
                         html += GetLEDPanelColorOrder(key, "");
                     }
-    
+
                     html += "</td></tr></table></td>\n";
                 }
                 html += "</tr>";
@@ -1088,7 +1088,7 @@
             if (mp?.advanced == 1) {
                 ToggleAdvancedLayout(panelMatrixID);
             }
-            checkInterleave(panelMatrixID); //ensure interleave option is hidden if required 
+            checkInterleave(panelMatrixID); //ensure interleave option is hidden if required
             resolve();
         });
     }
@@ -1323,7 +1323,7 @@
             $ifaceSpeed = (int) exec("$SUDO ethtool $iface | grep -i 'baset' | grep -Eo '[0-9]{1,4}' | sort | tail -1");
             if ($ifaceSpeed === 0) {
                 // Some USB adapters do not report the Supported link modes
-                // If no speed is found, try to get the speed from the Speed line for the actual connection/link speed                    
+                // If no speed is found, try to get the speed from the Speed line for the actual connection/link speed
                 $ifaceSpeed = exec("$SUDO ethtool $iface | grep -i 'Speed:' | grep -Eo '[0-9]{1,4}' | sort | tail -1");
             }
             echo ">" . $iface . " (" . $ifaceSpeed . "Mbps)</option>";
@@ -2402,7 +2402,7 @@
                         SetupToolTips();
                         //location.reload();
                         //show tab of new panel matrix
-                        //set the new tab to be active 
+                        //set the new tab to be active
                         $(`#matrixPanelTab${NewPanelMatrixID} a`).tab('show');
 
                         //save the new panel matrix to the server (does all panels currently - could refine in future to just add the new one to the json)
@@ -2693,7 +2693,7 @@
         /*         for (var p = 0; p < mp.panels.length; p++) {
                     var r = mp.panels[p].row;
                     var c = mp.panels[p].col;
-        
+
                     mp["LEDPanelOutputNumber_" + r + "_" + c] = mp.panels[p];
                     mp["LEDPanelPanelNumber_" + r + "_" + c] = mp.panels[p];
                     mp["LEDPanelColorOrder_" + r + "_" + c] = mp.panels[p];
@@ -2738,7 +2738,7 @@
             if ($('.configUpgradeWarning').length === 0) {
                 const warningHtml = `
                     <div class="alert alert-warning alert-dismissible fade show configUpgradeWarning" role="alert" style="margin: 10px 0;">
-                        <strong><i class="fas fa-exclamation-triangle"></i> Configuration Upgrade Required:</strong> 
+                        <strong><i class="fas fa-exclamation-triangle"></i> Configuration Upgrade Required:</strong>
                         ${message}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
@@ -2755,7 +2755,7 @@
 
         <?
         if (!empty($matricesArray)) {
-            //Discover currently configured panel matrices and populate a tab and initialize each        
+            //Discover currently configured panel matrices and populate a tab and initialize each
             for ($z = 0; $z < count($matricesArray); $z++) {
                 $panelMatrixID = $matricesArray[$z]["panelMatrixID"] ?? 1;
                 //set whether the tabs are displayed
