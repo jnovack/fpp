@@ -35,6 +35,13 @@
    ========================================================================== */
 
 :root {
+	/* Default color-scheme — also set inline on <html> by the htmlMeta.inc
+	   theme-init script. This light value drives native form controls
+	   (number-input spinners, scrollbars, date pickers) when the FPP
+	   themeOverride is "light" regardless of OS preference. The
+	   [data-bs-theme="dark"] rule below flips it to dark. */
+	color-scheme: light;
+
 	/* ==========================================================================
        COLOR TOKENS: Extracted from FPP Bootstrap theme and inline styles
        ========================================================================== */
@@ -228,6 +235,9 @@
 }
 
 [data-bs-theme='dark'] {
+	/* Flip native form controls (spinners, scrollbars, etc.) to dark. */
+	color-scheme: dark;
+
 	/* ==========================================================================
 	   COLOR TOKENS
 	   ========================================================================== */
