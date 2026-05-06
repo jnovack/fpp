@@ -9,7 +9,7 @@
 ## Overlay States
 
 | State | Value | Behavior |
-|-------|-------|----------|
+| --- | --- | --- |
 | Disabled | 0 | No overlay rendering |
 | Enabled | 1 | Opaque — direct channel copy |
 | Transparent | 2 | Only non-zero channels overlay |
@@ -27,7 +27,7 @@ Manages all models (loaded from `config/model-overlays.json`), state transitions
 ### Built-in Effects (`PixelOverlayEffects.cpp`)
 
 | Effect | Description |
-|--------|-------------|
+| --- | --- |
 | Color Fade | Fade in/out solid color with configurable timing |
 | Bars | Animated color bars (Up/Down/Left/Right) |
 | Text | Text rendering with scrolling, stationary, or centered modes |

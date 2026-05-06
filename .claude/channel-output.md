@@ -14,7 +14,7 @@ Plugins are loaded at runtime via `dlopen()` in `Plugins.cpp`. Each plugin expor
 ### Network Protocol Plugins
 
 | Plugin | Protocol | Notes |
-|--------|----------|-------|
+| --- | --- | --- |
 | `libfpp-co-UDPOutput` | E1.31/DDP/ArtNet/KiNet/Twinkly | Unified UDP output, multicast, frame dedup |
 | `libfpp-co-GenericUDP` | Custom UDP | Configurable packet format |
 | `libfpp-co-MQTTOutput` | MQTT | RGB/RGBW publish, threaded |
@@ -24,7 +24,7 @@ Plugins are loaded at runtime via `dlopen()` in `Plugins.cpp`. Each plugin expor
 ### Pixel String Drivers
 
 | Plugin | Hardware | Platform |
-|--------|----------|----------|
+| --- | --- | --- |
 | `libfpp-co-RPIWS281X` | WS2811/WS2812 via SPI+PWM | RPi |
 | `libfpp-co-spixels` | SPiWare SPI pixels | RPi |
 | `libfpp-co-SPIws2801` | WS2801 SPI | RPi/Linux |
@@ -37,7 +37,7 @@ Plugins are loaded at runtime via `dlopen()` in `Plugins.cpp`. Each plugin expor
 ### Matrix/Panel Drivers
 
 | Plugin | Hardware | Platform |
-|--------|----------|----------|
+| --- | --- | --- |
 | `libfpp-co-RGBMatrix` | rpi-rgb-led-matrix GPIO panels | RPi |
 | `libfpp-co-BBBMatrix` | PRU-driven RGB matrix | BBB |
 | `libfpp-co-FBMatrix` | Framebuffer (X11/KMS) | Linux/Mac |
@@ -51,7 +51,7 @@ Plugins are loaded at runtime via `dlopen()` in `Plugins.cpp`. Each plugin expor
 ### Serial/DMX Protocols
 
 | Plugin | Protocol |
-|--------|----------|
+| --- | --- |
 | `libfpp-co-GenericSerial` | Generic serial (configurable baud, headers/footers) |
 | `libfpp-co-Renard` | Renard serial |
 | `libfpp-co-LOR` | Light-O-Rama serial |
@@ -64,7 +64,7 @@ Plugins are loaded at runtime via `dlopen()` in `Plugins.cpp`. Each plugin expor
 ### GPIO/I2C Expander Plugins
 
 | Plugin | Hardware |
-|--------|----------|
+| --- | --- | --- |
 | `libfpp-co-GPIO` | Direct GPIO (binary on/off, PWM) |
 | `libfpp-co-GPIO-595` | 74HC595 shift register |
 | `libfpp-co-MCP23017` | MCP23017 I2C 16-bit GPIO |
@@ -75,7 +75,7 @@ Plugins are loaded at runtime via `dlopen()` in `Plugins.cpp`. Each plugin expor
 ### Special
 
 | Plugin | Purpose |
-|--------|---------|
+| --- | --- | --- |
 | `libfpp-co-FalconV5Support` | Falcon V5 controller hardware |
 | `libfpp-co-ControlChannel` | Control channel preset triggers |
 | `libfpp-co-Debug` | Debug/test output (logs channel data) |
@@ -85,7 +85,7 @@ Plugins are loaded at runtime via `dlopen()` in `Plugins.cpp`. Each plugin expor
 Chain-of-responsibility pattern applied sequentially to channel data each frame. Configured per-output in JSON. Thread-safe via mutex.
 
 | Processor | Purpose |
-|-----------|---------|
+| --- | --- | --- |
 | `RemapOutputProcessor` | Sparse channel remapping |
 | `BrightnessOutputProcessor` | Global/per-model brightness + gamma curve |
 | `ColorOrderOutputProcessor` | RGB byte reordering (RGB->BGR, etc.) |
