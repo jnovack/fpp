@@ -10,6 +10,7 @@
     "install:browsers": "playwright install"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.2"
+    "@playwright/test": "^1.54.2",
+    "@types/node": "^25.6.0"
   }
 }

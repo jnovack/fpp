@@ -1,4 +1,5 @@
-import { test, type Page } from '@playwright/test';
+import { test } from './fixtures';
+import type { Page } from '@playwright/test';
 
 const SETTINGS_TABS = [
   { slug: 'playback', title: 'Playback' },

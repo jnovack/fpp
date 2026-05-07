@@ -8,12 +8,14 @@ export default defineConfig({
   maxFailures: process.env.CI ? 1 : undefined,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  workers: 1,
+  reporter: [
+    ['list'], ['html', { open: 'never' }], ['./reporters/visual-comparison-reporter.js']
+  ],
   use: {
     baseURL,
     trace: 'on',
-    screenshot: 'on',
+    screenshot: { mode: 'on', fullPage: true },
     video: 'on',
     viewport: { width: 1920, height: 1080 },
   },
