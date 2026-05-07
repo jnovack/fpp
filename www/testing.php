@@ -598,6 +598,66 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 			return ('00' + v.toString(16).toUpperCase()).slice(-2);
 		}
 
+		// Returns a stable, light pastel background colour for a fixture index
+		// so adjacent fixtures are visually distinct on the DMX test grid.
+		function dmxFixtureColor(idx) {
+			var hue = (idx * 67) % 360; // golden-ish spread
+			return 'hsl(' + hue + ', 70%, 82%)';
+		}
+		function dmxFixtureBorderColor(idx) {
+			var hue = (idx * 67) % 360;
+			return 'hsl(' + hue + ', 55%, 45%)';
+		}
+
+		// Find the model that contains the given absolute channel. Models with
+		// huge channel counts (matrices, props) are skipped so the DMX tester
+		// only highlights small fixtures from model-overlays.json.
+		function dmxFindFixtureForChannel(absCh) {
+			if (!modelInfos || !modelInfos.length) return null;
+			for (var i = 0; i < modelInfos.length; i++) {
+				var m = modelInfos[i];
+				if (!m || !m.StartChannel || !m.ChannelCount) continue;
+				if (m.ChannelCount > 512) continue;
+				var end = m.StartChannel + m.ChannelCount - 1;
+				if (absCh >= m.StartChannel && absCh <= end) {
+					return { model: m, index: i, relCh: absCh - m.StartChannel + 1 };
+				}
+			}
+			return null;
+		}
+
+		// Simple HTML-escape for fixture names injected into markup.
+		function dmxEscapeHtml(s) {
+			return String(s)
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;');
+		}
+
+		// Apply the selected model's start channel and channel count to the
+		// DMX tester inputs and rebuild the slider grid. The dropdown stores
+		// the index into modelInfos as its value; an empty value means
+		// "manual" and leaves the current inputs alone.
+		function DMXUpdateFromModel() {
+			var val = $('#dmxModelName').val();
+			if (val === '' || val === null) {
+				return;
+			}
+			var id = parseInt(val);
+			if (isNaN(id) || !modelInfos[id]) {
+				return;
+			}
+			var m = modelInfos[id];
+			var count = parseInt(m.ChannelCount);
+			if (isNaN(count) || count < 1) count = 1;
+			if (count > 512) count = 512; // DMX universe cap matches the input's max
+			$('#dmxStartChannel').val(m.StartChannel);
+			$('#dmxChannelCount').val(count);
+			RebuildDMXSliders();
+		}
+
 		function RebuildDMXSliders() {
 			DMXSineStop();
 			var startCh = parseInt($('#dmxStartChannel').val());
@@ -646,13 +706,45 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 				);
 
 				var paneHtml = '<div class="tab-pane fade' + activePane + '" id="' + tabId +
-					'" role="tabpanel" aria-labelledby="' + navId + '">' +
-					'<div class="dmxSliderGrid">';
+					'" role="tabpanel" aria-labelledby="' + navId + '">';
+
+				paneHtml += '<div class="dmxSliderGrid">';
 				for (var i = first; i <= last; i++) {
 					var ch = startCh + i;
+					var fx = dmxFindFixtureForChannel(ch);
+					var prevFx = (i > first) ? dmxFindFixtureForChannel(ch - 1) : null;
+					var prevSameFixture = !!(fx && prevFx && fx.index === prevFx.index);
+					var boxStyle = '';
+					var fixtureLabel = '';
+					var relLabel = '';
+					var boxClass = 'dmxChannelBox';
+					if (fx) {
+						boxStyle =
+							'background-color: ' + dmxFixtureColor(fx.index) + ';' +
+							'border-color: ' + dmxFixtureBorderColor(fx.index) + ';';
+						boxClass += ' dmxChannelBoxFixture';
+						if (prevSameFixture) {
+							boxClass += ' dmxChannelBoxFixtureCont';
+						}
+						// Only show the fixture name on the first channel of the
+						// fixture in this row to avoid repeating the label on
+						// every box.
+						if (!prevSameFixture) {
+							fixtureLabel = '<div class="dmxFixtureName" title="' +
+								dmxEscapeHtml(fx.model.Name) + '">' +
+								dmxEscapeHtml(fx.model.Name) + '</div>';
+						} else {
+							fixtureLabel = '<div class="dmxFixtureName dmxFixtureNameSpacer">&nbsp;</div>';
+						}
+						relLabel = '<div class="dmxRelChannel">Ch ' + fx.relCh +
+							' / ' + fx.model.ChannelCount + '</div>';
+					}
 					paneHtml +=
-						'<div class="dmxChannelBox">' +
+						'<div class="' + boxClass + '"' +
+						(boxStyle ? ' style="' + boxStyle + '"' : '') + '>' +
+						fixtureLabel +
 						'<div class="dmxChannelLabel"><b>Ch ' + ch + '</b></div>' +
+						relLabel +
 						'<div class="dmxSliderWrapper">' +
 						'<input type="range" min="0" max="255" step="1" ' +
 						'value="' + dmxValues[i] + '" ' +
@@ -839,7 +931,24 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 							modelInfos[i].ChannelsPerString = parseInt(modelInfos[i].ChannelCount / modelInfos[i].StringCount);
 							var option = "<option value='" + i + "'>" + modelInfos[i].Name + "</option>\n";
 							$('#modelName').append(option);
+							// Populate the DMX tester model dropdown too, but
+							// limit it to fixture-sized models (<= 512ch) so
+							// users don't accidentally pick a giant matrix.
+							if (modelInfos[i].ChannelCount <= 512) {
+								var dmxLabel = modelInfos[i].Name +
+									' (Ch ' + modelInfos[i].StartChannel +
+									', ' + modelInfos[i].ChannelCount + 'ch)';
+								var dmxOption = $('<option></option>')
+									.attr('value', i)
+									.text(dmxLabel);
+								$('#dmxModelName').append(dmxOption);
+							}
 						}
+					}
+					// Re-render the DMX tester so fixture groupings from
+					// model-overlays.json are highlighted on the slider grid.
+					if (typeof RebuildDMXSliders === 'function') {
+						RebuildDMXSliders();
 					}
 				},
 				error: function () {
@@ -1008,6 +1117,48 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 8px;
+		}
+
+		.dmxChannelBoxFixture {
+			border-width: 2px !important;
+			border-style: solid !important;
+			border-top-width: 6px !important;
+		}
+
+		/* When a fixture spans multiple adjacent boxes on the same row, drop
+		   the gap and the dividing borders so the coloured top edge reads as
+		   a single solid bar running across the whole channel group. */
+		.dmxChannelBoxFixtureCont {
+			margin-left: -8px;
+			border-left-width: 0 !important;
+			border-top-left-radius: 0 !important;
+			border-bottom-left-radius: 0 !important;
+		}
+
+		.dmxChannelBoxFixture:has(+ .dmxChannelBoxFixtureCont) {
+			border-right-width: 0 !important;
+			border-top-right-radius: 0 !important;
+			border-bottom-right-radius: 0 !important;
+		}
+
+		.dmxFixtureName {
+			font-size: 0.8em;
+			font-weight: 600;
+			color: #222;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			margin-bottom: 2px;
+		}
+
+		.dmxFixtureNameSpacer {
+			visibility: hidden;
+		}
+
+		.dmxRelChannel {
+			font-size: 0.78em;
+			color: #333;
+			margin-bottom: 4px;
 		}
 
 		.dmxChannelBox {
@@ -1458,15 +1609,25 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 										</div>
 										<div class="backdrop-dark mt-3">
 											<div class="form-group">
+												<label for='dmxModelName'><b>Model:</b></label>
+												<select class="form-control" id='dmxModelName'
+													onChange='DMXUpdateFromModel();'>
+													<option value=''>-- Manual --</option>
+												</select>
+												<small class="form-text text-muted">Selecting a model fills in
+													the start channel and channel count below.</small>
+											</div>
+											<div class="form-group mt-2">
 												<label for='dmxStartChannel'><b>Start Channel:</b></label>
 												<input class="form-control" type='number' min='1'
 													max='<? echo FPPD_MAX_CHANNELS; ?>' value='1' id='dmxStartChannel'
-													onChange='RebuildDMXSliders();'>
+													onChange="$('#dmxModelName').val(''); RebuildDMXSliders();">
 											</div>
 											<div class="form-group mt-2">
 												<label for='dmxChannelCount'><b>Number of Channels:</b></label>
 												<input class="form-control" type='number' min='1' max='512' value='16'
-													id='dmxChannelCount' onChange='RebuildDMXSliders();'>
+													id='dmxChannelCount'
+													onChange="$('#dmxModelName').val(''); RebuildDMXSliders();">
 												<small class="form-text text-muted">Channels are grouped into tabs of
 													16</small>
 											</div>
@@ -1485,8 +1646,8 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 											<div><b>Sine Wave</b></div>
 											<div class="form-group mt-1">
 												<label for='dmxSineSpeed'>Speed (cycles/sec):</label>
-												<input class="form-control" type='number' min='0.1' max='10'
-													step='0.1' value='0.5' id='dmxSineSpeed'>
+												<input class="form-control" type='number' min='0.1' max='10' step='0.1'
+													value='0.5' id='dmxSineSpeed'>
 											</div>
 											<div class="form-group mt-1">
 												<label for='dmxSineSpread'>Channel Spread:</label>
@@ -1510,7 +1671,12 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 												troubleshooting moving heads, dumb RGB fixtures, fog machines, and
 												other DMX devices. Adjust each slider (0-255) to set the value for that
 												channel. Channel numbers shown are absolute FPP channel numbers
-												starting at the configured Start Channel.</p>
+												starting at the configured Start Channel. Fixtures defined in
+												<i>model-overlays.json</i> are highlighted with a coloured bar and
+												show their name plus the channel position within the fixture
+												(e.g. <i>Ch&nbsp;3 / 16</i>) so you can identify which DMX function
+												a given absolute channel maps to.
+											</p>
 										</div>
 										<ul class="nav nav-pills pageContent-tabs" id="dmxSliderTabsNav" role="tablist">
 										</ul>
