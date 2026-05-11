@@ -147,7 +147,7 @@
 
             if (this._allowPixelSize) {
                 result += "Pixel Size:&nbsp;<select class='pixelSize'>";
-                for (i = 1; i <= 10; i++) {
+                for (var i = 1; i <= 10; i++) {
                     result += "<option value='" + i + "'";
                     if (config.pixelSize == i)
                         result += " selected";
@@ -487,7 +487,7 @@
                 result += "<br><br>LED Only:<br>";
                 result += "Brightness: ";
                 result += "<select class='brightness" + x + "'>";
-                for (i = 100; i >= 5; i -= 5) {
+                for (var i = 100; i >= 5; i -= 5) {
                     let selected = (i == brightness) ? " selected" : "";
                     result += "<option value='" + i + "'" + selected + ">" + i + "%</option>";
                 }
@@ -1155,7 +1155,7 @@
         rest += "<div class='col-sm-5 command-select'><select id='presetName'>";
         rest += "<option value='' " + (config.preset == "" ? "selected" : "") + ">--Select Command Preset--</option>";
         var commands = commandPresets.commands;
-        for (a in commands) {
+        for (var a in commands) {
             var n = commands[a].name;
             rest += "<option value='" + n + "' " + (config.preset == n ? "selected" : "") + ">" + n + "</option>";
         }
