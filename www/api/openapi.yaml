@@ -1791,6 +1791,7 @@ paths:
                 type: object
               example:
                 name: UploadTest
+                globalPauseBetweenSequencesMS: 5000
                 mainPlaylist:
                   - type: pause
                     enabled: 1
@@ -1811,6 +1812,7 @@ paths:
               type: object
             example:
               name: UploadTest
+              globalPauseBetweenSequencesMS: 5000
               mainPlaylist:
                 - type: pause
                   enabled: 1
@@ -1828,6 +1830,7 @@ paths:
                 type: object
               example:
                 name: UploadTest
+                globalPauseBetweenSequencesMS: 5000
                 mainPlaylist:
                   - type: pause
                     enabled: 1
@@ -1983,6 +1986,7 @@ paths:
               type: object
             example:
               name: UploadTest
+              globalPauseBetweenSequencesMS: 5000
               mainPlaylist:
                 - type: pause
                   enabled: 1
@@ -2000,6 +2004,7 @@ paths:
                 type: object
               example:
                 name: UploadTest
+                globalPauseBetweenSequencesMS: 5000
                 mainPlaylist:
                   - type: pause
                     enabled: 1
