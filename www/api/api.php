@@ -19,7 +19,7 @@
     ?>
     <style>
         .pageContent { padding: 0; }
-        #scalar-frame { display: block; width: 100%; height: calc(100vh - 25em); border: none; }
+        #scalar-frame { display: block; width: 100%; height: calc(100vh - 12em); border: none; }
     </style>
 </head>
 
@@ -30,7 +30,8 @@
             include '../menu.inc';
         ?>
         <div class="mainContainer">
-            <h1 class="title">API Documentation</h1>
+            <h1 class="title">API Documentation<a href="/api/api.html" target="_blank"><i class="fa-solid fa-2xs fa-up-right-from-square ms-2"></i></a></h1>
+
             <div class="pageContent">
             <!-- END HEADER STRUCTURE -->
 
@@ -40,7 +41,7 @@
             </div>
         </div>
     </div>
-    <?php include '../common/footer.inc'; ?>
+    <?php // include '../common/footer.inc'; ?>
     <script>
         var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
         var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
