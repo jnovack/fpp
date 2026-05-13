@@ -468,11 +468,11 @@ function list_plugin_entries($menu)
                                 <a class="dropdown-item" href="system-stats.php"><i class="fas fa-thermometer-half"></i>
                                     System Health
                                     Check</a>
+                                <a class="dropdown-item" href="/api"><i class="fas fa-book"></i>
+                                    API Documentation</a>
                                 <a class="dropdown-item" href="troubleshooting.php"><i class="fas fa-code"></i>
-                                    Troubleshooting
-                                    Commands</a>
-                                <?
-                                $baseLink = $_SERVER['HTTP_HOST'];
+                                    Troubleshooting Commands</a>
+<?                                $baseLink = $_SERVER['HTTP_HOST'];
                                 if (isset($_SERVER['HTTP_X_FORWARDED_HOST'])) {
                                     $baseLink = $_SERVER['HTTP_X_FORWARDED_HOST'] . '/proxy/' . $_SERVER['SERVER_ADDR'];
                                 }
