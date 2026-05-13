@@ -81,6 +81,7 @@ ServerTokens Prod
 
     # Enable mod_rewrite
     RewriteEngine On
+    RewriteBase /api/
 
     # Only rewrite if not a file or directory
     RewriteCond %{SCRIPT_FILENAME} !-f
@@ -103,7 +104,11 @@ ServerTokens Prod
     RewriteRule ^http-virtual-display-3d/(.*)$ - [L]
 
     # Static and redirect rules
+    RewriteRule ^$ /api/index.php?uri=/ [L]
     RewriteRule ^index.php - [L,NC]
+    RewriteRule ^api.php - [L,NC]
+    RewriteRule ^api.html - [L,NC]
+    RewriteRule ^openapi.json - [L,NC]
     RewriteRule ^help ../api/ [R=301,L,NC]
     RewriteRule ^help/.* ../api/ [R=301,L,NC]
     RewriteRule ^endpoints.json - [L,NC]
@@ -114,6 +119,7 @@ ServerTokens Prod
     # CORS headers
     Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Methods "GET,POST,OPTIONS,DELETE,PUT"
+    Header always set Access-Control-Allow-Headers "Content-Type"
 </Directory>
 
 # SSE (Server-Sent Events) ProxyPass with flushpackets for immediate streaming

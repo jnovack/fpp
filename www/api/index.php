@@ -279,6 +279,7 @@ function addPluginEndpoints()
 }
 
 function ServeApiDocs() {
+    set_include_path(get_include_path() . PATH_SEPARATOR . dirname(__DIR__));
     extract($GLOBALS);
     include __DIR__ . '/api.php';
     exit;
