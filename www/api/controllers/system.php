@@ -4,6 +4,8 @@ require_once "../common/settings.php";
 require_once '../commandsocket.php';
 
 /**
+ * Reboot the operating system
+ *
  * Reboots the operating system.
  *
  * @route GET /api/system/reboot
@@ -26,6 +28,8 @@ function RebootDevice()
 }
 
 /**
+ * Shutdown the operating system
+ *
  * Executes a clean shutdown of the operating system.
  *
  * @route GET /api/system/shutdown
@@ -47,7 +51,9 @@ function SystemShutdownOS()
 }
 
 /**
- * Starts the `fppd` process (if it isn't already running).
+ * Start fppd
+ *
+ * Starts the `fppd` process idempotently (if it isn't already running).
  *
  * @route GET /api/system/fppd/start
  * @response {"status": "OK"}
@@ -97,6 +103,8 @@ function StopFPPDNoStatus()
 }
 
 /**
+ * Stop fppd
+ *
  * Stops the `fppd` process if it is running.
  *
  * @route GET /api/system/fppd/stop
@@ -110,6 +118,8 @@ function StopFPPD()
 }
 
 /**
+ * Restart fppd process
+ *
  * Restarts the `fppd` process. Pass `?quick=1` to reload some configuration without
  * a full restart.
  *
@@ -133,6 +143,8 @@ function RestartFPPD()
 }
 
 /**
+ * Get release notes
+ *
  * Returns release notes for the specified FPP version tag from the GitHub releases API.
  *
  * @route GET /api/system/releaseNotes/{version}
@@ -159,6 +171,8 @@ function ViewReleaseNotes()
 }
 
 /**
+ * Get fpp upgrade status
+ *
  * Returns the current FPP update/upgrade status, including whether a newer version is available,
  * the current commit, and any major version or end-of-life warnings.
  *
@@ -330,6 +344,8 @@ function GetUpdateStatus()
 }
 
 /**
+ * Set volume
+ *
  * Sets the system volume. The new level should be passed as a JSON body.
  *
  * @route POST /api/system/volume
@@ -357,6 +373,8 @@ function SystemSetAudio()
 }
 
 /**
+ * Get volume
+ *
  * Returns the current volume if `fppd` is running, or the `Volume` setting value if not.
  *
  * @route GET /api/system/volume
@@ -391,6 +409,8 @@ function SystemGetAudio()
 }
 
 /**
+ * Get system status
+ *
  * Returns `fppd`, network, current playlist, schedule, utilization, host, version, and MQTT status.
  * Pass an optional array of IP addresses (e.g. `&ip[]=192.168.0.1&ip[]=192.168.0.2`) to query
  * remote instances instead.
@@ -570,6 +590,8 @@ function SystemGetStatus()
 }
 
 /**
+ * Get system info
+ *
  * Returns basic information about the system.
  *
  * @route GET /api/system/info
@@ -664,6 +686,8 @@ function finalizeStatusJson($obj)
 }
 
 /**
+ * Get all system packages
+ *
  * Returns a list of all installed and available OS package names via `apt list --all-versions`.
  *
  * @route GET /api/system/packages
@@ -691,6 +715,8 @@ function GetOSPackages()
 }
 
 /**
+ * Get system package information
+ *
  * Returns description, dependencies, and installation status for the specified OS package.
  *
  * @route GET /api/system/packages/info/{packageName}
@@ -739,6 +765,8 @@ function GetOSPackageInfo()
 }
 
 /**
+ * Skip boot delay
+ *
  * Skips the current boot delay by creating a skip flag file, allowing FPP startup to proceed immediately.
  *
  * @route POST /api/system/fppd/skipBootDelay

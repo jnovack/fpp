@@ -14,6 +14,8 @@ function ReadSettingsJSON()
 }
 
 /**
+ * Get value of setting
+ *
  * Get info about a particular setting, including its current `value`.
  *
  * @route GET /api/settings/{SettingName}
@@ -51,6 +53,8 @@ function GetSetting()
 }
 
 /**
+ * Set value for setting
+ *
  * Sets the value for a specific setting.
  *
  * @route PUT /api/settings/{SettingName}
@@ -170,6 +174,8 @@ function PutSetting()
 }
 
 /**
+ * Get all settings.json
+ *
  * Returns the `settings.json` metadata file as a JSON list of settings.
  *
  * @route GET /api/settings
@@ -182,6 +188,8 @@ function GetSettings()
 }
 
 /**
+ * Get current time
+ *
  * Returns the current system time as a formatted string.
  *
  * @route GET /api/time
@@ -196,6 +204,8 @@ function GetTime()
 }
 
 /**
+ * Set sub-value
+ *
  * Updates a sub-value held as JSON within a setting's value. Only valid for settings stored as JSON.
  *
  * @route PUT /api/settings/{SettingName}/jsonValueUpdate

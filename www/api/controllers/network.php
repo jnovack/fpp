@@ -3,6 +3,8 @@
 require_once "../common.php";
 
 /**
+ * Get network interface details
+ *
  * Returns detailed information about network interfaces, their IP addresses,
  * and Wi-Fi signal strength.
  *
@@ -15,6 +17,8 @@ function network_list_interfaces()
 }
 
 /**
+ * Get all wifi signal strenths
+ *
  * Returns signal strength information for wireless network interfaces.
  *
  * @route GET /api/network/wifi/strength
@@ -26,6 +30,8 @@ function network_wifi_strength()
 }
 
 /**
+ * Get discoverable wifi networks
+ *
  * Returns information about Wi-Fi networks discoverable via the specified
  * `{interface}`. Networks without an SSID may appear in the list.
  *
@@ -98,6 +104,8 @@ function network_wifi_scan()
 }
 
 /**
+ * Delete interface persistent names
+ *
  * Removes interface persistent names by deleting systemd `.link` files and
  * restoring any USB ethernet adapter config files back to `eth*` names.
  *
@@ -144,6 +152,8 @@ function network_persistentNames_delete()
 }
 
 /**
+ * Set interface persistent names
+ *
  * Creates interface persistent names by writing systemd `.link` files that
  * pin each interface's name to its MAC address.
  *
@@ -198,6 +208,8 @@ function network_persistentNames_create()
 }
 
 /**
+ * Get DNS configuration
+ *
  * Returns the current DNS configuration. If not configured, `status` will
  * be `Not Configured`.
  *
@@ -218,6 +230,8 @@ function network_get_dns()
 }
 
 /**
+ * Set DNS configuration
+ *
  * Updates the DNS configuration.
  *
  * @route POST /api/network/dns
@@ -253,6 +267,8 @@ function network_save_dns()
 }
 
 /**
+ * Get default gateway
+ *
  * Returns the currently configured default gateway IP address. May be empty
  * when using DHCP.
  *
@@ -283,6 +299,8 @@ function network_get_gateway()
 }
 
 /**
+ * Set default gateway
+ *
  * Saves the default gateway IP address to the `gateway` configuration file.
  *
  * @route POST /api/network/gateway
@@ -316,6 +334,8 @@ function network_save_gateway()
 }
 
 /**
+ * Get network interface configuration
+ *
  * Retrieves the current network interface configuration.
  *
  * @route GET /api/network/interface/{interface}
@@ -441,6 +461,8 @@ function network_get_interface()
 }
 
 /**
+ * Create DHCP interface
+ *
  * Creates a new blank DHCP interface configuration file for the specified
  * network interface (e.g. `eth1`, `wlan0`).
  *
@@ -473,6 +495,8 @@ function network_add_interface()
 }
 
 /**
+ * Set network interface configuration
+ *
  * Updates the saved configuration for the specified `{interface}` but does
  * not restart the network.
  *
@@ -580,6 +604,8 @@ function network_set_interface()
 }
 
 /**
+ * Set networking configuration
+ *
  * Applies the networking settings for the specified `{interface}` at the OS
  * level and restarts the interface.
  *

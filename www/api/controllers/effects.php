@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get effects
+ *
  * Returns a list of effect (`*.eseq`) files available in the effects directory.
  *
  * @route GET /api/effects
@@ -25,6 +27,8 @@ function effects_list()
 }
 
 /**
+ * Get all effects
+ *
  * Returns a combined list of all effect (`*.eseq`) files from both the effects directory
  * and the sequences directory.
  *

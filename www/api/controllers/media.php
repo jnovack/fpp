@@ -4,6 +4,8 @@
 require_once '../common/metadata.php';
 
 /**
+ * List all media files
+ *
  * Returns a list of media files (includes both music and video files).
  *
  * @route GET /api/media
@@ -32,6 +34,8 @@ function GetMedia()
 }
 
 /**
+ * Get duration of media item
+ *
  * Returns the duration of a media item.
  *
  * @route GET /api/media/{MediaName}/duration
@@ -56,7 +60,9 @@ function GetMediaDuration()
 }
 
 /**
- * Returns metadata for a specific media file.
+ * Get metadata for media item
+ *
+ * Returns metadata streams, codecs, profiles, type for a specific media file.
  *
  * @route GET /api/media/{MediaName}/meta
  * @response {"programs": [], "streams": [{"index": 0, "codec_name": "h264", "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10", "profile": "High", "codec_type": "video", "codec_time_base": "500/29971"}]}

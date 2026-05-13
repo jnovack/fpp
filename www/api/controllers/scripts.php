@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get all scripts
+ *
  * Returns a list of currently installed scripts.
  *
  * @route GET /api/scripts
@@ -28,6 +30,8 @@ function scripts_list()
 }
 
 /**
+ * Get a script
+ *
  * Returns the source code of an installed script.
  *
  * @route GET /api/scripts/{scriptName}
@@ -47,6 +51,8 @@ function script_get()
 }
 
 /**
+ * Update script
+ *
  * Writes the `POST` request body to the file specified by `{scriptName}`.
  *
  * @route POST /api/scripts/{scriptName}
@@ -90,6 +96,8 @@ function script_save()
 }
 
 /**
+ * Run script
+ *
  * Runs a locally installed script.
  *
  * @route GET /api/scripts/{scriptName}/run
@@ -110,6 +118,8 @@ function script_run()
 }
 
 /**
+ * Get remote script
+ *
  * Returns the source code of a remote script from the script repository.
  *
  * @route GET /api/scripts/viewRemote/{category}/{filename}
@@ -126,6 +136,8 @@ function scripts_view_remote()
 }
 
 /**
+ * Install remote script
+ *
  * Installs a remote script from the script repository.
  *
  * @route GET /api/scripts/installRemote/{category}/{filename}

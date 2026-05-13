@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get all plugins
+ *
  * Get list of installed plugins.
  *
  * @route GET /api/plugin
@@ -29,6 +31,8 @@ function GetInstalledPlugins()
 }
 
 /**
+ * Install plugin
+ *
  * Install a new plugin. The request body is a `pluginInfo.json` structure
  * with `branch` and `sha` fields added to specify which branch and commit
  * to install.
@@ -122,6 +126,8 @@ function InstallPlugin()
 }
 
 /**
+ * Get plugin information
+ *
  * Get `pluginInfo.json` for installed plugin `{RepoName}`. An additional
  * `updatesAvailable` field indicates whether the plugin has commits that
  * have been fetched but not yet merged.
@@ -157,6 +163,8 @@ function GetPluginInfo()
 }
 
 /**
+ * Uninstall plugin
+ *
  * Uninstall plugin {RepoName}.
  *
  * @route DELETE /api/plugin/{RepoName}
@@ -208,6 +216,8 @@ function UninstallPlugin()
 }
 
 /**
+ * Check plugin for updates
+ *
  * Check plugin `{RepoName}` for available updates by running `git fetch` in
  * the plugin directory and checking for any unmerged commits.
  *
@@ -237,6 +247,8 @@ function CheckForPluginUpdates()
 }
 
 /**
+ * Update plugin
+ *
  * Pull in git updates for plugin `{RepoName}`. Supports an optional
  * `?stream=true` query parameter for streaming output.
  *
@@ -431,6 +443,8 @@ function FetchURLWithGitHubCredentials($url)
 }
 
 /**
+ * Get plugin info from URL
+ *
  * Server-side proxy for fetching a `pluginInfo.json` from a remote URL.
  * Used to retrieve plugin repository info without CORS issues, and to
  * authenticate against private GitHub repositories using credentials
@@ -505,6 +519,8 @@ function PluginHasUpdates($plugin)
 }
 
 /**
+ * Get setting from plugin
+ *
  * Returns the value of setting `{SettingName}` from plugin `{RepoName}`.
  *
  * @route GET /api/plugin/{RepoName}/settings/{SettingName}
@@ -525,6 +541,8 @@ function PluginGetSetting()
 }
 
 /**
+ * Set setting for plugin
+ *
  * Sets `{SettingName}` for plugin `{RepoName}` and returns the updated value.
  *
  * @route POST /api/plugin/{RepoName}/settings/{SettingName}

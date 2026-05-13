@@ -49,11 +49,14 @@ function stats_generate($statsFile)
 }
 
 /**
+ * Get statistics
+ *
  * Returns the statistics file that will be shared with the development team
  * if sharing statistics is enabled. A cached file is returned unless it is
  * more than 2 hours old or `?force=1` is passed, in which case it is regenerated.
  *
  * @route GET /api/statistics/usage
+ * @param int force bypass cache
  * @response {"uuid": "6ba176e7-da7f-49f4-8b27-edb5bd9ff616", "systemInfo": {"mqtt": {"configured": true, "connected": true}, "fppdStatus": "running", "fppdMode": "player", "fppdUptimeSeconds": 3436, "wifiInterfaceCount": 0, "platform": "Debian", "version": "4.x-master-914-gebda8520", "majorVersion": 4, "minorVersion": 1000, "typeId": 1, "branch": "master", "osVersion": "v3.0", "Kernel": "4.19.0-6-amd64", "osRelease": "Debian GNU/Linux 10 (buster)", "channelRanges": "0-103", "utilization": {"CPU": 2.2, "Memory": 15.9, "Uptime": "7 days"}}, "capeInfo": {"type": "None"}, "files": {"sequences": {"cnt": 2, "bytes": 19025632}}, "models": {"count": 0}}
  */
 function stats_get_last_file()
@@ -189,6 +192,8 @@ function stats_memory()
 }
 
 /**
+ * Publsh statistics
+ *
  * Transmits the statistics payload to the remote stats server configured in
  * the `statsPublishUrl` setting.
  *
@@ -215,6 +220,8 @@ function stats_publish_stats_file()
 }
 
 /**
+ * Resets statistics cache
+ *
  * Deletes the cached statistics file.
  *
  * @route DELETE /api/statistics/usage

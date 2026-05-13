@@ -1,5 +1,7 @@
 <?
 /**
+ * Get origin commits
+ *
  * Returns a list of commits present in the `origin` (GitHub) but not in the local repository.
  *
  * @route GET /api/git/originLog
@@ -35,6 +37,7 @@ function GetGitOriginLog()
 }
 
 /**
+ * Discard local changes
  * Performs a hard reset on the current branch, discarding any local changes.
  *
  * @route GET /api/git/reset
@@ -50,6 +53,8 @@ function GitReset()
 }
 
 /**
+ * Get local repo status
+ *
  * Returns the status of the local git branch, including any dirty files.
  *
  * @route GET /api/git/status
@@ -121,6 +126,8 @@ function MatchesDeviceOSImage($name, $settings)
 }
 
 /**
+ * Get releases for OS
+ *
  * Returns lists of `.fppos` files available locally or on GitHub for the current platform.
  * If the `{All}` path parameter is `"all"`, returns all releases regardless of platform.
  *
@@ -194,6 +201,8 @@ function GitOSReleases()
 }
 
 /**
+ * Get release asset sizes
+ *
  * Returns release asset size information from the GitHub `FalconChristmas/fpp` releases API.
  *
  * @route GET /api/git/releases/sizes
@@ -236,6 +245,8 @@ function GitOSReleaseSizes()
 }
 
 /**
+ * Get local branches
+ *
  * Returns an array of branches available to switch to, filtering out obsolete version branches
  * and Dependabot branches.
  *

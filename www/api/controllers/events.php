@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get all event files
+ *
  * Returns a map of all event (`*.fevt`) files, keyed by event ID (filename without extension).
  *
  * @route GET /api/events
@@ -29,6 +31,8 @@ function events_list()
 }
 
 /**
+ * Get event file
+ *
  * Returns the contents of a specific event file. If `{eventId}` is `ids`, returns a map
  * of event IDs to display names.
  *
@@ -69,8 +73,11 @@ function event_get()
 }
 
 /**
+ * Trigger event
+ *
  * Triggers the specified event by sending a `Trigger Event` command to `fppd`.
  *
+ * @badges "FPP REQUIRED" critical
  * @route GET /api/events/{eventId}/trigger
  * @response {"status": "OK"}
  */

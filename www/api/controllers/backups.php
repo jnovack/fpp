@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get available backups from subdir
+ *
  * Returns a list of full system backup directories within the given path,
  * excluding directories that exist in the media root.
  *
@@ -45,6 +47,8 @@ function GetAvailableBackupsFromDir($backupDir)
 }
 
 /**
+ * Get available backups
+ *
  * Returns a list of full system backup files stored in the local `backups/` directory.
  *
  * @route GET /api/backups/list
@@ -57,6 +61,8 @@ function GetAvailableBackups()
 }
 
 /**
+ * Get devices available for backups
+ *
  * Returns a list of devices (e.g. USB drives, SSDs) attached to the system that can be used for backups.
  *
  * @route GET /api/backups/devices
@@ -70,6 +76,8 @@ function RetrieveAvailableBackupsDevices()
 }
 
 /**
+ * Get list of backups on device
+ *
  * Returns a list of full system backup files stored on the specified device (e.g. a USB drive).
  *
  * @route GET /api/backups/list/{DeviceName}
@@ -87,6 +95,8 @@ function GetAvailableBackupsOnDevice()
 }
 
 /**
+ * Mount device (with callback)
+ *
  * Mounts the specified device and performs a task via the callback function (if specified).
  *
  * @param string $deviceName              The device to be mounted.
@@ -166,6 +176,8 @@ function DriveMountHelper($deviceName, $usercallback_function, $functionArgs = a
 }
 
 /**
+ * Mount device
+ *
  * Mounts the specified device to `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).
  *
  * @route POST /api/backups/devices/mount/{DeviceName}/{MountLocation}
@@ -216,6 +228,8 @@ function MountDevice()
 }
 
 /**
+ * Unmount device
+ *
  * Unmounts the drive at `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).
  *
  * @route POST /api/backups/devices/unmount/{DeviceName}/{MountLocation}
@@ -269,6 +283,8 @@ function UnmountDevice()
 ////
 //Functions for JSON Configuration Backup API
 /**
+ * Get available JSON backups
+ *
  * Returns a list of JSON configuration backups stored locally, or — if `jsonConfigBackupUSBLocation`
  * is set — a combined list from local storage and the configured USB device.
  *
@@ -372,6 +388,8 @@ function process_jsonbackup_file_data_helper($json_config_backup_Data, $source_d
 }
 
 /**
+ * Create JSON backup
+ *
  * Generates a new JSON settings backup for all settings areas. If an alternate backup location has been
  * set, the backup is also copied to that location.
  *
@@ -435,6 +453,8 @@ function MakeJSONBackup()
 }
 
 /**
+ * Get list of JSON backups on device
+ *
  * Returns a list of JSON configuration files on a specified alternate storage device.
  * Available devices can be obtained from `/backups/devices`, or the currently configured device
  * is stored in the `jsonConfigBackupUSBLocation` setting.
@@ -458,6 +478,8 @@ function GetAvailableJSONBackupsOnDevice(){
 }
 
 /**
+ * Restores JSON backup
+ *
  * Restores the specified JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate`
  * (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid
  * directory and filename combinations.
@@ -551,6 +573,8 @@ function RestoreJsonBackup(){
 }
 
 /**
+ * Download JSON backup
+ *
  * Downloads a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate`
  * (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid
  * directories and filenames.
@@ -610,6 +634,8 @@ function DownloadJsonBackup(){
 }
 
 /**
+ * Delete JSON backup
+ *
  * Deletes a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate`
  * (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid
  * directories and filenames.

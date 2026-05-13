@@ -2,6 +2,8 @@
 require_once(__DIR__ . "/../../config.php");
 
 /**
+ * Proxy a command to remote FPP
+ *
  * Proxies a named action to a remote FPP instance by IP address.
  * Supported actions: `listUpgrades`, `reboot`, `restartFppd`, `upgradeOS`.
  *
@@ -119,6 +121,8 @@ function LoadProxyList()
 }
 
 /**
+ * Set proxy list
+ *
  * Replaces the proxy list with the submitted array of `host`/`description` objects,
  * validates each entry, and triggers an Apache graceful reload.
  *
@@ -219,6 +223,8 @@ function WriteProxyFile($proxies)
 }
 
 /**
+ * Get list of proxy IPs
+ *
  * Returns the list of IP addresses this FPP instance can proxy.
  *
  * @route GET /api/proxies
@@ -231,6 +237,8 @@ function GetProxies()
 }
 
 /**
+ * Add proxy
+ *
  * Adds a single IP address to the FPP proxy list if it does not already exist.
  *
  * @route POST /api/proxies/{ProxyIp}
@@ -257,6 +265,8 @@ function AddProxy()
 }
 
 /**
+ * Remove proxy
+ *
  * Removes a single IP address from the FPP proxy list.
  *
  * @route DELETE /api/proxies/{ProxyIp}
@@ -278,6 +288,8 @@ function DeleteProxy()
 }
 
 /**
+ * Get all remote FPPs
+ *
  * Returns the list of known remote FPP systems from `fppd` multiSync discovery.
  *
  * @route GET /api/remotes
@@ -305,6 +317,8 @@ function GetRemotes()
 }
 
 /**
+ * Get URL from remote FPP
+ *
  * Fetches a URL on a remote FPP instance via server-side proxy to avoid CSP restrictions.
  *
  * @route GET /api/proxy/{Ip}/{urlPart}
@@ -382,6 +396,8 @@ function getDHCPLeases()
 }
 
 /**
+ * Delete all proxies
+ *
  * Deletes all proxy entries by writing an empty `proxy-config.conf` and
  * triggering an Apache graceful reload.
  *

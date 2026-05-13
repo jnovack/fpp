@@ -3,6 +3,8 @@
 require_once('../commandsocket.php');
 
 /**
+ * Get schedules
+ *
  * Returns the current FPP schedule configuration from `schedule.json`.
  *
  * @route GET /api/schedule
@@ -23,6 +25,8 @@ function GetSchedule() {
 }
 
 /**
+ * Set schedule
+ *
  * Saves the new schedule configuration to `schedule.json`.
  *
  * @route POST /api/schedule
@@ -56,10 +60,11 @@ function SaveSchedule() {
 }
 
 /**
+ * Reload schedules
+ *
  * Sends a reload command to `fppd` to re-read the schedule configuration.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route POST /api/schedule/reload
  * @response {"Status": "OK", "Message": ""}
  */

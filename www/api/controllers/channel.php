@@ -1,11 +1,12 @@
 <?php
 
 /**
+ * Get E1.31 stats
+ *
  * Returns the E1.31 or DDP statistics for inbound packets.
  * Returns a meaningful error if the connection to `fppd` fails.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/channel/input/stats
  * @response {"status": "OK", "universes": [{"bytesReceived": "325632", "errors": "1", "id": 1, "packetsReceived": "636", "startChannel": 1}]}
  */
@@ -26,10 +27,11 @@ function channel_input_get_stats()
 }
 
 /**
+ * Reset E1.31 stats
+ *
  * Resets the E1.31/DDP channel input statistics counters.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route DELETE /api/channel/input/stats
  * @response {"status": "OK"}
  */
@@ -50,6 +52,8 @@ function channel_input_delete_stats()
 }
 
 /**
+ * Get output processors
+ *
  * Returns the current configuration of any output processors.
  *
  * @route GET /api/channel/output/processors
@@ -72,6 +76,8 @@ function channel_get_output_processors()
 }
 
 /**
+ * Set output processors
+ *
  * Overwrites the output processor settings file with a new configuration and
  * returns the saved configuration.
  *
@@ -96,6 +102,8 @@ function channel_save_output_processors()
 }
 
 /**
+ * Get channel output
+ *
  * Returns the current configuration of the specified output file in JSON format.
  * Common values of `{file}` include `universeOutputs`, `universeInputs`, `co-other`, `dmxInputs`,
  * `co-pwm`, and `co-bbbStrings`. Supports an optional `?ip=` query parameter to fetch from
@@ -153,6 +161,8 @@ function channel_get_output()
 }
 
 /**
+ * Set channel output
+ *
  * Overwrites the specified output configuration file with the `POST` body
  * and returns the saved configuration.
  *

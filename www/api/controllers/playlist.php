@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get all playlists
+ *
  * Get list of playlist names.
  *
  * @route GET /api/playlists
@@ -157,6 +159,8 @@ function validatePlayListEntries(&$entries, &$media, &$playlist, &$rc)
 }
 
 /**
+ * Validate all playlists
+ *
  * Returns a list of all playlists with any validation errors, total item
  * counts, and total duration.
  *
@@ -241,6 +245,8 @@ function playlist_list_validate()
 }
 
 /**
+ * Get playable objects
+ *
  * Get a combined list of playlist names and `*.fseq` sequence filenames that are playable.
  *
  * @route GET /api/playlists/playable
@@ -315,6 +321,8 @@ function cleanMedialNamesInPlaylist(&$playlistObj, $section)
 }
 
 /**
+ * Create playlist
+ *
  * Insert a new playlist.
  *
  * @route POST /api/playlists
@@ -468,11 +476,14 @@ function GetPlaylist($playlistName)
 }
 
 /**
+ * Get a playlist
+ *
  * Get the playlist named `{PlaylistName}` in FPP JSON format. If
  * `?mergeSubs=1` is specified, sub-playlists are recursively merged into
  * the parent sections.
  *
  * @route GET /api/playlist/{PlaylistName}
+ * @param int mergeSubs Merge sub-playlsits recursively
  * @response {"name": "UploadTest", "globalPauseBetweenSequencesMS": 5000, "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
  */
 function playlist_get()
@@ -491,7 +502,9 @@ function playlist_get()
 }
 
 /**
- * Update/Insert the playlist named {PlaylistName}.
+ * Upsert playlist
+ *
+ * Update or Insert (upsert) the playlist named {PlaylistName}.
  *
  * @route POST /api/playlist/{PlaylistName}
  * @body {"name": "UploadTest", "globalPauseBetweenSequencesMS": 5000, "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
@@ -559,6 +572,8 @@ function playlist_update()
 }
 
 /**
+ * Delete playlist
+ *
  * Delete the playlist named {PlaylistName}.
  *
  * @route DELETE /api/playlist/{PlaylistName}
@@ -593,6 +608,8 @@ function playlist_delete()
 }
 
 /**
+ * Insert section into playlist
+ *
  * Insert an item into the `{SectionName}` section of playlist `{PlaylistName}`.
  *
  * @route POST /api/playlist/{PlaylistName}/{SectionName}/item
@@ -647,10 +664,11 @@ function PlaylistSectionInsertItem()
 }
 
 /**
+ * Stop playlist
+ *
  * Immediately stop the currently running playlist.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/stop
  * @response {"Status": "OK", "Message": ""}
  */
@@ -668,10 +686,11 @@ function playlist_stop()
 }
 
 /**
+ * Gracefully stop playlist
+ *
  * Gracefully stop the currently running playlist.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/stopgracefully
  * @response {"Status": "OK", "Message": ""}
  */
@@ -689,11 +708,12 @@ function playlist_stopgracefully()
 }
 
 /**
+ * Gracefully stop at end of loop
+ *
  * Gracefully stop the currently running playlist after completion of the
  * current loop.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/stopgracefullyafterloop
  * @response {"Status": "OK", "Message": ""}
  */
@@ -711,12 +731,13 @@ function playlist_stopgracefullyafterloop()
 }
 
 /**
+ * Start playlist
+ *
  * Start the playlist named `{PlaylistName}`. The optional query parameter
  * `scheduleProtected` (`true`/`false`) prevents the scheduler from stopping
  * this playlist.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlist/{PlaylistName}/start
  * @response {"Status": "OK", "Message": ""}
  */
@@ -737,13 +758,15 @@ function playlist_start()
 }
 
 /**
+ * Start playlist on repeat
+ *
  * Start the playlist named `{PlaylistName}` with repeat mode. The optional
  * query parameter `scheduleProtected` (`true`/`false`) prevents the
  * scheduler from stopping this playlist.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlist/{PlaylistName}/start/{Repeat}
+ * @param bool scheduledProtected Prevent schedule from stopping this playlist
  * @response {"Status": "OK", "Message": ""}
  */
 function playlist_start_repeat()
@@ -764,12 +787,13 @@ function playlist_start_repeat()
 }
 
 /**
+ * Start playlist on repeat (alt)
+ *
  * Start the playlist named `{PlaylistName}` with repeat mode and schedule
  * protection. When `{ScheduleProtected}` is `true`, the scheduler cannot
  * stop this playlist.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlist/{PlaylistName}/start/{Repeat}/{ScheduleProtected}
  * @response {"Status": "OK", "Message": ""}
  */
@@ -791,10 +815,11 @@ function playlist_start_repeat_protected()
 }
 
 /**
+ * Pause currently running playlist
+ *
  * Pause the currently running playlist.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/pause
  * @response {"Status": "OK", "Message": ""}
  */
@@ -812,10 +837,11 @@ function playlist_pause()
 }
 
 /**
+ * Resume paused playlist
+ *
  * Resume a previously paused playlist.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/resume
  * @response {"Status": "OK", "Message": ""}
  */

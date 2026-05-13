@@ -2,6 +2,8 @@
 require_once '../common.php';
 
 /**
+ * Set email options
+ *
  * Configures outbound email using the existing settings.
  *
  * @route POST /api/email/configure
@@ -22,6 +24,8 @@ function ConfigureEmail() {
 }
 
 /**
+ * Send test email
+ *
  * Sends a test email using the existing settings.
  *
  * @route POST /api/email/test

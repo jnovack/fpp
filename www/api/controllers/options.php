@@ -399,6 +399,8 @@ function GetOptions_GPIOS($list)
 }
 
 /**
+ * Get a setting's options
+ *
  * Returns the available options for the specified setting.
  * Supports `AudioMixerDevice`, `AudioOutput`, `AudioInput`, and other platform-specific option sets.
  *

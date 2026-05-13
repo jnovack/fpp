@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get files
+ *
  * Recursively collects relative file paths within a directory.
  *
  * @param string $dir    Absolute base directory path.
@@ -27,6 +29,8 @@ function GetFilesInDir($dir, $subdir = '')
 }
 
 /**
+ * Get directory list
+ *
  * Returns a list of config files in `/home/fpp/media/config` or an optional subdirectory.
  *
  * @route GET /api/configfile
@@ -53,6 +57,8 @@ function GetConfigFileList($dir = '')
 }
 
 /**
+ * Get file or directory list
+ *
  * Returns the contents of a specific config file, or a directory listing if
  * the path resolves to a directory.
  *
@@ -74,6 +80,8 @@ function DownloadConfigFile()
 }
 
 /**
+ * Upload configuration file
+ *
  * Uploads or overwrites a config file in `/home/fpp/media/config`, creating any
  * necessary subdirectories. Accepts a multipart file upload or raw `POST` body.
  *
@@ -141,6 +149,8 @@ function UploadConfigFile()
 }
 
 /**
+ * Delete configuration file
+ *
  * Deletes a config file from `/home/fpp/media/config`.
  *
  * @route DELETE /api/configfile/**

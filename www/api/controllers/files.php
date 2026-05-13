@@ -63,6 +63,8 @@ function MapDirectoryKey($dirName)
 }
 
 /**
+ * Copy file
+ *
  * Copies the specified file from `:source` to `:dest` within the given directory.
  *
  * @route POST /api/file/{DirName}/copy/{source}/{dest}
@@ -95,6 +97,8 @@ function files_copy()
 }
 
 /**
+ * Rename file
+ *
  * Renames the specified file from `:source` to `:dest` within the given directory.
  *
  * @route POST /api/file/{DirName}/rename/{source}/{dest}
@@ -260,6 +264,8 @@ function GetFilesHelper($dirName, $prefix = '')
 }
 
 /**
+ * Get all files
+ *
  * Returns a list of files in the specified media directory. Supports
  * `?nameOnly=1` to return a flat array of filenames.
  *
@@ -283,6 +289,8 @@ function GetFiles()
 }
 
 /**
+ * Get plugin file info
+ *
  * Returns plugin-specific file info for the specified file path. The plugin
  * name, extension category, and file path are read from route parameters.
  * The metadata command is defined in the plugin's `pluginInfo.json`.
@@ -361,6 +369,8 @@ function CallPluginFileUploaded($dir, $filename)
 }
 
 /**
+ * Notify plugin of upload
+ *
  * Notifies any plugin that has registered an `onUpload` handler for the given
  * file extension. `:ext` is the extension category and `**` is the file path.
  *
@@ -413,6 +423,8 @@ function MovePluginFile($uploadDir, $filename)
 }
 
 /**
+ * Get file contents
+ *
  * Downloads the specified file from a media directory. Supports optional query
  * params: `?tail=N` (return last N lines), `?play=1` (set playback content type),
  * `?attach=1` (force attachment download for images).
@@ -567,6 +579,8 @@ function findFile($dir, $filename)
 }
 
 /**
+ * Move file
+ *
  * Moves the specified file from the `uploads` directory to the correct media
  * subfolder based on its extension, returning a status of `OK` or an error
  * message if not successful.
@@ -659,6 +673,8 @@ function MoveFile()
 }
 
 /**
+ * Get zip file of directories
+ *
  * Downloads all files in the specified directory (or comma-separated list of
  * directories) as a zip archive. `logs` and `config` are handled specially to
  * include system log and config files.
@@ -890,6 +906,8 @@ function removeDir(string $dir): void
 }
 
 /**
+ * Delete file or directory
+ *
  * Deletes the specified file or directory from a media directory. Validates
  * the resolved path against the allowed base directory to prevent path traversal.
  *
@@ -971,6 +989,8 @@ function emulated_fseek_for_big_files($fp, $pos)
 }
 
 /**
+ * Upload file
+ *
  * Handles chunked file uploads via `PATCH` (TUS-style). A `POST` to the same route
  * initiates the session and returns a unique upload ID. Each `PATCH` request
  * delivers a chunk identified by `Upload-Name`, `Upload-Offset`, and `Upload-Length`
@@ -1086,6 +1106,8 @@ function PatchFile()
 }
 
 /**
+ * Upload file to directory
+ *
  * Uploads a file to the specified media directory. Supports optional query
  * params `bs` (block size) and `sb` (start block) for fragment uploads on systems
  * with large file requirements.
@@ -1196,6 +1218,8 @@ function GetFileInfo(&$list, $dirName, $fileName, $prefix = '')
 }
 
 /**
+ * Create subdirectory
+ *
  * Creates a subdirectory inside the specified media directory.
  *
  * @route POST /api/dir/{DirName}/{SubDir}
@@ -1229,6 +1253,8 @@ function CreateDir()
 }
 
 /**
+ * Delete empty subdirectory
+ *
  * Deletes an empty subdirectory from the specified media directory.
  *
  * @route DELETE /api/dir/{DirName}/{SubDir}
@@ -1261,6 +1287,8 @@ function DeleteDir()
 }
 
 /**
+ * Stream tail of file
+ *
  * Streams the tail of a log file using Server-Sent Events (SSE). Only works
  * for files in the `logs` directory. Accepts optional `?lines=N` query param
  * (default 50, max 500). Sends a heartbeat comment every 30 seconds to keep

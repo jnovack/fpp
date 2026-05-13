@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get cape information
+ *
  * Returns the cape information for the currently detected hardware cape
  * (from `cape-info` settings).
  *
@@ -20,6 +22,8 @@ function GetCapeInfo()
 }
 
 /**
+ * Get cape options
+ *
  * Returns a list of available cape EEPROM options for the current platform.
  *
  * @route GET /api/cape/options
@@ -50,6 +54,8 @@ function GetCapeOptions()
 }
 
 /**
+ * Get EEPROM filename
+ *
  * Returns the path to the cape EEPROM file, checking several known locations
  * and creating a virtual EEPROM device if necessary.
  *
@@ -187,6 +193,8 @@ function GetSigningDataHelper($returnArray = false, $key = '', $order = '')
 }
 
 /**
+ * Get signing data as text
+ *
  * Returns the cape EEPROM signing data payload for use with an external signing service.
  *
  * @route GET /api/cape/eeprom/signingData/{key}/{order}
@@ -204,6 +212,8 @@ function GetSigningData()
 }
 
 /**
+ * Get signing data as binary
+ *
  * Downloads the cape EEPROM signing data as a binary file attachment.
  *
  * @route GET /api/cape/eeprom/signingFile/{key}/{order}
@@ -275,6 +285,8 @@ function SignEEPROMHelper($data)
 }
 
 /**
+ * Sign EEPROM
+ *
  * Signs the cape EEPROM by sending its data to the FalconPlayer.com signing API
  * using the provided `key` and order ID.
  *
@@ -335,6 +347,8 @@ function SignEEPROM($key = '', $order = '')
 }
 
 /**
+ * Upload signed EEPROM
+ *
  * Accepts a signed EEPROM data payload and writes it back to the cape EEPROM.
  * Accepts either a multipart file upload (`signingPacket`) or a raw JSON body.
  *
@@ -371,6 +385,8 @@ function PostSigningData()
 }
 
 /**
+ * Redeem signing voucher
+ *
  * Redeems a voucher code against the FalconPlayer.com signing API to obtain
  * a signing `key` and order ID.
  *
@@ -452,6 +468,8 @@ function RedeemVoucher()
 }
 
 /**
+ * Get all cape strings
+ *
  * Returns a list of available string cape configuration `key` values.
  *
  * @route GET /api/cape/strings
@@ -471,6 +489,8 @@ function GetCapeStringOptions()
 }
 
 /**
+ * Get all cape panels
+ *
  * Returns a list of available LED panel cape configuration `key` values.
  *
  * @route GET /api/cape/panel
@@ -490,6 +510,8 @@ function GetCapePanelOptions()
 }
 
 /**
+ * Get cape string
+ *
  * Returns the string cape configuration JSON for the specified `key`.
  *
  * @route GET /api/cape/strings/{key}
@@ -510,6 +532,8 @@ function GetCapeStringConfig()
 }
 
 /**
+ * Get cape panel
+ *
  * Returns the LED panel cape configuration JSON for the specified `key`.
  *
  * @route GET /api/cape/panel/{key}

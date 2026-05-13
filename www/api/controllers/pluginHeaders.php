@@ -1,6 +1,8 @@
 <?php
 
 /**
+ * Get header indicators
+ *
  * Returns header indicator data (e.g., notification badges) from all installed plugins
  * that define a `headerIndicators.php` file.
  *

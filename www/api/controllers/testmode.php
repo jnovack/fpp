@@ -5,8 +5,7 @@ require_once '../commandsocket.php';
 /**
  * Returns the current Test Mode state for this instance.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/testmode
  * @response {"mode": "RGBChase", "subMode": "RGBChase-RGB", "cycleMS": 1000, "colorPattern": "FF000000FF000000FF", "enabled": 1, "channelSet": "1-520", "channelSetType": "channelRange"}
  */
@@ -18,8 +17,7 @@ function testMode_Get()
 /**
  * Sets the current Test Mode configuration on this instance.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route POST /api/testmode
  * @body {"mode": "RGBChase", "subMode": "RGBChase-RGB", "cycleMS": 1000, "colorPattern": "FF000000FF000000FF", "enabled": 1, "channelSet": "1-520", "channelSetType": "channelRange"}
  * @response {"status": "OK"}

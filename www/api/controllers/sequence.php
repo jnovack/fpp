@@ -1,6 +1,8 @@
 <?
 
 /**
+ * Get all sequences
+ *
  * Returns a list of all `*.fseq` sequence files.
  *
  * @route GET /api/sequence
@@ -20,6 +22,8 @@ function GetSequences()
 }
 
 /**
+ * Download sequence
+ *
  * Downloads the `*.fseq` file for the named sequence.
  *
  * @route GET /api/sequence/{SequenceName}
@@ -54,7 +58,9 @@ function GetSequence()
 }
 
 /**
- * Returns metadata from the `*.fseq` file for the named sequence.
+ * Get sequence metadata
+ *
+ * Returns `name`, `version`, `id`, `time`, and other details from the `*.fseq` file for the named sequence.
  *
  * @route GET /api/sequence/{SequenceName}/meta
  * @response {"Name": "GreatestShow.fseq", "Version": "2.0", "ID": "1553194098754908", "StepTime": 25, "NumFrames": 10750, "MaxChannel": 84992, "ChannelCount": 84992}
@@ -91,6 +97,8 @@ function GetSequenceMetaData()
 }
 
 /**
+ * Uploads sequence file
+ *
  * Uploads a new `*.fseq` sequence file.
  *
  * @route POST /api/sequence/{SequenceName}
@@ -123,6 +131,8 @@ function PostSequence()
 }
 
 /**
+ * Delete sequence file
+ *
  * Deletes the named `*.fseq` sequence file.
  *
  * @route DELETE /api/sequence/{SequenceName}
@@ -149,11 +159,14 @@ function DeleteSequences()
 }
 
 /**
+ * Start sequence at time
+ *
  * Starts the given sequence at the specified time frame. Only intended for testing. In most
  * situations, use the "Start Playlist" command from the command API and pass the sequence
  * name as the playlist name.
  *
- * Requires: `fppd` to be running.
+ * @badge "FPP REQUIRED" critical
+ * @badge "DEVELOPER ONLY" info
  *
  * @route GET /api/sequence/{SequenceName}/start/{startSecond}
  * @response {"status": "OK", "SequenceName": "single_line.fseq", "startSecond": "9"}
@@ -185,10 +198,11 @@ function GetSequenceStart()
 }
 
 /**
+ * Step a paused sequence
+ *
  * If the sequence was paused via `sequence/current/togglePause`, steps the sequence forward one frame.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
  * @route GET /api/sequence/current/step
  * @response {"status": "OK"}
  */
@@ -202,11 +216,13 @@ function GetSequenceStep()
 }
 
 /**
+ * Toggle play/pause on sequence
+ *
  * Pauses or resumes the currently playing sequence. Only valid if the sequence was started via
  * `/api/sequence/{SequenceName}/start/{startSecond}`.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
+ * @badge "DEVELOPER ONLY" info
  * @route GET /api/sequence/current/togglePause
  * @response {"status": "OK"}
  */
@@ -218,11 +234,13 @@ function GetSequenceTogglePause()
 }
 
 /**
+ * Stop sequence
+ *
  * Stops the currently playing sequence. Only valid if the sequence was started via
  * `/api/sequence/{SequenceName}/start/{startSecond}`.
  *
- * Requires: `fppd` to be running.
- *
+ * @badge "FPP REQUIRED" critical
+ * @badge "DEVELOPER ONLY" info
  * @route GET /api/sequence/current/stop
  * @response {"status": "OK"}
  */
