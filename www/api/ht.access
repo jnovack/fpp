@@ -18,7 +18,7 @@ RewriteRule ^index.php - [L,NC]
 RewriteRule ^help ../api/ [R=301,L,NC]
 RewriteRule ^help/.* ../api/ [R=301,L,NC]
 RewriteRule ^endpoints.json - [L,NC]
-RewriteRule ^openapi.yaml - [L,NC]
+RewriteRule ^openapi.json - [L,NC]
 RewriteRule ^api.html - [L,NC]
 RewriteRule ^(.*)$   /api/index.php?uri=/$1    [NC,L,QSA,B]
 

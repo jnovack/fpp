@@ -1,6 +1,6 @@
 apis:
   fpp:
-    root: openapi.yaml
+    root: openapi.json
 
 rules:
   security-defined: off
