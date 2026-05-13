@@ -54,7 +54,6 @@
 
 
   </div>
-  <br>
   <div class="footerLink">
     <a href='<?= $themeInfo["FOOTER_URL"] ?>'><?= $themeInfo["FOOTER_URL_TEXT"] ?></a>
     <?
@@ -63,9 +62,6 @@
     }
     ?>
   </div>
-
-  <br>
-  <br>
 </div>
 
 </div> <!-- div for fppOuterContainer opened in menu.inc -->
