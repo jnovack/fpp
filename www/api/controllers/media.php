@@ -3,8 +3,12 @@
 // This path is relative to the api directory, not the controllers directory
 require_once '../common/metadata.php';
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/media
+/**
+ * Returns a list of media files (includes both music and video files).
+ *
+ * @route GET /api/media
+ * @response ["Frosty.mp4", "Jingle_Bells.mp3"]
+ */
 function GetMedia()
 {
     global $settings;
@@ -27,9 +31,13 @@ function GetMedia()
     return json($files);
 }
 
-
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/media/:MediaName/duration
+/**
+ * Returns the duration of a media item.
+ *
+ * @route GET /api/media/{MediaName}/duration
+ * @response {"1min_720p29_2014-10-01.mp4": {"duration": 60.010666666667}}
+ * @response 404 "Not found: {MediaName}"
+ */
 function GetMediaDuration()
 {
     global $settings;
@@ -47,8 +55,12 @@ function GetMediaDuration()
 
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/media/:MediaName/meta
+/**
+ * Returns metadata for a specific media file.
+ *
+ * @route GET /api/media/{MediaName}/meta
+ * @response {"programs": [], "streams": [{"index": 0, "codec_name": "h264", "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10", "profile": "High", "codec_type": "video", "codec_time_base": "500/29971"}]}
+ */
 function GetMediaMetaData()
 {
     global $settings;

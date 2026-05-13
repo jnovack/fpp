@@ -1,5 +1,12 @@
 <?php
 
+/**
+ * Generates the statistics payload by calling all registered stat collector
+ * functions and writing the result as a `JSON` file at the given path.
+ *
+ * @param string $statsFile Absolute path to write the generated stats JSON.
+ * @return void
+ */
 function stats_generate($statsFile)
 {
     //////////// MAIN ////////////
@@ -41,7 +48,14 @@ function stats_generate($statsFile)
     file_put_contents($statsFile, $data);
 }
 
-// GET /api/statistics/usage
+/**
+ * Returns the statistics file that will be shared with the development team
+ * if sharing statistics is enabled. A cached file is returned unless it is
+ * more than 2 hours old or `?force=1` is passed, in which case it is regenerated.
+ *
+ * @route GET /api/statistics/usage
+ * @response {"uuid": "6ba176e7-da7f-49f4-8b27-edb5bd9ff616", "systemInfo": {"mqtt": {"configured": true, "connected": true}, "fppdStatus": "running", "fppdMode": "player", "fppdUptimeSeconds": 3436, "wifiInterfaceCount": 0, "platform": "Debian", "version": "4.x-master-914-gebda8520", "majorVersion": 4, "minorVersion": 1000, "typeId": 1, "branch": "master", "osVersion": "v3.0", "Kernel": "4.19.0-6-amd64", "osRelease": "Debian GNU/Linux 10 (buster)", "channelRanges": "0-103", "utilization": {"CPU": 2.2, "Memory": 15.9, "Uptime": "7 days"}}, "capeInfo": {"type": "None"}, "files": {"sequences": {"cnt": 2, "bytes": 19025632}}, "models": {"count": 0}}
+ */
 function stats_get_last_file()
 {
     global $_GET;
@@ -67,8 +81,12 @@ function stats_get_last_file()
     return json($obj, JSON_PRETTY_PRINT);
 }
 
-// If it can't access github, probably can't report stats either
-// but lets still try
+/**
+ * Collects network statistics including GitHub reachability, Wi-Fi signal
+ * strength, and the operational state of each network interface.
+ *
+ * @return array Associative array with github_access, wifi, and interfaces keys.
+ */
 function stats_network()
 {
     $rc = array();
@@ -98,6 +116,13 @@ function stats_network()
     return $rc;
 }
 
+/**
+ * Collects memory usage statistics from `/proc/meminfo` (Linux) or
+ * `memory_pressure` (macOS).
+ *
+ * @return array Memory stats including MemTotal, MemFree, MemAvailable,
+ *               Active, Inactive, and Cached (in kB), plus meminfoAvailable flag.
+ */
 function stats_memory()
 {
     global $settings;
@@ -163,6 +188,13 @@ function stats_memory()
     return $rc;
 }
 
+/**
+ * Transmits the statistics payload to the remote stats server configured in
+ * the `statsPublishUrl` setting.
+ *
+ * @route POST /api/statistics/usage
+ * @response {"status": "OK", "uuid": "M2-xxxxxxxx-f67f-930d-56ee-7xxxxxxxxxx"}
+ */
 function stats_publish_stats_file()
 {
     global $settings;
@@ -182,7 +214,12 @@ function stats_publish_stats_file()
     return json($response);
 }
 
-// DELETE /api/statistics/usage
+/**
+ * Deletes the cached statistics file.
+ *
+ * @route DELETE /api/statistics/usage
+ * @response {"status": "OK"}
+ */
 function stats_delete_last_file()
 {
     $statsFile = stats_get_filename();
@@ -192,6 +229,11 @@ function stats_delete_last_file()
     return json(array("status" => "OK"));
 }
 
+/**
+ * Returns the absolute path to the cached statistics file from `settings`.
+ *
+ * @return string Absolute path to the stats file.
+ */
 function stats_get_filename()
 {
     global $settings;
@@ -199,6 +241,15 @@ function stats_get_filename()
     return $settings['statsFile'];
 }
 
+/**
+ * Copies selected keys from an input array into an output array using a
+ * key-name mapping. Only copies keys that exist in the input.
+ *
+ * @param array &$obj     Destination array to write into.
+ * @param array &$input   Source array to read values from.
+ * @param array &$mapping Map of output key => input key names.
+ * @return void
+ */
 function validateAndAdd(&$obj, &$input, &$mapping)
 {
     foreach ($mapping as $newKey => $oldKey) {
@@ -208,6 +259,12 @@ function validateAndAdd(&$obj, &$input, &$mapping)
     }
 }
 
+/**
+ * Collects system information from the local `/api/system/status` endpoint,
+ * including MQTT status, `fppd` mode, uptime, platform, version, and utilization.
+ *
+ * @return array System info key-value pairs.
+ */
 function stats_getSystemInfo()
 {
     $rc = array();
@@ -244,6 +301,12 @@ function stats_getSystemInfo()
     return $rc;
 }
 
+/**
+ * Collects a summary of configured output processors, counting active and
+ * total instances of each processor type.
+ *
+ * @return array Map of processor type => {activeCnt, totalCnt}.
+ */
 function stats_getOutputProcessors()
 {
     $rc = array();
@@ -264,6 +327,12 @@ function stats_getOutputProcessors()
     return $rc;
 }
 
+/**
+ * Collects file counts and total byte sizes for sequences, effects, music,
+ * and video media directories.
+ *
+ * @return array Map of media type => {cnt, bytes}.
+ */
 function stats_getFiles()
 {
     $types = array("sequences", "effects", "music", "videos");
@@ -283,7 +352,13 @@ function stats_getFiles()
     return $rc;
 }
 
-// Reviews the multisync records and adds missing UUIDS
+/**
+ * Queries each MultiSync system that has no UUID and attempts to fill in
+ * the missing value by probing the remote device's status or identity endpoint.
+ *
+ * @param array &$data MultiSync data array containing a "systems" key.
+ * @return void
+ */
 function addMultiSyncUUID(&$data)
 {
     if (!isset($data["systems"])) {
@@ -355,6 +430,12 @@ function addMultiSyncUUID(&$data)
     }
 }
 
+/**
+ * Collects a sanitized list of MultiSync peer systems, filling in missing
+ * UUIDs where possible.
+ *
+ * @return array Array of per-system records with version, type, and UUID info.
+ */
 function stats_getMultiSync()
 {
     $mapping = array(
@@ -382,6 +463,12 @@ function stats_getMultiSync()
     return $rc;
 }
 
+/**
+ * Collects schedule statistics including whether the scheduler is enabled and
+ * a count of active entries broken down by type.
+ *
+ * @return array Schedule stats with enabled flag and types map.
+ */
 function stats_getSchedule()
 {
     $data = json_decode(file_get_contents("http://localhost/api/fppd/schedule"), true);
@@ -406,6 +493,11 @@ function stats_getSchedule()
     return $rc;
 }
 
+/**
+ * Returns the total count of overlay models configured on the device.
+ *
+ * @return array Array with a single "count" key.
+ */
 function stats_getModels()
 {
     $raw = fetch_api_with_limit("http://localhost/api/models");
@@ -418,6 +510,11 @@ function stats_getModels()
     return $rc;
 }
 
+/**
+ * Collects the git commit hash and date for each installed plugin.
+ *
+ * @return array Map of plugin name => {hash, commitDate}.
+ */
 function stats_getPlugins()
 {
     global $settings;
@@ -436,11 +533,22 @@ function stats_getPlugins()
 
 }
 
+/**
+ * Returns the system UUID.
+ *
+ * @return string UUID string.
+ */
 function stats_getUUID()
 {
     return getSystemUUID();
 }
 
+/**
+ * Collects cape hardware information. If SendVendorSerial is enabled, the
+ * serial number is included; otherwise it is omitted for privacy.
+ *
+ * @return array Cape info with type, id, name, designer, and vendor fields.
+ */
 function stats_getCapeInfo()
 {
     global $settings;
@@ -475,6 +583,12 @@ function stats_getCapeInfo()
     return $rc;
 }
 
+/**
+ * Collects the subset of FPP settings that have `gatherStats` enabled in
+ * `settings.json` metadata.
+ *
+ * @return array Map of setting name => value for stats-eligible settings.
+ */
 function stats_getSettings()
 {
     global $settings;
@@ -498,6 +612,12 @@ function stats_getSettings()
     return $rc;
 }
 
+/**
+ * Collects E1.31/ArtNet universe input statistics from the channel inputs
+ * configuration file, counting active rows, universes, and channels by type.
+ *
+ * @return array Universe input stats including universeCount, rowCount, channelCount, and rowType.
+ */
 function stats_universe_in()
 {
     global $settings;
@@ -545,6 +665,13 @@ function stats_universe_in()
     return $rc;
 }
 
+/**
+ * Collects E1.31/ArtNet universe output statistics from the channel outputs
+ * configuration file, counting active rows, universes, channels, de-duplicate,
+ * and monitor flags by type.
+ *
+ * @return array Universe output stats including universeCount, rowCount, channelCount, deDupeCount, and monitorCount.
+ */
 function stats_universe_out()
 {
     global $settings;
@@ -604,6 +731,12 @@ function stats_universe_out()
     return $rc;
 }
 
+/**
+ * Collects LED panel output configuration statistics from `channelOutputs.json`,
+ * including panel dimensions, scan type, and panel count.
+ *
+ * @return array Panel output stats including type, panelWidth, panelHeight, panelCount, and channelCount.
+ */
 function stats_panel_out()
 {
     global $settings;
@@ -638,6 +771,12 @@ function stats_panel_out()
     return $rc;
 }
 
+/**
+ * Collects a list of enabled non-universe, non-panel channel output types
+ * from the `co-other` configuration file.
+ *
+ * @return array Array with a "types" key listing enabled output type strings.
+ */
 function stats_other_out()
 {
     global $settings;
@@ -666,6 +805,13 @@ function stats_other_out()
     return $rc;
 }
 
+/**
+ * Collects pixel string output statistics from the given config file,
+ * counting the total pixel count and the set of protocols in use.
+ *
+ * @param string $file Absolute path to the pixel strings configuration JSON file.
+ * @return array Stats including type, subType, enabled, outputCount, pixelCount, and protocols.
+ */
 function stats_pixel_or_pi($file)
 {
     global $settings;
@@ -715,18 +861,33 @@ function stats_pixel_or_pi($file)
     return $rc;
 }
 
+/**
+ * Collects pixel string output statistics for Raspberry Pi (`co-pixelStrings`).
+ *
+ * @return array Pixel string output stats (see stats_pixel_or_pi).
+ */
 function stats_pixel_pi_out()
 {
     global $settings;
     return stats_pixel_or_pi($settings['co-pixelStrings']);
 }
 
+/**
+ * Collects pixel string output statistics for BeagleBone (`co-bbbStrings`).
+ *
+ * @return array Pixel string output stats (see stats_pixel_or_pi).
+ */
 function stats_pixel_bbb_out()
 {
     global $settings;
     return stats_pixel_or_pi($settings['co-bbbStrings']);
 }
 
+/**
+ * Returns the current system timezone offset and abbreviation.
+ *
+ * @return string Timezone string, e.g. "-0500 EST".
+ */
 function stats_timezone()
 {
     $output = [];
@@ -734,6 +895,12 @@ function stats_timezone()
     return $output[0];
 }
 
+/**
+ * Collects PWM output configuration statistics from the `co-pwm` config file,
+ * including enabled state, frequency, and counts of `LED` vs `Servo` output types.
+ *
+ * @return array PWM output stats including type, enabled, frequency, and types map.
+ */
 function stats_pwm_out()
 {
     global $settings;

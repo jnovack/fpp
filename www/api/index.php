@@ -5,6 +5,11 @@ $skipJSsettings = 1;
 require_once '../config.php';
 require_once '../common.php';
 
+dispatch_get('/', 'ServeApiDocs');
+dispatch_get('/api.html', 'ServeApiHtml');
+dispatch_get('/openapi.yaml', 'ServeOpenApiSpec');
+dispatch_get('/openapi.json', 'ServeOpenApiSpec');
+
 dispatch_get('/backups/list', 'GetAvailableBackups');
 dispatch_get('/backups/list/:DeviceName', 'GetAvailableBackupsOnDevice');
 dispatch_get('/backups/devices', 'RetrieveAvailableBackupsDevices');
@@ -200,27 +205,22 @@ run();
 
 ///////////////////////////////////////////////////////////////////////////
 
-function addPluginEndpoints()
+// Returns an array of all plugin endpoints: [['plugin'=>..., 'method'=>..., 'endpoint'=>..., 'callback'=>...], ...]
+function collectPluginEndpoints()
 {
     global $pluginDirectory;
+    $collected = array();
     $baseDir = $pluginDirectory . '/';
     if ($dir = opendir($baseDir)) {
         while (($file = readdir($dir)) !== false) {
             if (!in_array($file, array('.', '..')) && is_dir($baseDir . $file) && is_file($baseDir . $file . '/api.php')) {
                 $functionsBefore = get_defined_functions();
-                $userFunctionsBefore = array();
-                if (isset($functionsBefore['user'])) {
-                    $userFunctionsBefore = $functionsBefore['user'];
-                }
+                $userFunctionsBefore = isset($functionsBefore['user']) ? $functionsBefore['user'] : array();
 
                 require_once $baseDir . $file . '/api.php';
 
                 $functionsAfter = get_defined_functions();
-                $userFunctionsAfter = array();
-                if (isset($functionsAfter['user'])) {
-                    $userFunctionsAfter = $functionsAfter['user'];
-                }
-
+                $userFunctionsAfter = isset($functionsAfter['user']) ? $functionsAfter['user'] : array();
                 $newUserFunctions = array_diff($userFunctionsAfter, $userFunctionsBefore);
 
                 $sfile = preg_replace('/-/', '', $file);
@@ -240,24 +240,75 @@ function addPluginEndpoints()
                     continue;
                 }
 
-                $endpoints = call_user_func($endpointFunction);
-                foreach ($endpoints as $ep) {
-                    if (!isset($ep['callback']) || !is_callable($ep['callback'])) {
-                        error_log("Skipping plugin endpoint for '$file': callback missing or not callable");
+                foreach (call_user_func($endpointFunction) as $ep) {
+                    if (!isset($ep['callback'])) {
+                        error_log("Skipping plugin endpoint for '$file': callback missing");
                         continue;
                     }
-
-                    if ($ep['method'] == 'GET') {
-                        dispatch_get('/plugin/' . $file . '/' . $ep['endpoint'], $ep['callback']);
-                    } else if ($ep['method'] == 'POST') {
-                        dispatch_post('/plugin/' . $file . '/' . $ep['endpoint'], $ep['callback']);
-                    } else if ($ep['method'] == 'PUT') {
-                        dispatch_put('/plugin/' . $file . '/' . $ep['endpoint'], $ep['callback']);
-                    } else if ($ep['method'] == 'DELETE') {
-                        dispatch_delete('/plugin/' . $file . '/' . $ep['endpoint'], $ep['callback']);
-                    }
+                    $collected[] = array(
+                        'plugin'   => $file,
+                        'method'   => $ep['method'],
+                        'endpoint' => $ep['endpoint'],
+                        'callback' => $ep['callback'],
+                    );
                 }
             }
         }
     }
+    return $collected;
+}
+
+function addPluginEndpoints()
+{
+    foreach (collectPluginEndpoints() as $ep) {
+        if (!is_callable($ep['callback'])) {
+            error_log("Skipping plugin endpoint for '{$ep['plugin']}': callback not callable");
+            continue;
+        }
+        $path = '/plugin/' . $ep['plugin'] . '/' . $ep['endpoint'];
+        if ($ep['method'] == 'GET') {
+            dispatch_get($path, $ep['callback']);
+        } else if ($ep['method'] == 'POST') {
+            dispatch_post($path, $ep['callback']);
+        } else if ($ep['method'] == 'PUT') {
+            dispatch_put($path, $ep['callback']);
+        } else if ($ep['method'] == 'DELETE') {
+            dispatch_delete($path, $ep['callback']);
+        }
+    }
+}
+
+function ServeApiDocs() {
+    extract($GLOBALS);
+    include __DIR__ . '/api.php';
+    exit;
+}
+
+function ServeApiHtml() {
+    header('Content-Type: text/html; charset=utf-8');
+    readfile(__DIR__ . '/api.html');
+    exit;
+}
+
+function ServeOpenApiSpec() {
+    $spec = json_decode(file_get_contents(__DIR__ . '/openapi.json'), true);
+
+    foreach (collectPluginEndpoints() as $ep) {
+        $method = strtolower($ep['method']);
+        $path   = '/plugin/' . $ep['plugin'] . '/' . $ep['endpoint'];
+        if (!isset($spec['paths'][$path])) {
+            $spec['paths'][$path] = array();
+        }
+        if (!isset($spec['paths'][$path][$method])) {
+            $spec['paths'][$path][$method] = array(
+                'summary'  => $ep['plugin'] . ' - ' . $ep['endpoint'],
+                'tags'     => array('Plugins', $ep['plugin']),
+                'responses' => array('200' => array('description' => 'Success')),
+            );
+        }
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    exit;
 }

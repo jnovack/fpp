@@ -1,6 +1,14 @@
 <?php
 
-//GET /api/channel/input/stats
+/**
+ * Returns the E1.31 or DDP statistics for inbound packets.
+ * Returns a meaningful error if the connection to `fppd` fails.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/channel/input/stats
+ * @response {"status": "OK", "universes": [{"bytesReceived": "325632", "errors": "1", "id": 1, "packetsReceived": "636", "startChannel": 1}]}
+ */
 function channel_input_get_stats()
 {
     $data = file_get_contents('http://127.0.0.1:32322/fppd/e131stats');
@@ -17,7 +25,14 @@ function channel_input_get_stats()
     return json($rc);
 }
 
-//GET /api/channel/input/stats
+/**
+ * Resets the E1.31/DDP channel input statistics counters.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route DELETE /api/channel/input/stats
+ * @response {"status": "OK"}
+ */
 function channel_input_delete_stats()
 {
     $url = 'http://127.0.0.1:32322/fppd/e131stats';
@@ -34,8 +49,12 @@ function channel_input_delete_stats()
     return json($result);
 }
 
-
-//GET /api/channel/output/processor
+/**
+ * Returns the current configuration of any output processors.
+ *
+ * @route GET /api/channel/output/processors
+ * @response {"outputProcessors": [{"type": "Brightness", "active": 0, "description": "", "start": 1, "count": 10, "brightness": 50, "gamma": 1}], "status": "OK"}
+ */
 function channel_get_output_processors()
 {
     global $settings;
@@ -52,7 +71,14 @@ function channel_get_output_processors()
 
 }
 
-//PUSH /api/channel/output/processor
+/**
+ * Overwrites the output processor settings file with a new configuration and
+ * returns the saved configuration.
+ *
+ * @route POST /api/channel/output/processors
+ * @body {"outputProcessors": [{"type": "Brightness", "active": 0, "description": "", "start": 1, "count": 10, "brightness": 50, "gamma": 1}]}
+ * @response {"outputProcessors": [{"type": "Brightness", "active": 0, "description": "", "start": 1, "count": 10, "brightness": 50, "gamma": 1}], "status": "OK"}
+ */
 function channel_save_output_processors()
 {
     global $settings;
@@ -69,6 +95,15 @@ function channel_save_output_processors()
     return channel_get_output_processors();
 }
 
+/**
+ * Returns the current configuration of the specified output file in JSON format.
+ * Common values of `{file}` include `universeOutputs`, `universeInputs`, `co-other`, `dmxInputs`,
+ * `co-pwm`, and `co-bbbStrings`. Supports an optional `?ip=` query parameter to fetch from
+ * a remote FPP instance.
+ *
+ * @route GET /api/channel/output/{file}
+ * @response 404 {"status": "ERROR: File not found"}
+ */
 function channel_get_output()
 {
     global $settings;
@@ -117,6 +152,14 @@ function channel_get_output()
     return json($rc);
 }
 
+/**
+ * Overwrites the specified output configuration file with the `POST` body
+ * and returns the saved configuration.
+ *
+ * @route POST /api/channel/output/{file}
+ * @body "Format varies based on file"
+ * @response "Format varies based on file"
+ */
 function channel_save_output()
 {
     global $settings;

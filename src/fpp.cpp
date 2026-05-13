@@ -336,7 +336,7 @@ void Usage(char* appname) {
            "                                 VALUE is ignored for Input mode\n"
            "  -FB                          - Query usable framebuffer devices\n\n\n"
            " The following commands are now deprecated and the FPP API should be used instead.  Eg http://<fpp hostname>/api/command/Stop Now\n"
-           " Further information on the FPP API can be found at http://<fpp hostname>/apihelp.php\n\n"
+           " Further information on the FPP API can be found at http://<fpp hostname>/api/\n\n"
            "  -V                           - Print version information\n"
            "                                            /api/fppd/version\n"
            "  -r                           - Restart fppd daemon\n"

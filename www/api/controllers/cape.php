@@ -1,7 +1,13 @@
 <?
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/cape
+/**
+ * Returns the cape information for the currently detected hardware cape
+ * (from `cape-info` settings).
+ *
+ * @route GET /api/cape
+ * @response {"id": "K16A-Bv1", "name": "K16A-B", "description": "K16A-B is a cape for the BeagleBone Black...", "version": "1.0", "designer": "Daniel Kulp", "vendor": {"name": "Kulp Lights", "url": "https://kulplights.com/", "email": "sales@kulplights.com", "image": "https://kulplights.com/images/kulplights_small.png"}, "provides": ["strings"], "serialNumber": "XXXXXXXXXXXXXX", "validEepromLocation": true, "verifiedKeyId": "dk", "cs": "yfNvfkLTR1gbKbVGjH4DEg", "eepromLocation": "/sys/bus/i2c/devices/2-0050/eeprom", "modules": ["gpio_pcf857x", "pcm5102a", "lm75"], "i2cDevices": ["pca9675 0x20", "pcf8523 0x68", "lm75 0x48"], "defaultSettings": {"LEDDisplayType": "1", "piRTC": "4", "showAllOptions": "0"}}
+ * @response 404 {"id": "No Cape!"}
+ */
 function GetCapeInfo()
 {
     global $settings;
@@ -13,8 +19,12 @@ function GetCapeInfo()
     echo "{\"id\": \"No Cape!\"}";
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/cape/options
+/**
+ * Returns a list of available cape EEPROM options for the current platform.
+ *
+ * @route GET /api/cape/options
+ * @response ["--None--", "F16-B", "F32-B", "F4-B", "F8-B", "F8-Bv2", "RGB-123"]
+ */
 function GetCapeOptions()
 {
     global $settings;
@@ -39,7 +49,12 @@ function GetCapeOptions()
     return json($js);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the path to the cape EEPROM file, checking several known locations
+ * and creating a virtual EEPROM device if necessary.
+ *
+ * @return string Absolute path to the EEPROM file, or empty string if not found.
+ */
 function GetEEPROMFilename()
 {
     global $settings;
@@ -63,6 +78,15 @@ function GetEEPROMFilename()
     return $eepromFile;
 }
 
+/**
+ * Reads the cape EEPROM and assembles the signing data payload.
+ * Used by `GetSigningData()`, `GetSigningFile()`, and `SignEEPROM()`.
+ *
+ * @param bool   $returnArray Return data as array (true) or JSON response (false).
+ * @param string $key         Signing key; read from request params if empty.
+ * @param string $order       Order ID; read from request params if empty.
+ * @return array|string       Signing data array, or a JSON error response string.
+ */
 function GetSigningDataHelper($returnArray = false, $key = '', $order = '')
 {
     if (($key == '') && ($order == '')) {
@@ -162,8 +186,12 @@ function GetSigningDataHelper($returnArray = false, $key = '', $order = '')
     return $data;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/cape/eeprom/signingData/:key/:order
+/**
+ * Returns the cape EEPROM signing data payload for use with an external signing service.
+ *
+ * @route GET /api/cape/eeprom/signingData/{key}/{order}
+ * @response {"key": "ABCD-1234", "orderID": "42", "serial": "1000000012345678", "eeprom": "<base64-encoded binary>"}
+ */
 function GetSigningData()
 {
     $data = GetSigningDataHelper(true);
@@ -175,8 +203,12 @@ function GetSigningData()
     return json($data);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/cape/eeprom/signingFile/:key/:order
+/**
+ * Downloads the cape EEPROM signing data as a binary file attachment.
+ *
+ * @route GET /api/cape/eeprom/signingFile/{key}/{order}
+ * @response "Binary file download containing the signing data JSON"
+ */
 function GetSigningFile()
 {
     global $settings;
@@ -193,7 +225,13 @@ function GetSigningFile()
     return json_encode($data);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Writes signed EEPROM data back to the cape, backing up the original first.
+ * Used by `PostSigningData()` and `SignEEPROM()`.
+ *
+ * @param array $data Signed payload containing a base64-encoded 'eeprom' key.
+ * @return string JSON response with Status OK or ERROR.
+ */
 function SignEEPROMHelper($data)
 {
     # Backup the current EEPROM
@@ -236,8 +274,13 @@ function SignEEPROMHelper($data)
     return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/cape/eeprom/sign/:key/:order
+/**
+ * Signs the cape EEPROM by sending its data to the FalconPlayer.com signing API
+ * using the provided `key` and order ID.
+ *
+ * @route POST /api/cape/eeprom/sign/{key}/{order}
+ * @response {"Status": "OK", "Message": "EEPROM Signed."}
+ */
 function SignEEPROM($key = '', $order = '')
 {
     global $settings;
@@ -274,7 +317,6 @@ function SignEEPROM($key = '', $order = '')
         $replyStr = false;
     }
 
-
     if ($replyStr === false) {
         $result['Status'] = 'ERROR';
         $result['Message'] = "Could not contact signing website https://$APIhost.  RC: " . $rc;
@@ -292,8 +334,14 @@ function SignEEPROM($key = '', $order = '')
     return SignEEPROMHelper($reply);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/cape/eeprom/signingData
+/**
+ * Accepts a signed EEPROM data payload and writes it back to the cape EEPROM.
+ * Accepts either a multipart file upload (`signingPacket`) or a raw JSON body.
+ *
+ * @route POST /api/cape/eeprom/signingData
+ * @body {"key": "ABCD-1234", "orderID": "42", "serial": "1000000012345678", "eeprom": "<base64-encoded binary>"}
+ * @response {"Status": "OK", "Message": "EEPROM Signed."}
+ */
 function PostSigningData()
 {
     $dataFile = '';
@@ -322,8 +370,14 @@ function PostSigningData()
     return SignEEPROMHelper($data);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/cape/eeprom/voucher
+/**
+ * Redeems a voucher code against the FalconPlayer.com signing API to obtain
+ * a signing `key` and order ID.
+ *
+ * @route POST /api/cape/eeprom/voucher
+ * @body {"voucher": "XXXX-XXXX-XXXX-XXXX", "first_name": "John", "last_name": "Doe", "email": "john@example.com", "password": "secret"}
+ * @response {"Status": "OK", "Message": "", "key": "ABCD-1234", "order": "42"}
+ */
 function RedeemVoucher()
 {
     global $settings;
@@ -397,6 +451,12 @@ function RedeemVoucher()
     return json($result);
 }
 
+/**
+ * Returns a list of available string cape configuration `key` values.
+ *
+ * @route GET /api/cape/strings
+ * @response ["F16v3-strings", "F8v2-strings"]
+ */
 function GetCapeStringOptions()
 {
     global $settings;
@@ -409,6 +469,13 @@ function GetCapeStringOptions()
     }
     return json($js);
 }
+
+/**
+ * Returns a list of available LED panel cape configuration `key` values.
+ *
+ * @route GET /api/cape/panel
+ * @response []
+ */
 function GetCapePanelOptions()
 {
     global $settings;
@@ -421,6 +488,14 @@ function GetCapePanelOptions()
     }
     return json($js);
 }
+
+/**
+ * Returns the string cape configuration JSON for the specified `key`.
+ *
+ * @route GET /api/cape/strings/{key}
+ * @response {"name": "K16A-B", "longName": "K16A-B", "pinoutVersion": "1.x", "numSerial": 0, "supportsSmartReceivers": true, "outputs": [{"pin": "P8-45"}], "groups": [{"start": 1, "count": 16}], "serial": []}
+ * @response 404 ["Not Found!"]
+ */
 function GetCapeStringConfig()
 {
     global $settings;
@@ -433,6 +508,13 @@ function GetCapeStringConfig()
     header("Content-Type: application/json");
     echo "[\"Not Found!\"]";
 }
+
+/**
+ * Returns the LED panel cape configuration JSON for the specified `key`.
+ *
+ * @route GET /api/cape/panel/{key}
+ * @response {}
+ */
 function GetCapePanelConfig()
 {
     global $settings;

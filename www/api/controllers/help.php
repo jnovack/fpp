@@ -1,5 +1,11 @@
 <?
 
+/**
+ * Returns an HTML page listing all available FPP API endpoints and their descriptions.
+ *
+ * @route GET /api/help
+ * @response "<html table listing all API endpoints>"
+ */
 function help_help()
 {
     $endpoints = array(
@@ -144,7 +150,6 @@ td {
             $output
         );
     }
-
 
     return $h;
 }

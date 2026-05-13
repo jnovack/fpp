@@ -51,8 +51,8 @@ $themeInfo = array();
 $themeInfo["FOOTER_URL"] = "https://www.falconplayer.com";
 $themeInfo["FOOTER_URL_TEXT"] = "www.falconplayer.com";
 
-$themeInfo["HEADER_LOGO1"] = "images/redesign/falconlogo.svg";
-$themeInfo["HEADER_LOGO2"] = "images/redesign/fpp-logo.svg";
+$themeInfo["HEADER_LOGO1"] = "/images/redesign/falconlogo.svg";
+$themeInfo["HEADER_LOGO2"] = "/images/redesign/fpp-logo.svg";
 
 // FIXME, need to convert other settings below to use this array
 $settings['fppMode'] = "player";

@@ -1,6 +1,12 @@
 <?
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Recursively collects relative file paths within a directory.
+ *
+ * @param string $dir    Absolute base directory path.
+ * @param string $subdir Current subdirectory relative to $dir (used during recursion).
+ * @return array Flat array of relative file paths found under $dir.
+ */
 function GetFilesInDir($dir, $subdir = '')
 {
 	$result = array();
@@ -20,6 +26,12 @@ function GetFilesInDir($dir, $subdir = '')
 	return $result;
 }
 
+/**
+ * Returns a list of config files in `/home/fpp/media/config` or an optional subdirectory.
+ *
+ * @route GET /api/configfile
+ * @response {"Path": "", "ConfigFiles": ["File1", "File2", "File3"]}
+ */
 function GetConfigFileList($dir = '')
 {
 	global $settings;
@@ -40,9 +52,13 @@ function GetConfigFileList($dir = '')
 	return json($result);
 }
 
-
-
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Returns the contents of a specific config file, or a directory listing if
+ * the path resolves to a directory.
+ *
+ * @route GET /api/configfile/**
+ * @response "(Raw config file contents)"
+ */
 function DownloadConfigFile()
 {
 	global $settings;
@@ -57,7 +73,14 @@ function DownloadConfigFile()
 	render_file($fileName);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Uploads or overwrites a config file in `/home/fpp/media/config`, creating any
+ * necessary subdirectories. Accepts a multipart file upload or raw `POST` body.
+ *
+ * @route POST /api/configfile/**
+ * @body "(Raw config file contents)"
+ * @response {"Status": "OK", "Message": ""}
+ */
 function UploadConfigFile()
 {
 	global $settings;
@@ -117,7 +140,12 @@ function UploadConfigFile()
 	return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
+/**
+ * Deletes a config file from `/home/fpp/media/config`.
+ *
+ * @route DELETE /api/configfile/**
+ * @response {"Status": "OK", "Message": ""}
+ */
 function DeleteConfigFile()
 {
 	global $settings;
@@ -144,5 +172,4 @@ function DeleteConfigFile()
 	return json($result);
 }
 
-/////////////////////////////////////////////////////////////////////////////
 ?>

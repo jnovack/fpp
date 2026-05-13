@@ -1,0 +1,8 @@
+apis:
+  fpp:
+    root: openapi.json
+
+rules:
+  security-defined: off
+  operation-operationId: warn
+  tag-description: warn

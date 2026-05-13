@@ -1,7 +1,11 @@
 <?
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/sequence
+/**
+ * Returns a list of all `*.fseq` sequence files.
+ *
+ * @route GET /api/sequence
+ * @response ["GreatestShow", "StPatricksDay", "Valentine"]
+ */
 function GetSequences()
 {
     global $settings;
@@ -15,12 +19,17 @@ function GetSequences()
     return json($sequences);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/sequence/:SequenceName
+/**
+ * Downloads the `*.fseq` file for the named sequence.
+ *
+ * @route GET /api/sequence/{SequenceName}
+ * @response "(Raw FSEQ file data)"
+ * @response 404 "Not found: {SequenceName}"
+ */
 function GetSequence()
 {
     global $settings;
-    
+
     $sequence = params('SequenceName');
     if ((substr($sequence, -5) != ".fseq") && (substr($sequence, -5) != ".eseq")) {
         $sequence = $sequence . ".fseq";
@@ -43,8 +52,14 @@ function GetSequence()
         halt(404, "Not found: " . $sequence);
     }
 }
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/sequence/:SequenceName/meta
+
+/**
+ * Returns metadata from the `*.fseq` file for the named sequence.
+ *
+ * @route GET /api/sequence/{SequenceName}/meta
+ * @response {"Name": "GreatestShow.fseq", "Version": "2.0", "ID": "1553194098754908", "StepTime": 25, "NumFrames": 10750, "MaxChannel": 84992, "ChannelCount": 84992}
+ * @response 404 "Not found: {SequenceName}"
+ */
 function GetSequenceMetaData()
 {
     global $settings, $fppDir;
@@ -75,8 +90,13 @@ function GetSequenceMetaData()
     halt(404, "Not found: " . $file);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// POST /api/sequence/:SequenceName
+/**
+ * Uploads a new `*.fseq` sequence file.
+ *
+ * @route POST /api/sequence/{SequenceName}
+ * @body "(Raw FSEQ file data)"
+ * @response {"Status": "OK", "Message": ""}
+ */
 function PostSequence()
 {
     global $settings;
@@ -102,8 +122,12 @@ function PostSequence()
     return json($resp);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// DELETE /api/sequence/:Sequence
+/**
+ * Deletes the named `*.fseq` sequence file.
+ *
+ * @route DELETE /api/sequence/{SequenceName}
+ * @response {"Status": "OK", "Message": ""}
+ */
 function DeleteSequences()
 {
     global $settings;
@@ -124,13 +148,22 @@ function DeleteSequences()
     return json($resp);
 }
 
-// GET api/sequence/:SequenceName/start/:startSecond
+/**
+ * Starts the given sequence at the specified time frame. Only intended for testing. In most
+ * situations, use the "Start Playlist" command from the command API and pass the sequence
+ * name as the playlist name.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/sequence/{SequenceName}/start/{startSecond}
+ * @response {"status": "OK", "SequenceName": "single_line.fseq", "startSecond": "9"}
+ */
 function GetSequenceStart()
 {
     global $settings;
 
     $sequence = params('SequenceName');
-    
+
     if (substr($sequence, -5) == ".eseq") {
         $rc = array("status" => "ERROR: This API call does only supports Sequences, not Effects");
         return json($rc);
@@ -151,7 +184,14 @@ function GetSequenceStart()
 
 }
 
-// GET api/sequence/current/step
+/**
+ * If the sequence was paused via `sequence/current/togglePause`, steps the sequence forward one frame.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/sequence/current/step
+ * @response {"status": "OK"}
+ */
 function GetSequenceStep()
 {
     SendCommand("SingleStepSequence");
@@ -161,7 +201,15 @@ function GetSequenceStep()
 
 }
 
-// GET api/sequence/current/togglePause
+/**
+ * Pauses or resumes the currently playing sequence. Only valid if the sequence was started via
+ * `/api/sequence/{SequenceName}/start/{startSecond}`.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/sequence/current/togglePause
+ * @response {"status": "OK"}
+ */
 function GetSequenceTogglePause()
 {
     SendCommand("ToggleSequencePause");
@@ -169,7 +217,15 @@ function GetSequenceTogglePause()
     return json($rc);
 }
 
-// GET api/sequence/current/stop
+/**
+ * Stops the currently playing sequence. Only valid if the sequence was started via
+ * `/api/sequence/{SequenceName}/start/{startSecond}`.
+ *
+ * Requires: `fppd` to be running.
+ *
+ * @route GET /api/sequence/current/stop
+ * @response {"status": "OK"}
+ */
 function GetSequenceStop()
 {
     SendCommand("StopSequence");
@@ -178,7 +234,12 @@ function GetSequenceStop()
 
 }
 
-// Helper function
+/**
+ * Returns the sequence directory for a given sequence filename based on its extension.
+ *
+ * @param string $seq Sequence filename including extension (`.fseq` or `.eseq`).
+ * @return string Absolute path to the directory containing the sequence file.
+ */
 function FSeqOrEseqDirectory($seq)
 {
     global $settings;

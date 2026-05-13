@@ -3,8 +3,12 @@
 require_once "../common/settings.php";
 require_once '../commandsocket.php';
 
-/////////////////////////////////////////////////////////////////////////////
-// GET /api/system/reboot
+/**
+ * Reboots the operating system.
+ *
+ * @route GET /api/system/reboot
+ * @response {"status": "OK"}
+ */
 function RebootDevice()
 {
     global $settings;
@@ -21,7 +25,12 @@ function RebootDevice()
     return json($output);
 }
 
-// GET /api/system/shutdown
+/**
+ * Executes a clean shutdown of the operating system.
+ *
+ * @route GET /api/system/shutdown
+ * @response {"status": "OK"}
+ */
 function SystemShutdownOS()
 {
     global $SUDO;
@@ -37,7 +46,12 @@ function SystemShutdownOS()
     return json($output);
 }
 
-// GET /api/system/fppd/start
+/**
+ * Starts the `fppd` process (if it isn't already running).
+ *
+ * @route GET /api/system/fppd/start
+ * @response {"status": "OK"}
+ */
 function StartFPPD()
 {
     global $settingsFile, $SUDO, $fppDir, $settings;
@@ -55,6 +69,10 @@ function StartFPPD()
     return json($output);
 }
 
+/**
+ * Sends stop commands to `fppd` and kills the process if it does not exit cleanly.
+ * Used internally by `StopFPPD()` and `RestartFPPD()`; returns no output.
+ */
 function StopFPPDNoStatus()
 {
     global $SUDO, $settings;
@@ -78,8 +96,12 @@ function StopFPPDNoStatus()
     }
 }
 
-// GET /api/system/fppd/start
-
+/**
+ * Stops the `fppd` process if it is running.
+ *
+ * @route GET /api/system/fppd/stop
+ * @response {"status": "OK"}
+ */
 function StopFPPD()
 {
     StopFPPDNoStatus();
@@ -87,7 +109,13 @@ function StopFPPD()
     return json($output);
 }
 
-// GET /api/system/fppd/restart
+/**
+ * Restarts the `fppd` process. Pass `?quick=1` to reload some configuration without
+ * a full restart.
+ *
+ * @route GET /api/system/fppd/restart
+ * @response {"status": "OK"}
+ */
 function RestartFPPD()
 {
     global $_GET;
@@ -104,7 +132,12 @@ function RestartFPPD()
     return StartFPPD();
 }
 
-// GET /api/system/releaseNotes/:version
+/**
+ * Returns release notes for the specified FPP version tag from the GitHub releases API.
+ *
+ * @route GET /api/system/releaseNotes/{version}
+ * @response {"status": "OK", "draft": false, "prerelease": false, "body": "...", "published_at": "2026-01-08T03:09:40Z"}
+ */
 function ViewReleaseNotes()
 {
     $version = params('version');
@@ -125,7 +158,13 @@ function ViewReleaseNotes()
     }
 }
 
-// GET /api/system/updateStatus
+/**
+ * Returns the current FPP update/upgrade status, including whether a newer version is available,
+ * the current commit, and any major version or end-of-life warnings.
+ *
+ * @route GET /api/system/updateStatus
+ * @response {"status": "OK", "branchUpgradeAvailable": false, "branchUpgradeTarget": "", "branchUpgradeVersion": "", "isMajorVersionUpgrade": false, "commitUpdateAvailable": false, "remoteCommit": "ece480e86b7dd8f2d013248e8f99bb0e8baac197", "currentBranch": "master", "localCommit": "ece480e86", "isEndOfLife": false, "latestMajorVersion": 9}
+ */
 function GetUpdateStatus()
 {
     // Test mode: simulate different upgrade scenarios
@@ -290,7 +329,13 @@ function GetUpdateStatus()
     ));
 }
 
-// PUT /system/volume
+/**
+ * Sets the system volume. The new level should be passed as a JSON body.
+ *
+ * @route POST /api/system/volume
+ * @body {"volume": 34}
+ * @response {"status": "OK", "volume": 34}
+ */
 function SystemSetAudio()
 {
     $rc = "OK";
@@ -311,7 +356,12 @@ function SystemSetAudio()
     return json(array("status" => $rc, "volume" => $vol));
 }
 
-// GET /system/volume
+/**
+ * Returns the current volume if `fppd` is running, or the `Volume` setting value if not.
+ *
+ * @route GET /api/system/volume
+ * @response {"status": "OK", "method": "FPPD", "volume": 70}
+ */
 function SystemGetAudio()
 {
     global $settings;
@@ -340,7 +390,14 @@ function SystemGetAudio()
     return json(array("status" => "OK", "method" => $method, "volume" => $vol));
 }
 
-// GET /api/system/status
+/**
+ * Returns `fppd`, network, current playlist, schedule, utilization, host, version, and MQTT status.
+ * Pass an optional array of IP addresses (e.g. `&ip[]=192.168.0.1&ip[]=192.168.0.2`) to query
+ * remote instances instead.
+ *
+ * @route GET /api/system/status
+ * @response {"fppd": "running", "status": 1, "status_name": "playing", "mode": 2, "mode_name": "player", "current_playlist": {"count": "4", "playlist": "Test1", "type": "pause", "index": "2"}, "volume": 70, "wifi": [], "interfaces": []}
+ */
 function SystemGetStatus()
 {
     global $_GET;
@@ -511,17 +568,26 @@ function SystemGetStatus()
         return json(finalizeStatusJson($data));
     }
 }
-// GET /api/system/info
+
+/**
+ * Returns basic information about the system.
+ *
+ * @route GET /api/system/info
+ * @response {"HostName": "FPPPi", "HostDescription": "", "Platform": "Raspberry Pi", "Variant": "Pi 4", "Mode": "player", "Version": "6.0", "Branch": "master", "OSVersion": "v2022-02", "OSRelease": "Raspbian GNU/Linux 11 (bullseye)", "channelRanges": "1545-84479", "majorVersion": 6, "minorVersion": 1000, "typeId": 13, "uuid": "M1-10000000AAAAAAA", "Utilization": {"CPU": 0.12, "Memory": 1.96, "Uptime": "11 days"}, "Kernel": "5.10.92-v7l+", "LocalGitVersion": "b998f65", "RemoteGitVersion": "ed62c12", "UpgradeSource": "github.com", "IPs": ["192.168.3.84"]}
+ */
 function SystemGetInfo()
 {
     $result = GetSystemInfoJsonInternal(isset($_GET['simple']));
     return json($result);
 }
 
-//
-// This function adds some local information to the multi-sync result
-// That doesn't come from fppd
-//
+/**
+ * Adds network interfaces, reboot/restart flags, boot delay status, advanced system info,
+ * plugin header indicators, and crash warnings to the `fppd` status array.
+ *
+ * @param array $obj The base status array returned from fppd or the default stub.
+ * @return array The enriched status array.
+ */
 function finalizeStatusJson($obj)
 {
     global $settings;
@@ -571,7 +637,6 @@ function finalizeStatusJson($obj)
         $obj['pluginHeaderIndicators'] = json_decode(GetPluginHeaderIndicators(), true);
     }
 
-
     if (is_dir($settings['mediaDirectory'] . "/crashes")) {
         $num = count(glob($settings['mediaDirectory'] . "/crashes/*.zip"));
         if ($num > 0) {
@@ -598,11 +663,11 @@ function finalizeStatusJson($obj)
     return $obj;
 }
 
-// GET /api/system/GetOSPackages
 /**
- * Get a list of all available packages on the system.
+ * Returns a list of all installed and available OS package names via `apt list --all-versions`.
  *
- * @return string List of package names.
+ * @route GET /api/system/packages
+ * @response ["apache2", "ffmpeg", "php"]
  */
 function GetOSPackages()
 {
@@ -624,13 +689,12 @@ function GetOSPackages()
 
     return json_encode($packages);
 }
+
 /**
- * Get information about a specific package.
+ * Returns description, dependencies, and installation status for the specified OS package.
  *
- * This function retrieves the description, dependencies, and installation status for a given package.
- *
- * @param string $packageName The name of the package.
- * @return string An associative array containing 'Description', 'Depends', and 'Installed'.
+ * @route GET /api/system/packages/info/{packageName}
+ * @response {"Description": "The FFmpeg multimedia framework", "Depends": "libavcodec58, libavformat58", "Installed": "Yes"}
  */
 function GetOSPackageInfo()
 {
@@ -674,7 +738,12 @@ function GetOSPackageInfo()
     ]);
 }
 
-// Skip boot delay and start FPPD immediately
+/**
+ * Skips the current boot delay by creating a skip flag file, allowing FPP startup to proceed immediately.
+ *
+ * @route POST /api/system/fppd/skipBootDelay
+ * @response {"status": "OK", "message": "Boot delay skip requested"}
+ */
 function SkipBootDelay()
 {
     global $settings;
@@ -691,5 +760,3 @@ function SkipBootDelay()
 
     return json_encode(['status' => 'OK', 'message' => 'Boot delay skip requested']);
 }
-
-
