@@ -109,7 +109,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/configuration",
+        "summary": "Create JSON backup",
         "description": "Generates a new JSON settings backup for all settings areas. If an alternate backup location has been set, the backup is also copied to that location.",
         "requestBody": {
           "content": {
@@ -145,7 +145,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/configuration/list",
+        "summary": "Get available JSON backups",
         "description": "Returns a list of JSON configuration backups stored locally, or \u2014 if `jsonConfigBackupUSBLocation` is set \u2014 a combined list from local storage and the configured USB device.",
         "responses": {
           "200": {
@@ -194,7 +194,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/configuration/list/{DeviceName}",
+        "summary": "Get list of JSON backups on device",
         "description": "Returns a list of JSON configuration files on a specified alternate storage device. Available devices can be obtained from `/backups/devices`, or the currently configured device is stored in the `jsonConfigBackupUSBLocation` setting.",
         "responses": {
           "200": {
@@ -239,7 +239,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/configuration/restore/{Directory}/{BackupFilename}",
+        "summary": "Restores JSON backup",
         "description": "Restores the specified JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate` (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid directory and filename combinations.",
         "requestBody": {
           "content": {
@@ -301,7 +301,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/configuration/{Directory}/{BackupFilename}",
+        "summary": "Delete JSON backup",
         "description": "Deletes a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate` (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid directories and filenames.",
         "responses": {
           "200": {
@@ -325,7 +325,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/configuration/{Directory}/{BackupFilename}",
+        "summary": "Download JSON backup",
         "description": "Downloads a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate` (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid directories and filenames.",
         "responses": {
           "200": {
@@ -354,7 +354,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/devices",
+        "summary": "Get devices available for backups",
         "description": "Returns a list of devices (e.g. USB drives, SSDs) attached to the system that can be used for backups.",
         "responses": {
           "200": {
@@ -401,7 +401,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/devices/mount/{DeviceName}/{MountLocation}",
+        "summary": "Mount device",
         "description": "Mounts the specified device to `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).",
         "responses": {
           "200": {
@@ -445,7 +445,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/devices/unmount/{DeviceName}/{MountLocation}",
+        "summary": "Unmount device",
         "description": "Unmounts the drive at `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).",
         "responses": {
           "200": {
@@ -471,7 +471,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/list",
+        "summary": "Get available backups",
         "description": "Returns a list of full system backup files stored in the local `backups/` directory.",
         "responses": {
           "200": {
@@ -507,7 +507,7 @@
         "tags": [
           "backups"
         ],
-        "summary": "backups/list/{DeviceName}",
+        "summary": "Get list of backups on device",
         "description": "Returns a list of full system backup files stored on the specified device (e.g. a USB drive).",
         "responses": {
           "200": {
@@ -533,7 +533,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape",
+        "summary": "Get cape information",
         "description": "Returns the cape information for the currently detected hardware cape (from `cape-info` settings).",
         "responses": {
           "200": {
@@ -621,7 +621,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/eeprom/sign/{key}/{order}",
+        "summary": "Sign EEPROM",
         "description": "Signs the cape EEPROM by sending its data to the FalconPlayer.com signing API using the provided `key` and order ID.",
         "responses": {
           "200": {
@@ -646,7 +646,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/eeprom/signingData",
+        "summary": "Upload signed EEPROM",
         "description": "Accepts a signed EEPROM data payload and writes it back to the cape EEPROM. Accepts either a multipart file upload (`signingPacket`) or a raw JSON body.",
         "requestBody": {
           "content": {
@@ -704,7 +704,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/eeprom/signingData/{key}/{order}",
+        "summary": "Get signing data as text",
         "description": "Returns the cape EEPROM signing data payload for use with an external signing service.",
         "responses": {
           "200": {
@@ -749,7 +749,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/eeprom/signingFile/{key}/{order}",
+        "summary": "Get signing data as binary",
         "description": "Downloads the cape EEPROM signing data as a binary file attachment.",
         "responses": {
           "200": {
@@ -763,7 +763,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/eeprom/voucher",
+        "summary": "Redeem signing voucher",
         "description": "Redeems a voucher code against the FalconPlayer.com signing API to obtain a signing `key` and order ID.",
         "requestBody": {
           "content": {
@@ -806,7 +806,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/options",
+        "summary": "Get cape options",
         "description": "Returns a list of available cape EEPROM options for the current platform.",
         "responses": {
           "200": {
@@ -836,7 +836,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/panel",
+        "summary": "Get all cape panels",
         "description": "Returns a list of available LED panel cape configuration `key` values.",
         "responses": {
           "200": {
@@ -868,7 +868,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/panel/{key}",
+        "summary": "Get cape panel",
         "description": "Returns the LED panel cape configuration JSON for the specified `key`.",
         "responses": {
           "200": {
@@ -890,7 +890,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/strings",
+        "summary": "Get all cape strings",
         "description": "Returns a list of available string cape configuration `key` values.",
         "responses": {
           "200": {
@@ -925,7 +925,7 @@
         "tags": [
           "cape"
         ],
-        "summary": "cape/strings/{key}",
+        "summary": "Get cape string",
         "description": "Returns the string cape configuration JSON for the specified `key`.",
         "responses": {
           "200": {
@@ -978,8 +978,14 @@
         "tags": [
           "channel"
         ],
-        "summary": "channel/input/stats",
-        "description": "Resets the E1.31/DDP channel input statistics counters. Requires: `fppd` to be running.",
+        "summary": "Reset E1.31 stats",
+        "description": "Resets the E1.31/DDP channel input statistics counters.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -1000,8 +1006,14 @@
         "tags": [
           "channel"
         ],
-        "summary": "channel/input/stats",
-        "description": "Returns the E1.31 or DDP statistics for inbound packets. Returns a meaningful error if the connection to `fppd` fails. Requires: `fppd` to be running.",
+        "summary": "Get E1.31 stats",
+        "description": "Returns the E1.31 or DDP statistics for inbound packets. Returns a meaningful error if the connection to `fppd` fails.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -1033,7 +1045,7 @@
         "tags": [
           "channel"
         ],
-        "summary": "channel/output/processors",
+        "summary": "Get output processors",
         "description": "Returns the current configuration of any output processors.",
         "responses": {
           "200": {
@@ -1066,7 +1078,7 @@
         "tags": [
           "channel"
         ],
-        "summary": "channel/output/processors",
+        "summary": "Set output processors",
         "description": "Overwrites the output processor settings file with a new configuration and returns the saved configuration.",
         "requestBody": {
           "content": {
@@ -1133,7 +1145,7 @@
         "tags": [
           "channel"
         ],
-        "summary": "channel/output/{file}",
+        "summary": "Get channel output",
         "description": "Returns the current configuration of the specified output file in JSON format. Common values of `{file}` include `universeOutputs`, `universeInputs`, `co-other`, `dmxInputs`, `co-pwm`, and `co-bbbStrings`. Supports an optional `?ip=` query parameter to fetch from a remote FPP instance.",
         "responses": {
           "404": {
@@ -1155,7 +1167,7 @@
         "tags": [
           "channel"
         ],
-        "summary": "channel/output/{file}",
+        "summary": "Set channel output",
         "description": "Overwrites the specified output configuration file with the `POST` body and returns the saved configuration.",
         "requestBody": {
           "content": {
@@ -1179,7 +1191,7 @@
         "tags": [
           "configfile"
         ],
-        "summary": "configfile",
+        "summary": "Get directory list",
         "description": "Returns a list of config files in `/home/fpp/media/config` or an optional subdirectory.",
         "responses": {
           "200": {
@@ -1208,7 +1220,7 @@
         "tags": [
           "configfile"
         ],
-        "summary": "configfile/**",
+        "summary": "Delete configuration file",
         "description": "Deletes a config file from `/home/fpp/media/config`.",
         "responses": {
           "200": {
@@ -1231,7 +1243,7 @@
         "tags": [
           "configfile"
         ],
-        "summary": "configfile/**",
+        "summary": "Get file or directory list",
         "description": "Returns the contents of a specific config file, or a directory listing if the path resolves to a directory.",
         "responses": {
           "200": {
@@ -1243,7 +1255,7 @@
         "tags": [
           "configfile"
         ],
-        "summary": "configfile/**",
+        "summary": "Upload configuration file",
         "description": "Uploads or overwrites a config file in `/home/fpp/media/config`, creating any necessary subdirectories. Accepts a multipart file upload or raw `POST` body.",
         "requestBody": {
           "content": {
@@ -1296,7 +1308,7 @@
         "tags": [
           "dir"
         ],
-        "summary": "dir/{DirName}/{SubDir}",
+        "summary": "Delete empty subdirectory",
         "description": "Deletes an empty subdirectory from the specified media directory.",
         "responses": {
           "200": {
@@ -1320,7 +1332,7 @@
         "tags": [
           "dir"
         ],
-        "summary": "dir/{DirName}/{SubDir}",
+        "summary": "Create subdirectory",
         "description": "Creates a subdirectory inside the specified media directory.",
         "responses": {
           "200": {
@@ -1346,7 +1358,7 @@
         "tags": [
           "effects"
         ],
-        "summary": "effects",
+        "summary": "Get effects",
         "description": "Returns a list of effect (`*.eseq`) files available in the effects directory.",
         "responses": {
           "200": {
@@ -1371,7 +1383,7 @@
         "tags": [
           "effects"
         ],
-        "summary": "effects/ALL",
+        "summary": "Get all effects",
         "description": "Returns a combined list of all effect (`*.eseq`) files from both the effects directory and the sequences directory.",
         "responses": {
           "200": {
@@ -1397,7 +1409,7 @@
         "tags": [
           "email"
         ],
-        "summary": "email/configure",
+        "summary": "Set email options",
         "description": "Configures outbound email using the existing settings.",
         "responses": {
           "200": {
@@ -1422,7 +1434,7 @@
         "tags": [
           "email"
         ],
-        "summary": "email/test",
+        "summary": "Send test email",
         "description": "Sends a test email using the existing settings.",
         "responses": {
           "200": {
@@ -1447,7 +1459,7 @@
         "tags": [
           "events"
         ],
-        "summary": "events",
+        "summary": "Get all event files",
         "description": "Returns a map of all event (`*.fevt`) files, keyed by event ID (filename without extension).",
         "responses": {
           "200": {
@@ -1485,7 +1497,7 @@
         "tags": [
           "events"
         ],
-        "summary": "events/{eventId}",
+        "summary": "Get event file",
         "description": "Returns the contents of a specific event file. If `{eventId}` is `ids`, returns a map of event IDs to display names.",
         "responses": {
           "200": {
@@ -1521,7 +1533,7 @@
         "tags": [
           "events"
         ],
-        "summary": "events/{eventId}/trigger",
+        "summary": "Trigger event",
         "description": "Triggers the specified event by sending a `Trigger Event` command to `fppd`.",
         "responses": {
           "200": {
@@ -1563,7 +1575,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/info/{plugin}/{ext}/**",
+        "summary": "Get plugin file info",
         "description": "Returns plugin-specific file info for the specified file path. The plugin name, extension category, and file path are read from route parameters. The metadata command is defined in the plugin's `pluginInfo.json`.",
         "responses": {
           "200": {
@@ -1595,7 +1607,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/move/{fileName}",
+        "summary": "Move file",
         "description": "Moves the specified file from the `uploads` directory to the correct media subfolder based on its extension, returning a status of `OK` or an error message if not successful.",
         "responses": {
           "200": {
@@ -1629,7 +1641,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/onUpload/{ext}/**",
+        "summary": "Notify plugin of upload",
         "description": "Notifies any plugin that has registered an `onUpload` handler for the given file extension. `:ext` is the extension category and `**` is the file path.",
         "responses": {
           "200": {
@@ -1663,7 +1675,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/{DirName}",
+        "summary": "Upload file",
         "description": "Handles chunked file uploads via `PATCH` (TUS-style). A `POST` to the same route initiates the session and returns a unique upload ID. Each `PATCH` request delivers a chunk identified by `Upload-Name`, `Upload-Offset`, and `Upload-Length` headers; when all chunks arrive, the file is assembled.",
         "responses": {
           "200": {
@@ -1700,7 +1712,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/{DirName}/**",
+        "summary": "Delete file or directory",
         "description": "Deletes the specified file or directory from a media directory. Validates the resolved path against the allowed base directory to prevent path traversal.",
         "responses": {
           "200": {
@@ -1724,7 +1736,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/{DirName}/**",
+        "summary": "Get file contents",
         "description": "Downloads the specified file from a media directory. Supports optional query params: `?tail=N` (return last N lines), `?play=1` (set playback content type), `?attach=1` (force attachment download for images).",
         "responses": {
           "200": {
@@ -1767,7 +1779,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/{DirName}/copy/{source}/{dest}",
+        "summary": "Copy file",
         "description": "Copies the specified file from `:source` to `:dest` within the given directory.",
         "responses": {
           "200": {
@@ -1819,7 +1831,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/{DirName}/rename/{source}/{dest}",
+        "summary": "Rename file",
         "description": "Renames the specified file from `:source` to `:dest` within the given directory.",
         "responses": {
           "200": {
@@ -1855,7 +1867,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/{DirName}/tailfollow/**",
+        "summary": "Stream tail of file",
         "description": "Streams the tail of a log file using Server-Sent Events (SSE). Only works for files in the `logs` directory. Accepts optional `?lines=N` query param (default 50, max 500). Sends a heartbeat comment every 30 seconds to keep the connection alive, and wraps `tail` in a 300-second timeout.",
         "responses": {
           "200": {
@@ -1893,7 +1905,7 @@
         "tags": [
           "file"
         ],
-        "summary": "file/{DirName}/{Name}",
+        "summary": "Upload file to directory",
         "description": "Uploads a file to the specified media directory. Supports optional query params `bs` (block size) and `sb` (start block) for fragment uploads on systems with large file requirements.",
         "responses": {
           "200": {
@@ -1929,7 +1941,7 @@
         "tags": [
           "files"
         ],
-        "summary": "files/zip/{DirNames}",
+        "summary": "Get zip file of directories",
         "description": "Downloads all files in the specified directory (or comma-separated list of directories) as a zip archive. `logs` and `config` are handled specially to include system log and config files.",
         "responses": {
           "200": {
@@ -1953,7 +1965,7 @@
         "tags": [
           "files"
         ],
-        "summary": "files/{DirName}",
+        "summary": "Get all files",
         "description": "Returns a list of files in the specified media directory. Supports `?nameOnly=1` to return a flat array of filenames.",
         "responses": {
           "200": {
@@ -1986,7 +1998,7 @@
         "tags": [
           "git"
         ],
-        "summary": "git/branches",
+        "summary": "Get local branches",
         "description": "Returns an array of branches available to switch to, filtering out obsolete version branches and Dependabot branches.",
         "responses": {
           "200": {
@@ -2014,7 +2026,7 @@
         "tags": [
           "git"
         ],
-        "summary": "git/originLog",
+        "summary": "Get origin commits",
         "description": "Returns a list of commits present in the `origin` (GitHub) but not in the local repository.",
         "responses": {
           "200": {
@@ -2060,7 +2072,7 @@
         "tags": [
           "git"
         ],
-        "summary": "git/releases/os/{All}",
+        "summary": "Get releases for OS",
         "description": "Returns lists of `.fppos` files available locally or on GitHub for the current platform. If the `{All}` path parameter is `\"all\"`, returns all releases regardless of platform.",
         "responses": {
           "200": {
@@ -2100,7 +2112,7 @@
         "tags": [
           "git"
         ],
-        "summary": "git/releases/sizes",
+        "summary": "Get release asset sizes",
         "description": "Returns release asset size information from the GitHub `FalconChristmas/fpp` releases API.",
         "responses": {
           "200": {
@@ -2126,7 +2138,7 @@
           "git"
         ],
         "summary": "git/reset",
-        "description": "Performs a hard reset on the current branch, discarding any local changes.",
+        "description": "Discard local changes Performs a hard reset on the current branch, discarding any local changes.",
         "responses": {
           "200": {
             "description": "Success",
@@ -2154,7 +2166,7 @@
         "tags": [
           "git"
         ],
-        "summary": "git/status",
+        "summary": "Get local repo status",
         "description": "Returns the status of the local git branch, including any dirty files.",
         "responses": {
           "200": {
@@ -2193,7 +2205,7 @@
         "tags": [
           "media"
         ],
-        "summary": "media",
+        "summary": "List all media files",
         "description": "Returns a list of media files (includes both music and video files).",
         "responses": {
           "200": {
@@ -2228,7 +2240,7 @@
         "tags": [
           "media"
         ],
-        "summary": "media/{MediaName}/duration",
+        "summary": "Get duration of media item",
         "description": "Returns the duration of a media item.",
         "responses": {
           "200": {
@@ -2267,8 +2279,8 @@
         "tags": [
           "media"
         ],
-        "summary": "media/{MediaName}/meta",
-        "description": "Returns metadata for a specific media file.",
+        "summary": "Get metadata for media item",
+        "description": "Returns metadata streams, codecs, profiles, type for a specific media file.",
         "responses": {
           "200": {
             "description": "Success",
@@ -2301,7 +2313,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/dns",
+        "summary": "Get DNS configuration",
         "description": "Returns the current DNS configuration. If not configured, `status` will be `Not Configured`.",
         "responses": {
           "200": {
@@ -2325,7 +2337,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/dns",
+        "summary": "Set DNS configuration",
         "description": "Updates the DNS configuration.",
         "requestBody": {
           "content": {
@@ -2366,7 +2378,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/gateway",
+        "summary": "Get default gateway",
         "description": "Returns the currently configured default gateway IP address. May be empty when using DHCP.",
         "responses": {
           "200": {
@@ -2388,7 +2400,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/gateway",
+        "summary": "Set default gateway",
         "description": "Saves the default gateway IP address to the `gateway` configuration file.",
         "requestBody": {
           "content": {
@@ -2425,7 +2437,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/interface",
+        "summary": "Get network interface details",
         "description": "Returns detailed information about network interfaces, their IP addresses, and Wi-Fi signal strength.",
         "responses": {
           "200": {
@@ -2484,7 +2496,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/interface/add/{interface}",
+        "summary": "Create DHCP interface",
         "description": "Creates a new blank DHCP interface configuration file for the specified network interface (e.g. `eth1`, `wlan0`).",
         "responses": {
           "200": {
@@ -2518,7 +2530,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/interface/{interface}",
+        "summary": "Get network interface configuration",
         "description": "Retrieves the current network interface configuration.",
         "responses": {
           "200": {
@@ -2546,7 +2558,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/interface/{interface}",
+        "summary": "Set network interface configuration",
         "description": "Updates the saved configuration for the specified `{interface}` but does not restart the network.",
         "requestBody": {
           "content": {
@@ -2596,7 +2608,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/interface/{interface}/apply",
+        "summary": "Set networking configuration",
         "description": "Applies the networking settings for the specified `{interface}` at the OS level and restarts the interface.",
         "responses": {
           "200": {
@@ -2621,7 +2633,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/persistentNames",
+        "summary": "Delete interface persistent names",
         "description": "Removes interface persistent names by deleting systemd `.link` files and restoring any USB ethernet adapter config files back to `eth*` names.",
         "responses": {
           "200": {
@@ -2643,7 +2655,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/persistentNames",
+        "summary": "Set interface persistent names",
         "description": "Creates interface persistent names by writing systemd `.link` files that pin each interface's name to its MAC address.",
         "responses": {
           "200": {
@@ -2678,7 +2690,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/wifi/scan/{interface}",
+        "summary": "Get discoverable wifi networks",
         "description": "Returns information about Wi-Fi networks discoverable via the specified `{interface}`. Networks without an SSID may appear in the list.",
         "responses": {
           "200": {
@@ -2710,7 +2722,7 @@
         "tags": [
           "network"
         ],
-        "summary": "network/wifi/strength",
+        "summary": "Get all wifi signal strenths",
         "description": "Returns signal strength information for wireless network interfaces.",
         "responses": {
           "200": {
@@ -2749,7 +2761,7 @@
         "tags": [
           "options"
         ],
-        "summary": "options/{SettingName}",
+        "summary": "Get a setting's options",
         "description": "Returns the available options for the specified setting. Supports `AudioMixerDevice`, `AudioOutput`, `AudioInput`, and other platform-specific option sets.",
         "responses": {
           "200": {
@@ -2783,7 +2795,7 @@
         "tags": [
           "playlist"
         ],
-        "summary": "playlist/{PlaylistName}",
+        "summary": "Delete playlist",
         "description": "Delete the playlist named {PlaylistName}.",
         "responses": {
           "200": {
@@ -2806,8 +2818,19 @@
         "tags": [
           "playlist"
         ],
-        "summary": "playlist/{PlaylistName}",
+        "summary": "Get a playlist",
         "description": "Get the playlist named `{PlaylistName}` in FPP JSON format. If `?mergeSubs=1` is specified, sub-playlists are recursively merged into the parent sections.",
+        "parameters": [
+          {
+            "name": "mergeSubs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Merge sub-playlsits recursively"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -2841,8 +2864,8 @@
         "tags": [
           "playlist"
         ],
-        "summary": "playlist/{PlaylistName}",
-        "description": "Update/Insert the playlist named {PlaylistName}.",
+        "summary": "Upsert playlist",
+        "description": "Update or Insert (upsert) the playlist named {PlaylistName}.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2913,8 +2936,14 @@
         "tags": [
           "playlist"
         ],
-        "summary": "playlist/{PlaylistName}/start",
-        "description": "Start the playlist named `{PlaylistName}`. The optional query parameter `scheduleProtected` (`true`/`false`) prevents the scheduler from stopping this playlist. Requires: `fppd` to be running.",
+        "summary": "Start playlist",
+        "description": "Start the playlist named `{PlaylistName}`. The optional query parameter `scheduleProtected` (`true`/`false`) prevents the scheduler from stopping this playlist.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -2956,8 +2985,25 @@
         "tags": [
           "playlist"
         ],
-        "summary": "playlist/{PlaylistName}/start/{Repeat}",
-        "description": "Start the playlist named `{PlaylistName}` with repeat mode. The optional query parameter `scheduleProtected` (`true`/`false`) prevents the scheduler from stopping this playlist. Requires: `fppd` to be running.",
+        "summary": "Start playlist on repeat",
+        "description": "Start the playlist named `{PlaylistName}` with repeat mode. The optional query parameter `scheduleProtected` (`true`/`false`) prevents the scheduler from stopping this playlist.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scheduledProtected",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Prevent schedule from stopping this playlist"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -3007,8 +3053,14 @@
         "tags": [
           "playlist"
         ],
-        "summary": "playlist/{PlaylistName}/start/{Repeat}/{ScheduleProtected}",
-        "description": "Start the playlist named `{PlaylistName}` with repeat mode and schedule protection. When `{ScheduleProtected}` is `true`, the scheduler cannot stop this playlist. Requires: `fppd` to be running.",
+        "summary": "Start playlist on repeat (alt)",
+        "description": "Start the playlist named `{PlaylistName}` with repeat mode and schedule protection. When `{ScheduleProtected}` is `true`, the scheduler cannot stop this playlist.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -3050,7 +3102,7 @@
         "tags": [
           "playlist"
         ],
-        "summary": "playlist/{PlaylistName}/{SectionName}/item",
+        "summary": "Insert section into playlist",
         "description": "Insert an item into the `{SectionName}` section of playlist `{PlaylistName}`.",
         "requestBody": {
           "content": {
@@ -3090,7 +3142,7 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists",
+        "summary": "Get all playlists",
         "description": "Get list of playlist names.",
         "responses": {
           "200": {
@@ -3114,7 +3166,7 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists",
+        "summary": "Create playlist",
         "description": "Insert a new playlist.",
         "requestBody": {
           "content": {
@@ -3176,8 +3228,14 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists/pause",
-        "description": "Pause the currently running playlist. Requires: `fppd` to be running.",
+        "summary": "Pause currently running playlist",
+        "description": "Pause the currently running playlist.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -3201,7 +3259,7 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists/playable",
+        "summary": "Get playable objects",
         "description": "Get a combined list of playlist names and `*.fseq` sequence filenames that are playable.",
         "responses": {
           "200": {
@@ -3227,8 +3285,14 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists/resume",
-        "description": "Resume a previously paused playlist. Requires: `fppd` to be running.",
+        "summary": "Resume paused playlist",
+        "description": "Resume a previously paused playlist.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -3252,8 +3316,14 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists/stop",
-        "description": "Immediately stop the currently running playlist. Requires: `fppd` to be running.",
+        "summary": "Stop playlist",
+        "description": "Immediately stop the currently running playlist.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -3277,8 +3347,14 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists/stopgracefully",
-        "description": "Gracefully stop the currently running playlist. Requires: `fppd` to be running.",
+        "summary": "Gracefully stop playlist",
+        "description": "Gracefully stop the currently running playlist.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -3302,8 +3378,14 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists/stopgracefullyafterloop",
-        "description": "Gracefully stop the currently running playlist after completion of the current loop. Requires: `fppd` to be running.",
+        "summary": "Gracefully stop at end of loop",
+        "description": "Gracefully stop the currently running playlist after completion of the current loop.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -3327,7 +3409,7 @@
         "tags": [
           "playlists"
         ],
-        "summary": "playlists/validate",
+        "summary": "Validate all playlists",
         "description": "Returns a list of all playlists with any validation errors, total item counts, and total duration.",
         "responses": {
           "200": {
@@ -3362,7 +3444,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin",
+        "summary": "Get all plugins",
         "description": "Get list of installed plugins.",
         "responses": {
           "200": {
@@ -3386,7 +3468,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin",
+        "summary": "Install plugin",
         "description": "Install a new plugin. The request body is a `pluginInfo.json` structure with `branch` and `sha` fields added to specify which branch and commit to install.",
         "requestBody": {
           "content": {
@@ -3428,7 +3510,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/fetchInfo",
+        "summary": "Get plugin info from URL",
         "description": "Server-side proxy for fetching a `pluginInfo.json` from a remote URL. Used to retrieve plugin repository info without CORS issues, and to authenticate against private GitHub repositories using credentials configured on the Developer settings page.",
         "requestBody": {
           "content": {
@@ -3463,7 +3545,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/headerIndicators",
+        "summary": "Get header indicators",
         "description": "Returns header indicator data (e.g., notification badges) from all installed plugins that define a `headerIndicators.php` file.",
         "responses": {
           "200": {
@@ -3501,7 +3583,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/{RepoName}",
+        "summary": "Uninstall plugin",
         "description": "Uninstall plugin {RepoName}.",
         "responses": {
           "200": {
@@ -3524,7 +3606,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/{RepoName}",
+        "summary": "Get plugin information",
         "description": "Get `pluginInfo.json` for installed plugin `{RepoName}`. An additional `updatesAvailable` field indicates whether the plugin has commits that have been fetched but not yet merged.",
         "responses": {
           "200": {
@@ -3578,7 +3660,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/{RepoName}/settings/{SettingName}",
+        "summary": "Get setting from plugin",
         "description": "Returns the value of setting `{SettingName}` from plugin `{RepoName}`.",
         "responses": {
           "200": {
@@ -3601,7 +3683,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/{RepoName}/settings/{SettingName}",
+        "summary": "Set setting for plugin",
         "description": "Sets `{SettingName}` for plugin `{RepoName}` and returns the updated value.",
         "requestBody": {
           "content": {
@@ -3646,7 +3728,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/{RepoName}/updates",
+        "summary": "Check plugin for updates",
         "description": "Check plugin `{RepoName}` for available updates by running `git fetch` in the plugin directory and checking for any unmerged commits.",
         "responses": {
           "200": {
@@ -3682,7 +3764,7 @@
         "tags": [
           "plugin"
         ],
-        "summary": "plugin/{RepoName}/upgrade",
+        "summary": "Update plugin",
         "description": "Pull in git updates for plugin `{RepoName}`. Supports an optional `?stream=true` query parameter for streaming output.",
         "responses": {
           "200": {
@@ -3707,7 +3789,7 @@
         "tags": [
           "proxies"
         ],
-        "summary": "proxies",
+        "summary": "Delete all proxies",
         "description": "Deletes all proxy entries by writing an empty `proxy-config.conf` and triggering an Apache graceful reload.",
         "responses": {
           "200": {
@@ -3727,7 +3809,7 @@
         "tags": [
           "proxies"
         ],
-        "summary": "proxies",
+        "summary": "Get list of proxy IPs",
         "description": "Returns the list of IP addresses this FPP instance can proxy.",
         "responses": {
           "200": {
@@ -3760,7 +3842,7 @@
         "tags": [
           "proxies"
         ],
-        "summary": "proxies",
+        "summary": "Set proxy list",
         "description": "Replaces the proxy list with the submitted array of `host`/`description` objects, validates each entry, and triggers an Apache graceful reload.",
         "requestBody": {
           "content": {
@@ -3833,7 +3915,7 @@
         "tags": [
           "proxies"
         ],
-        "summary": "proxies/{ProxyIp}",
+        "summary": "Remove proxy",
         "description": "Removes a single IP address from the FPP proxy list.",
         "responses": {
           "200": {
@@ -3853,7 +3935,7 @@
         "tags": [
           "proxies"
         ],
-        "summary": "proxies/{ProxyIp}",
+        "summary": "Add proxy",
         "description": "Adds a single IP address to the FPP proxy list if it does not already exist.",
         "responses": {
           "200": {
@@ -3898,7 +3980,7 @@
         "tags": [
           "proxy"
         ],
-        "summary": "proxy/{Ip}/{urlPart}",
+        "summary": "Get URL from remote FPP",
         "description": "Fetches a URL on a remote FPP instance via server-side proxy to avoid CSP restrictions.",
         "responses": {
           "400": {
@@ -3935,7 +4017,7 @@
         "tags": [
           "remoteAction"
         ],
-        "summary": "remoteAction",
+        "summary": "Proxy a command to remote FPP",
         "description": "Proxies a named action to a remote FPP instance by IP address. Supported actions: `listUpgrades`, `reboot`, `restartFppd`, `upgradeOS`.",
         "responses": {
           "400": {
@@ -3959,7 +4041,7 @@
         "tags": [
           "remotes"
         ],
-        "summary": "remotes",
+        "summary": "Get all remote FPPs",
         "description": "Returns the list of known remote FPP systems from `fppd` multiSync discovery.",
         "responses": {
           "200": {
@@ -3984,7 +4066,7 @@
         "tags": [
           "schedule"
         ],
-        "summary": "schedule",
+        "summary": "Get schedules",
         "description": "Returns the current FPP schedule configuration from `schedule.json`.",
         "responses": {
           "200": {
@@ -4016,7 +4098,7 @@
         "tags": [
           "schedule"
         ],
-        "summary": "schedule",
+        "summary": "Set schedule",
         "description": "Saves the new schedule configuration to `schedule.json`.",
         "requestBody": {
           "content": {
@@ -4075,8 +4157,14 @@
         "tags": [
           "schedule"
         ],
-        "summary": "schedule/reload",
-        "description": "Sends a reload command to `fppd` to re-read the schedule configuration. Requires: `fppd` to be running.",
+        "summary": "Reload schedules",
+        "description": "Sends a reload command to `fppd` to re-read the schedule configuration.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -4100,7 +4188,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "scripts",
+        "summary": "Get all scripts",
         "description": "Returns a list of currently installed scripts.",
         "responses": {
           "200": {
@@ -4143,7 +4231,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "scripts/installRemote/{category}/{filename}",
+        "summary": "Install remote script",
         "description": "Installs a remote script from the script repository.",
         "responses": {
           "200": {
@@ -4185,7 +4273,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "scripts/viewRemote/{category}/{filename}",
+        "summary": "Get remote script",
         "description": "Returns the source code of a remote script from the script repository.",
         "responses": {
           "200": {
@@ -4209,7 +4297,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "scripts/{scriptName}",
+        "summary": "Get a script",
         "description": "Returns the source code of an installed script.",
         "responses": {
           "200": {
@@ -4221,7 +4309,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "scripts/{scriptName}",
+        "summary": "Update script",
         "description": "Writes the `POST` request body to the file specified by `{scriptName}`.",
         "responses": {
           "200": {
@@ -4257,7 +4345,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "scripts/{scriptName}/run",
+        "summary": "Run script",
         "description": "Runs a locally installed script.",
         "responses": {
           "200": {
@@ -4271,7 +4359,7 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence",
+        "summary": "Get all sequences",
         "description": "Returns a list of all `*.fseq` sequence files.",
         "responses": {
           "200": {
@@ -4297,8 +4385,14 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/current/step",
-        "description": "If the sequence was paused via `sequence/current/togglePause`, steps the sequence forward one frame. Requires: `fppd` to be running.",
+        "summary": "Step a paused sequence",
+        "description": "If the sequence was paused via `sequence/current/togglePause`, steps the sequence forward one frame.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -4321,8 +4415,18 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/current/stop",
-        "description": "Stops the currently playing sequence. Only valid if the sequence was started via `/api/sequence/{SequenceName}/start/{startSecond}`. Requires: `fppd` to be running.",
+        "summary": "Stop sequence",
+        "description": "Stops the currently playing sequence. Only valid if the sequence was started via `/api/sequence/{SequenceName}/start/{startSecond}`.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          },
+          {
+            "name": "DEVELOPER ONLY",
+            "color": "#546e7a"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -4345,8 +4449,18 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/current/togglePause",
-        "description": "Pauses or resumes the currently playing sequence. Only valid if the sequence was started via `/api/sequence/{SequenceName}/start/{startSecond}`. Requires: `fppd` to be running.",
+        "summary": "Toggle play/pause on sequence",
+        "description": "Pauses or resumes the currently playing sequence. Only valid if the sequence was started via `/api/sequence/{SequenceName}/start/{startSecond}`.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          },
+          {
+            "name": "DEVELOPER ONLY",
+            "color": "#546e7a"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -4379,7 +4493,7 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/{SequenceName}",
+        "summary": "Delete sequence file",
         "description": "Deletes the named `*.fseq` sequence file.",
         "responses": {
           "200": {
@@ -4402,7 +4516,7 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/{SequenceName}",
+        "summary": "Download sequence",
         "description": "Downloads the `*.fseq` file for the named sequence.",
         "responses": {
           "200": {
@@ -4417,7 +4531,7 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/{SequenceName}",
+        "summary": "Uploads sequence file",
         "description": "Uploads a new `*.fseq` sequence file.",
         "requestBody": {
           "content": {
@@ -4462,8 +4576,8 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/{SequenceName}/meta",
-        "description": "Returns metadata from the `*.fseq` file for the named sequence.",
+        "summary": "Get sequence metadata",
+        "description": "Returns `name`, `version`, `id`, `time`, and other details from the `*.fseq` file for the named sequence.",
         "responses": {
           "200": {
             "description": "Success",
@@ -4513,8 +4627,18 @@
         "tags": [
           "sequence"
         ],
-        "summary": "sequence/{SequenceName}/start/{startSecond}",
-        "description": "Starts the given sequence at the specified time frame. Only intended for testing. In most situations, use the \"Start Playlist\" command from the command API and pass the sequence name as the playlist name. Requires: `fppd` to be running.",
+        "summary": "Start sequence at time",
+        "description": "Starts the given sequence at the specified time frame. Only intended for testing. In most situations, use the \"Start Playlist\" command from the command API and pass the sequence name as the playlist name.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          },
+          {
+            "name": "DEVELOPER ONLY",
+            "color": "#546e7a"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -4539,7 +4663,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "settings",
+        "summary": "Get all settings.json",
         "description": "Returns the `settings.json` metadata file as a JSON list of settings.",
         "responses": {
           "200": {
@@ -4590,7 +4714,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "settings/{SettingName}",
+        "summary": "Get value of setting",
         "description": "Get info about a particular setting, including its current `value`.",
         "responses": {
           "200": {
@@ -4624,7 +4748,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "settings/{SettingName}",
+        "summary": "Set value for setting",
         "description": "Sets the value for a specific setting.",
         "requestBody": {
           "content": {
@@ -4668,7 +4792,7 @@
         "tags": [
           "settings"
         ],
-        "summary": "settings/{SettingName}/jsonValueUpdate",
+        "summary": "Set sub-value",
         "description": "Updates a sub-value held as JSON within a setting's value. Only valid for settings stored as JSON.",
         "requestBody": {
           "content": {
@@ -4702,7 +4826,7 @@
         "tags": [
           "statistics"
         ],
-        "summary": "statistics/usage",
+        "summary": "Resets statistics cache",
         "description": "Deletes the cached statistics file.",
         "responses": {
           "200": {
@@ -4724,8 +4848,19 @@
         "tags": [
           "statistics"
         ],
-        "summary": "statistics/usage",
+        "summary": "Get statistics",
         "description": "Returns the statistics file that will be shared with the development team if sharing statistics is enabled. A cached file is returned unless it is more than 2 hours old or `?force=1` is passed, in which case it is regenerated.",
+        "parameters": [
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "bypass cache"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -4783,7 +4918,7 @@
         "tags": [
           "statistics"
         ],
-        "summary": "statistics/usage",
+        "summary": "Publsh statistics",
         "description": "Transmits the statistics payload to the remote stats server configured in the `statsPublishUrl` setting.",
         "responses": {
           "200": {
@@ -4808,7 +4943,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/fppd/restart",
+        "summary": "Restart fppd process",
         "description": "Restarts the `fppd` process. Pass `?quick=1` to reload some configuration without a full restart.",
         "responses": {
           "200": {
@@ -4832,7 +4967,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/fppd/skipBootDelay",
+        "summary": "Skip boot delay",
         "description": "Skips the current boot delay by creating a skip flag file, allowing FPP startup to proceed immediately.",
         "responses": {
           "200": {
@@ -4857,8 +4992,8 @@
         "tags": [
           "system"
         ],
-        "summary": "system/fppd/start",
-        "description": "Starts the `fppd` process (if it isn't already running).",
+        "summary": "Start fppd",
+        "description": "Starts the `fppd` process idempotently (if it isn't already running).",
         "responses": {
           "200": {
             "description": "Success",
@@ -4881,7 +5016,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/fppd/stop",
+        "summary": "Stop fppd",
         "description": "Stops the `fppd` process if it is running.",
         "responses": {
           "200": {
@@ -4905,7 +5040,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/info",
+        "summary": "Get system info",
         "description": "Returns basic information about the system.",
         "responses": {
           "200": {
@@ -4954,7 +5089,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/packages",
+        "summary": "Get all system packages",
         "description": "Returns a list of all installed and available OS package names via `apt list --all-versions`.",
         "responses": {
           "200": {
@@ -4990,7 +5125,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/packages/info/{packageName}",
+        "summary": "Get system package information",
         "description": "Returns description, dependencies, and installation status for the specified OS package.",
         "responses": {
           "200": {
@@ -5016,7 +5151,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/reboot",
+        "summary": "Reboot the operating system",
         "description": "Reboots the operating system.",
         "responses": {
           "200": {
@@ -5050,7 +5185,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/releaseNotes/{version}",
+        "summary": "Get release notes",
         "description": "Returns release notes for the specified FPP version tag from the GitHub releases API.",
         "responses": {
           "200": {
@@ -5078,7 +5213,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/shutdown",
+        "summary": "Shutdown the operating system",
         "description": "Executes a clean shutdown of the operating system.",
         "responses": {
           "200": {
@@ -5102,7 +5237,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/status",
+        "summary": "Get system status",
         "description": "Returns `fppd`, network, current playlist, schedule, utilization, host, version, and MQTT status. Pass an optional array of IP addresses (e.g. `&ip[]=192.168.0.1&ip[]=192.168.0.2`) to query remote instances instead.",
         "responses": {
           "200": {
@@ -5139,7 +5274,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/updateStatus",
+        "summary": "Get fpp upgrade status",
         "description": "Returns the current FPP update/upgrade status, including whether a newer version is available, the current commit, and any major version or end-of-life warnings.",
         "responses": {
           "200": {
@@ -5173,7 +5308,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/volume",
+        "summary": "Get volume",
         "description": "Returns the current volume if `fppd` is running, or the `Volume` setting value if not.",
         "responses": {
           "200": {
@@ -5197,7 +5332,7 @@
         "tags": [
           "system"
         ],
-        "summary": "system/volume",
+        "summary": "Set volume",
         "description": "Sets the system volume. The new level should be passed as a JSON body.",
         "requestBody": {
           "content": {
@@ -5235,7 +5370,13 @@
           "testmode"
         ],
         "summary": "testmode",
-        "description": "Returns the current Test Mode state for this instance. Requires: `fppd` to be running.",
+        "description": "Returns the current Test Mode state for this instance.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -5263,7 +5404,13 @@
           "testmode"
         ],
         "summary": "testmode",
-        "description": "Sets the current Test Mode configuration on this instance. Requires: `fppd` to be running.",
+        "description": "Sets the current Test Mode configuration on this instance.",
+        "x-badges": [
+          {
+            "name": "FPP REQUIRED",
+            "color": "#c62828"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5304,7 +5451,7 @@
         "tags": [
           "time"
         ],
-        "summary": "time",
+        "summary": "Get current time",
         "description": "Returns the current system time as a formatted string.",
         "responses": {
           "200": {

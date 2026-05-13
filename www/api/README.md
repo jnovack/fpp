@@ -55,6 +55,38 @@ merged in at request time by `ServeOpenApiSpec()` in `index.php`.
 Every public endpoint function must have a PHPDoc block with at least `@route`.
 Helper functions (not directly routed) use only `@param` and `@return`.
 
+### Summary and description
+
+The prose before the first `@` tag is split into paragraphs by blank lines. The number
+of paragraphs determines what becomes the summary and description:
+
+**One paragraph** — the whole block becomes the description; the summary falls back to
+the route slug (e.g. `playlist/{PlaylistName}`). Wrapped lines with no blank break are
+treated as a single paragraph.
+
+```php
+/**
+ * Returns the playlist in FPP JSON format. If `?mergeSubs=1` is specified,
+ * sub-playlists are recursively merged into the parent sections.
+ *
+ * @route GET /api/playlist/{PlaylistName}
+ */
+```
+
+**Two or more paragraphs** — the first paragraph becomes the summary; all subsequent
+paragraphs are joined into the description.
+
+```php
+/**
+ * Get a playlist
+ *
+ * Returns the playlist in FPP JSON format. If `?mergeSubs=1` is specified,
+ * sub-playlists are recursively merged into the parent sections.
+ *
+ * @route GET /api/playlist/{PlaylistName}
+ */
+```
+
 ### Minimum annotation
 
 ```php
@@ -71,7 +103,7 @@ function GetExample() { ... }
 
 ```php
 /**
- * Creates a new widget with the given name.
+ * Creates a new widget
  *
  * The name must be unique. Returns the created widget on success.
  *
@@ -90,16 +122,9 @@ function CreateWidget() { ... }
 | `@route METHOD /api/path/{Param}` | Yes | `METHOD` is `GET`, `POST`, `PUT`, `DELETE`, or `PATCH`. The `/api/` prefix is required. `{Param}` becomes an OpenAPI path parameter. |
 | `@response [statusCode] <json>` | Yes | JSON example for the response body. `statusCode` defaults to `200` if omitted. |
 | `@body <json>` | No | JSON example for the request body. Omit for `GET`/`DELETE`. |
-| `@param type $name Description` | No (helpers only) | Standard PHPDoc; ignored by the OpenAPI generator. |
+| `@param type name Description` | No | Adds an OpenAPI query parameter. `type` is `int`, `bool`, `float`, or `string`. Names matching a `{Param}` in the route are ignored (path params are auto-detected). |
+| `@badge "Label" level` | No | Adds a colored badge to the operation. See [Badges](#badges) below. |
 | `@return type Description` | No (helpers only) | Standard PHPDoc; ignored by the OpenAPI generator. |
-
-### Description style
-
-- First paragraph becomes the Scalar operation description.
-- Use CommonMark markdown: backticks for filenames (`` `sequences/` ``), setting names
-  (`` `MQTTPrefix` ``), function calls (`` `GetCapeInfo()` ``), and HTTP methods
-  (`` `POST` ``).
-- Keep descriptions accurate and concise — Scalar renders them verbatim.
 
 ### Path parameters
 
@@ -109,6 +134,53 @@ Use `{CamelCase}` in the path. The generator promotes every `{...}` segment to a
 ```php
  * @route GET /api/playlist/{PlaylistName}/item/{Index}
 ```
+
+### Query parameters
+
+Use `@param` to document query string parameters. The type maps to an OpenAPI schema type.
+
+```php
+/**
+ * Get a playlist
+ *
+ * Returns the playlist in FPP JSON format.
+ *
+ * @route GET /api/playlist/{PlaylistName}
+ * @param int mergeSubs Merge sub-playlists recursively into parent sections
+ * @response {"name": "MyPlaylist", "mainPlaylist": []}
+ */
+```
+
+Supported types:
+
+| PHPDoc type | OpenAPI type |
+| --- | --- |
+| `int`, `integer` | `integer` |
+| `bool`, `boolean` | `boolean` |
+| `float`, `number` | `number` |
+| `string` (or anything else) | `string` |
+
+All query parameters are marked `required: false`.
+
+### Badges
+
+Badges appear next to the operation header in the Scalar UI. Multiple are allowed.
+
+```php
+/**
+ * @badge "DEPRECATED" warning
+ * @badge "FPP Required" critical
+ */
+```
+
+| Level | Background color |
+| --- | --- |
+| `success` | `#2e7d32` |
+| `warning` | `#b25e00` |
+| `critical` | `#c62828` |
+| `info` | `#546e7a` |
+
+Badge text is always white. Unknown levels fall back to `info`.
 
 ---
 

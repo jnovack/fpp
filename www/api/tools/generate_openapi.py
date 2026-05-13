@@ -5,6 +5,15 @@ in www/api/controllers/*.php.
 
 Usage (run from www/api/):
     python3 tools/generate_openapi.py
+
+Docblock summary/description rules:
+  - One prose line  → description only; summary falls back to the route slug.
+  - Two+ prose lines → first line is summary, remainder joined as description.
+
+Badge syntax (multiple allowed, Scalar x-badges spec):
+  @badge "Label text" <level>
+  Levels: success | warning | critical | info
+  Maps to {name, color} — Scalar uses color as the badge background.
 """
 
 import glob
@@ -17,6 +26,13 @@ from pathlib import Path
 API_PREFIX = '/api'
 CONTROLLERS = sorted(glob.glob(str(Path(__file__).parent.parent / 'controllers' / '*.php')))
 OUTPUT = Path(__file__).parent.parent / 'openapi.json'
+
+BADGE_COLORS = {
+    'success':  '#2e7d32',
+    'warning':  '#b25e00',
+    'critical': '#c62828',
+    'info':     '#546e7a',
+}
 
 
 # ---------------------------------------------------------------------------
@@ -52,22 +68,72 @@ def parse_docblocks(php_source):
         oapi_path = full_path if full_path else '/'
 
         desc_raw = text[:text.find('@')].strip() if '@' in text else text.strip()
-        description = ' '.join(desc_raw.split())
+        # Split into blank-line-separated paragraphs; each paragraph is one
+        # or more consecutive non-empty lines joined into a single string.
+        paragraphs = []
+        current = []
+        for ln in desc_raw.splitlines():
+            stripped = ln.strip()
+            if stripped:
+                current.append(stripped)
+            elif current:
+                paragraphs.append(' '.join(current))
+                current = []
+        if current:
+            paragraphs.append(' '.join(current))
+
+        if len(paragraphs) == 0:
+            summary = None
+            description = None
+        elif len(paragraphs) == 1:
+            summary = None  # falls back to route slug in build_openapi
+            description = paragraphs[0]
+        else:
+            summary = paragraphs[0]
+            description = ' '.join(paragraphs[1:])
 
         body_match = re.search(r'@body\s+(.+)', text)
         body_raw = body_match.group(1).strip() if body_match else None
+
+        path_param_names = set(extract_path_params(oapi_path))
+        params = []
+        for pm in re.finditer(r'@param\s+(\S+)\s+(\S+)\s*(.*)', text):
+            php_type, pname, pdesc = pm.group(1), pm.group(2), pm.group(3).strip()
+            if pname in path_param_names:
+                continue  # path params are handled via extract_path_params
+            type_map = {'int': 'integer', 'integer': 'integer',
+                        'bool': 'boolean', 'boolean': 'boolean',
+                        'float': 'number', 'number': 'number'}
+            params.append({
+                'name':        pname,
+                'in':          'query',
+                'required':    False,
+                'schema':      {'type': type_map.get(php_type.lower(), 'string')},
+                'description': pdesc or None,
+            })
 
         responses = []
         for rm in re.finditer(r'@response(?:\s+(\d{3}))?\s+(.+)', text):
             status = int(rm.group(1)) if rm.group(1) else 200
             responses.append((status, rm.group(2).strip()))
 
+        badges = []
+        for bm in re.finditer(r'@badge\s+"([^"]+)"\s+(\w+)', text):
+            level = bm.group(2).lower()
+            badges.append({
+                'name':  bm.group(1),
+                'color': BADGE_COLORS.get(level, BADGE_COLORS['info']),
+            })
+
         yield {
             'method':      method,
             'path':        oapi_path,
+            'summary':     summary,
             'description': description,
             'body_raw':    body_raw,
             'responses':   responses,
+            'badges':      badges,
+            'params':      params,
         }
 
 
@@ -136,9 +202,10 @@ def build_openapi(endpoints):
             ]
 
         for ep in sorted(eps, key=lambda e: e['method']):
-            method  = ep['method']
-            tag     = tag_from_path(path)
-            summary = path.removeprefix(API_PREFIX).lstrip('/')
+            method        = ep['method']
+            tag           = tag_from_path(path)
+            route_slug    = path.removeprefix(API_PREFIX).lstrip('/')
+            summary       = ep['summary'] if ep['summary'] else route_slug
 
             operation = {
                 'tags':    [tag],
@@ -147,6 +214,15 @@ def build_openapi(endpoints):
 
             if ep['description']:
                 operation['description'] = ep['description']
+
+            if ep['badges']:
+                operation['x-badges'] = ep['badges']
+
+            if ep['params']:
+                operation['parameters'] = [
+                    {k: v for k, v in p.items() if v is not None}
+                    for p in ep['params']
+                ]
 
             if ep['body_raw']:
                 body_val = parse_json_value(ep['body_raw'])
