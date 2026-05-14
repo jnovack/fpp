@@ -266,10 +266,10 @@ function GetFilesHelper($dirName, $prefix = '')
 /**
  * Get all files
  *
- * Returns a list of files in the specified media directory. Supports
- * `?nameOnly=1` to return a flat array of filenames.
+ * Returns a list of files in the specified media directory.
  *
  * @route GET /api/files/{DirName}
+ * @param bool nameOnly When `1`, return a flat array of filenames instead of the default object envelope
  * @response {"status": "ok", "files": [{"name": "Christmas Every Day.mp3", "mtime": "09/23/20  07:47 PM", "sizeBytes": 7929000, "sizeHuman": "7.56MB", "playtimeSeconds": "03m:46s"}]}
  */
 function GetFiles()
@@ -425,11 +425,12 @@ function MovePluginFile($uploadDir, $filename)
 /**
  * Get file contents
  *
- * Downloads the specified file from a media directory. Supports optional query
- * params: `?tail=N` (return last N lines), `?play=1` (set playback content type),
- * `?attach=1` (force attachment download for images).
+ * Downloads the specified file from a media directory.
  *
  * @route GET /api/file/{DirName}/**
+ * @param int tail Return the last N lines instead of the whole file
+ * @param bool play When `1`, set a playback-oriented content type instead of a forced attachment
+ * @param bool attach When `1`, force attachment download for images
  * @response "The File Contents"
  * @response 404 "File <path> does not exist."
  */
@@ -1108,11 +1109,11 @@ function PatchFile()
 /**
  * Upload file to directory
  *
- * Uploads a file to the specified media directory. Supports optional query
- * params `bs` (block size) and `sb` (start block) for fragment uploads on systems
- * with large file requirements.
+ * Uploads a file to the specified media directory.
  *
  * @route POST /api/file/{DirName}/{Name}
+ * @param int bs Block size used for fragmented uploads
+ * @param int sb Starting block index used for fragmented uploads
  * @response {"status": "OK", "file": "beepbeep.fseq", "dir": "sequences"}
  */
 function PostFile()
@@ -1290,11 +1291,10 @@ function DeleteDir()
  * Stream tail of file
  *
  * Streams the tail of a log file using Server-Sent Events (SSE). Only works
- * for files in the `logs` directory. Accepts optional `?lines=N` query param
- * (default 50, max 500). Sends a heartbeat comment every 30 seconds to keep
- * the connection alive, and wraps `tail` in a 300-second timeout.
+ * for files in the `logs` directory.
  *
  * @route GET /api/file/{DirName}/tailfollow/**
+ * @param int lines Number of existing lines to seed into the stream, from 1 to 500, default 50
  * @response "Server-sent event stream of new log lines as they are appended"
  * @response 403 "Tail follow is only allowed for log files."
  * @response 404 "File not found: <filename>"

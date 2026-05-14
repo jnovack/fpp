@@ -766,7 +766,7 @@ function playlist_start()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlist/{PlaylistName}/start/{Repeat}
- * @param bool scheduledProtected Prevent schedule from stopping this playlist
+ * @param bool scheduleProtected Prevent schedule from stopping this playlist
  * @response {"Status": "OK", "Message": ""}
  */
 function playlist_start_repeat()
