@@ -6,7 +6,10 @@
  * Returns a list of effect (`*.eseq`) files available in the effects directory.
  *
  * @route GET /api/effects
- * @response ["rainbow", "twinkle"]
+ * @response 200 List of effect filenames
+ * ```json
+ * ["rainbow", "twinkle"]
+ * ```
  */
 function effects_list()
 {
@@ -33,7 +36,10 @@ function effects_list()
  * and the sequences directory.
  *
  * @route GET /api/effects/ALL
- * @response ["rainbow", "twinkle", "MySequence"]
+ * @response 200 Combined list of effect and sequence filenames
+ * ```json
+ * ["rainbow", "twinkle", "MySequence"]
+ * ```
  */
 function effects_list_ALL()
 {

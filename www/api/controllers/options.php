@@ -405,7 +405,10 @@ function GetOptions_GPIOS($list)
  * Supports `AudioMixerDevice`, `AudioOutput`, `AudioInput`, and other platform-specific option sets.
  *
  * @route GET /api/options/{SettingName}
- * @response {"Dummy": "0"}
+ * @response 200 Available options for the setting
+ * ```json
+ * {"Dummy": "0"}
+ * ```
  */
 function GetOptions()
 {

@@ -6,7 +6,10 @@
  * Get list of playlist names.
  *
  * @route GET /api/playlists
- * @response ["Playlist_1", "Playlist_2", "Playlist_3"]
+ * @response 200 List of playlist names
+ * ```json
+ * ["Playlist_1", "Playlist_2", "Playlist_3"]
+ * ```
  */
 function playlist_list()
 {
@@ -165,7 +168,23 @@ function validatePlayListEntries(&$entries, &$media, &$playlist, &$rc)
  * counts, and total duration.
  *
  * @route GET /api/playlists/validate
- * @response [{"name": "Test1", "description": "User entered playlist description", "valid": true, "messages": [], "total_duration": 10, "total_items": 3, "version": 4, "leadIn_items": 0, "mainPlaylist_items": 3, "leadOut_items": 0}]
+ * @response 200 Validation results for all playlists
+ * ```json
+ * [
+ *   {
+ *     "name": "Test1",
+ *     "description": "User entered playlist description",
+ *     "valid": true,
+ *     "messages": [],
+ *     "total_duration": 10,
+ *     "total_items": 3,
+ *     "version": 4,
+ *     "leadIn_items": 0,
+ *     "mainPlaylist_items": 3,
+ *     "leadOut_items": 0
+ *   }
+ * ]
+ * ```
  */
 function playlist_list_validate()
 {
@@ -250,7 +269,10 @@ function playlist_list_validate()
  * Get a combined list of playlist names and `*.fseq` sequence filenames that are playable.
  *
  * @route GET /api/playlists/playable
- * @response ["Playlist_1", "Playlist_2", "MySequence.fseq"]
+ * @response 200 Playable playlist and sequence names
+ * ```json
+ * ["Playlist_1", "Playlist_2", "MySequence.fseq"]
+ * ```
  */
 function playlist_playable()
 {
@@ -327,7 +349,20 @@ function cleanMedialNamesInPlaylist(&$playlistObj, $section)
  *
  * @route POST /api/playlists
  * @body {"name": "UploadTest", "globalPauseBetweenSequencesMS": 5000, "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
- * @response {"name": "UploadTest", "globalPauseBetweenSequencesMS": 5000, "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ * @response 200 Newly created playlist
+ * ```json
+ * {
+ *   "name": "UploadTest",
+ *   "globalPauseBetweenSequencesMS": 5000,
+ *   "mainPlaylist": [
+ *     {"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}
+ *   ],
+ *   "playlistInfo": {
+ *     "total_duration": 8,
+ *     "total_items": 1
+ *   }
+ * }
+ * ```
  */
 function playlist_insert()
 {
@@ -484,7 +519,20 @@ function GetPlaylist($playlistName)
  *
  * @route GET /api/playlist/{PlaylistName}
  * @param int mergeSubs Merge sub-playlsits recursively
- * @response {"name": "UploadTest", "globalPauseBetweenSequencesMS": 5000, "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ * @response 200 Playlist details
+ * ```json
+ * {
+ *   "name": "UploadTest",
+ *   "globalPauseBetweenSequencesMS": 5000,
+ *   "mainPlaylist": [
+ *     {"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}
+ *   ],
+ *   "playlistInfo": {
+ *     "total_duration": 8,
+ *     "total_items": 1
+ *   }
+ * }
+ * ```
  */
 function playlist_get()
 {
@@ -508,7 +556,20 @@ function playlist_get()
  *
  * @route POST /api/playlist/{PlaylistName}
  * @body {"name": "UploadTest", "globalPauseBetweenSequencesMS": 5000, "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
- * @response {"name": "UploadTest", "globalPauseBetweenSequencesMS": 5000, "mainPlaylist": [{"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}], "playlistInfo": {"total_duration": 8, "total_items": 1}}
+ * @response 200 Updated playlist
+ * ```json
+ * {
+ *   "name": "UploadTest",
+ *   "globalPauseBetweenSequencesMS": 5000,
+ *   "mainPlaylist": [
+ *     {"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}
+ *   ],
+ *   "playlistInfo": {
+ *     "total_duration": 8,
+ *     "total_items": 1
+ *   }
+ * }
+ * ```
  */
 function playlist_update()
 {
@@ -577,7 +638,10 @@ function playlist_update()
  * Delete the playlist named {PlaylistName}.
  *
  * @route DELETE /api/playlist/{PlaylistName}
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Playlist deleted
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_delete()
 {
@@ -614,7 +678,10 @@ function playlist_delete()
  *
  * @route POST /api/playlist/{PlaylistName}/{SectionName}/item
  * @body {"type": "pause", "enabled": 1, "playOnce": 0, "duration": 8}
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Item inserted
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function PlaylistSectionInsertItem()
 {
@@ -670,7 +737,10 @@ function PlaylistSectionInsertItem()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/stop
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Playlist stopped
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_stop()
 {
@@ -692,7 +762,10 @@ function playlist_stop()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/stopgracefully
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Graceful stop initiated
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_stopgracefully()
 {
@@ -715,7 +788,10 @@ function playlist_stopgracefully()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/stopgracefullyafterloop
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Stop after loop initiated
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_stopgracefullyafterloop()
 {
@@ -739,7 +815,10 @@ function playlist_stopgracefullyafterloop()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlist/{PlaylistName}/start
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Playlist started
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_start()
 {
@@ -767,7 +846,10 @@ function playlist_start()
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlist/{PlaylistName}/start/{Repeat}
  * @param bool scheduleProtected Prevent schedule from stopping this playlist
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Playlist started
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_start_repeat()
 {
@@ -795,7 +877,10 @@ function playlist_start_repeat()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlist/{PlaylistName}/start/{Repeat}/{ScheduleProtected}
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Playlist started
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_start_repeat_protected()
 {
@@ -821,7 +906,10 @@ function playlist_start_repeat_protected()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/pause
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Playlist paused
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_pause()
 {
@@ -843,7 +931,10 @@ function playlist_pause()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/playlists/resume
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Playlist resumed
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function playlist_resume()
 {

@@ -57,7 +57,28 @@ function stats_generate($statsFile)
  *
  * @route GET /api/statistics/usage
  * @param int force bypass cache
- * @response {"uuid": "6ba176e7-da7f-49f4-8b27-edb5bd9ff616", "systemInfo": {"mqtt": {"configured": true, "connected": true}, "fppdStatus": "running", "fppdMode": "player", "fppdUptimeSeconds": 3436, "wifiInterfaceCount": 0, "platform": "Debian", "version": "4.x-master-914-gebda8520", "majorVersion": 4, "minorVersion": 1000, "typeId": 1, "branch": "master", "osVersion": "v3.0", "Kernel": "4.19.0-6-amd64", "osRelease": "Debian GNU/Linux 10 (buster)", "channelRanges": "0-103", "utilization": {"CPU": 2.2, "Memory": 15.9, "Uptime": "7 days"}}, "capeInfo": {"type": "None"}, "files": {"sequences": {"cnt": 2, "bytes": 19025632}}, "models": {"count": 0}}
+ * @response 200 Usage statistics payload
+ * ```json
+ * {
+ *   "uuid": "6ba176e7-da7f-49f4-8b27-edb5bd9ff616",
+ *   "systemInfo": {
+ *     "mqtt": {"configured": true, "connected": true},
+ *     "fppdStatus": "running",
+ *     "fppdMode": "player",
+ *     "fppdUptimeSeconds": 3436,
+ *     "platform": "Debian",
+ *     "version": "4.x-master-914-gebda8520",
+ *     "majorVersion": 4,
+ *     "minorVersion": 1000,
+ *     "typeId": 1,
+ *     "branch": "master",
+ *     "utilization": {"CPU": 2.2, "Memory": 15.9, "Uptime": "7 days"}
+ *   },
+ *   "capeInfo": {"type": "None"},
+ *   "files": {"sequences": {"cnt": 2, "bytes": 19025632}},
+ *   "models": {"count": 0}
+ * }
+ * ```
  */
 function stats_get_last_file()
 {
@@ -198,7 +219,10 @@ function stats_memory()
  * the `statsPublishUrl` setting.
  *
  * @route POST /api/statistics/usage
- * @response {"status": "OK", "uuid": "M2-xxxxxxxx-f67f-930d-56ee-7xxxxxxxxxx"}
+ * @response 200 Statistics transmitted
+ * ```json
+ * {"status": "OK", "uuid": "M2-xxxxxxxx-f67f-930d-56ee-7xxxxxxxxxx"}
+ * ```
  */
 function stats_publish_stats_file()
 {
@@ -225,7 +249,10 @@ function stats_publish_stats_file()
  * Deletes the cached statistics file.
  *
  * @route DELETE /api/statistics/usage
- * @response {"status": "OK"}
+ * @response 200 Statistics cache cleared
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function stats_delete_last_file()
 {

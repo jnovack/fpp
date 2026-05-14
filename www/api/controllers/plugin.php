@@ -6,7 +6,10 @@
  * Get list of installed plugins.
  *
  * @route GET /api/plugin
- * @response ["fpp-brightness", "fpp-matrixtools", "fpp-vastfmt"]
+ * @response 200 List of installed plugin names
+ * ```json
+ * ["fpp-brightness", "fpp-matrixtools", "fpp-vastfmt"]
+ * ```
  */
 function GetInstalledPlugins()
 {
@@ -39,7 +42,10 @@ function GetInstalledPlugins()
  *
  * @route POST /api/plugin
  * @body {"repoName": "fpp-matrixtools", "name": "MatrixTools", "author": "Chris Pinkham (CaptainMurdoch)", "srcURL": "https://github.com/cpinkham/fpp-matrixtools.git", "branch": "master", "sha": ""}
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Plugin installed
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function InstallPlugin()
 {
@@ -133,7 +139,24 @@ function InstallPlugin()
  * have been fetched but not yet merged.
  *
  * @route GET /api/plugin/{RepoName}
- * @response {"repoName": "fpp-matrixtools", "name": "MatrixTools", "author": "Chris Pinkham (CaptainMurdoch)", "srcURL": "https://github.com/cpinkham/fpp-matrixtools.git", "updatesAvailable": 0, "versions": [{"minFPPVersion": 0, "maxFPPVersion": 0, "branch": "master", "sha": ""}]}
+ * @response 200 Plugin information
+ * ```json
+ * {
+ *   "repoName": "fpp-matrixtools",
+ *   "name": "MatrixTools",
+ *   "author": "Chris Pinkham (CaptainMurdoch)",
+ *   "srcURL": "https://github.com/cpinkham/fpp-matrixtools.git",
+ *   "updatesAvailable": 0,
+ *   "versions": [
+ *     {
+ *       "minFPPVersion": 0,
+ *       "maxFPPVersion": 0,
+ *       "branch": "master",
+ *       "sha": ""
+ *     }
+ *   ]
+ * }
+ * ```
  */
 function GetPluginInfo()
 {
@@ -168,7 +191,10 @@ function GetPluginInfo()
  * Uninstall plugin {RepoName}.
  *
  * @route DELETE /api/plugin/{RepoName}
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Plugin uninstalled
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function UninstallPlugin()
 {
@@ -222,7 +248,10 @@ function UninstallPlugin()
  * the plugin directory and checking for any unmerged commits.
  *
  * @route POST /api/plugin/{RepoName}/updates
- * @response {"Status": "OK", "Message": "", "updatesAvailable": 1}
+ * @response 200 Update check result
+ * ```json
+ * {"Status": "OK", "Message": "", "updatesAvailable": 1}
+ * ```
  */
 function CheckForPluginUpdates()
 {
@@ -254,7 +283,10 @@ function CheckForPluginUpdates()
  *
  * @route GET /api/plugin/{RepoName}/upgrade
  * @route POST /api/plugin/{RepoName}/upgrade
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Plugin upgraded
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function UpgradePlugin()
 {
@@ -452,7 +484,10 @@ function FetchURLWithGitHubCredentials($url)
  *
  * @route POST /api/plugin/fetchInfo
  * @body {"url": "https://example.com/pluginInfo.json", "useCredentials": 1}
- * @response {}
+ * @response 200 Plugin info fetched from remote URL
+ * ```json
+ * {}
+ * ```
  */
 function FetchPluginInfoProxy()
 {
@@ -524,7 +559,10 @@ function PluginHasUpdates($plugin)
  * Returns the value of setting `{SettingName}` from plugin `{RepoName}`.
  *
  * @route GET /api/plugin/{RepoName}/settings/{SettingName}
- * @response {"status": "OK", "SettingName": "SettingValue"}
+ * @response 200 Plugin setting value
+ * ```json
+ * {"status": "OK", "SettingName": "SettingValue"}
+ * ```
  */
 function PluginGetSetting()
 {
@@ -548,7 +586,10 @@ function PluginGetSetting()
  * @route POST /api/plugin/{RepoName}/settings/{SettingName}
  * @route PUT /api/plugin/{RepoName}/settings/{SettingName}
  * @body SettingValue
- * @response {"status": "OK", "SettingName": "SettingValue"}
+ * @response 200 Plugin setting updated
+ * ```json
+ * {"status": "OK", "SettingName": "SettingValue"}
+ * ```
  */
 function PluginSetSetting()
 {

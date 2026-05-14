@@ -123,7 +123,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Backup created successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -149,7 +149,7 @@
         "description": "Returns a list of JSON configuration backups stored locally, or \u2014 if `jsonConfigBackupUSBLocation` is set \u2014 a combined list from local storage and the configured USB device.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of available JSON configuration backups",
             "content": {
               "application/json": {
                 "schema": {
@@ -198,7 +198,7 @@
         "description": "Returns a list of JSON configuration files on a specified alternate storage device. Available devices can be obtained from `/backups/devices`, or the currently configured device is stored in the `jsonConfigBackupUSBLocation` setting.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of JSON backup filenames on the device",
             "content": {
               "application/json": {
                 "schema": {
@@ -253,7 +253,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Restore result",
             "content": {
               "application/json": {
                 "schema": {
@@ -305,7 +305,7 @@
         "description": "Deletes a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate` (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid directories and filenames.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Backup deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -329,10 +329,20 @@
         "description": "Downloads a specific JSON backup. `Directory` is either `JsonBackups` (local) or `JsonBackupsAlternate` (configured alternate device). `GET /api/backups/configuration/list` can be used to obtain valid directories and filenames.",
         "responses": {
           "200": {
-            "description": "Contents of the specified JSON Settings backup as a download"
+            "description": "Contents of the specified JSON Settings backup as a download.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {
+                  "key": "value"
+                }
+              }
+            }
           },
           "404": {
-            "description": "HTTP 404",
+            "description": "Returned when the requested file cannot be located on disk.",
             "content": {
               "application/json": {
                 "schema": {
@@ -358,7 +368,7 @@
         "description": "Returns a list of devices (e.g. USB drives, SSDs) attached to the system that can be used for backups.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of available backup devices",
             "content": {
               "application/json": {
                 "schema": {
@@ -405,7 +415,7 @@
         "description": "Mounts the specified device to `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Device mounted successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -449,7 +459,7 @@
         "description": "Unmounts the drive at `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Device unmounted successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -475,7 +485,7 @@
         "description": "Returns a list of full system backup files stored in the local `backups/` directory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of backup directory names",
             "content": {
               "application/json": {
                 "schema": {
@@ -511,7 +521,7 @@
         "description": "Returns a list of full system backup files stored on the specified device (e.g. a USB drive).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of backup directory names on the device",
             "content": {
               "application/json": {
                 "schema": {
@@ -537,7 +547,7 @@
         "description": "Returns the cape information for the currently detected hardware cape (from `cape-info` settings).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Cape hardware information",
             "content": {
               "application/json": {
                 "schema": {
@@ -561,7 +571,6 @@
                   "serialNumber": "XXXXXXXXXXXXXX",
                   "validEepromLocation": true,
                   "verifiedKeyId": "dk",
-                  "cs": "yfNvfkLTR1gbKbVGjH4DEg",
                   "eepromLocation": "/sys/bus/i2c/devices/2-0050/eeprom",
                   "modules": [
                     "gpio_pcf857x",
@@ -583,7 +592,7 @@
             }
           },
           "404": {
-            "description": "HTTP 404",
+            "description": "No cape detected",
             "content": {
               "application/json": {
                 "schema": {
@@ -625,7 +634,7 @@
         "description": "Signs the cape EEPROM by sending its data to the FalconPlayer.com signing API using the provided `key` and order ID.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "EEPROM signed successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -665,7 +674,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Signed EEPROM written successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -708,7 +717,7 @@
         "description": "Returns the cape EEPROM signing data payload for use with an external signing service.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "EEPROM signing data payload",
             "content": {
               "application/json": {
                 "schema": {
@@ -753,7 +762,15 @@
         "description": "Downloads the cape EEPROM signing data as a binary file attachment.",
         "responses": {
           "200": {
-            "description": "Binary file download containing the signing data JSON"
+            "description": "EEPROM signing data as binary file attachment",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           }
         }
       }
@@ -783,7 +800,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Voucher redeemed successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -810,7 +827,7 @@
         "description": "Returns a list of available cape EEPROM options for the current platform.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Available cape EEPROM options",
             "content": {
               "application/json": {
                 "schema": {
@@ -840,7 +857,7 @@
         "description": "Returns a list of available LED panel cape configuration `key` values.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Available LED panel cape configuration keys",
             "content": {
               "application/json": {
                 "schema": {
@@ -872,7 +889,7 @@
         "description": "Returns the LED panel cape configuration JSON for the specified `key`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "LED panel cape configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -894,7 +911,7 @@
         "description": "Returns a list of available string cape configuration `key` values.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Available string cape configuration keys",
             "content": {
               "application/json": {
                 "schema": {
@@ -929,7 +946,7 @@
         "description": "Returns the string cape configuration JSON for the specified `key`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "String cape configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -958,7 +975,7 @@
             }
           },
           "404": {
-            "description": "HTTP 404",
+            "description": "Key not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -988,7 +1005,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Statistics reset",
             "content": {
               "application/json": {
                 "schema": {
@@ -1016,7 +1033,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "E1.31/DDP channel input statistics",
             "content": {
               "application/json": {
                 "schema": {
@@ -1049,7 +1066,7 @@
         "description": "Returns the current configuration of any output processors.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current output processor configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -1104,7 +1121,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current output processor configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -1148,8 +1165,19 @@
         "summary": "Get channel output",
         "description": "Returns the current configuration of the specified output file in JSON format. Common values of `{file}` include `universeOutputs`, `universeInputs`, `co-other`, `dmxInputs`, `co-pwm`, and `co-bbbStrings`. Supports an optional `?ip=` query parameter to fetch from a remote FPP instance.",
         "responses": {
+          "200": {
+            "description": "Channel output configuration file contents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {}
+              }
+            }
+          },
           "404": {
-            "description": "HTTP 404",
+            "description": "File not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1181,7 +1209,15 @@
         },
         "responses": {
           "200": {
-            "description": "Format varies based on file"
+            "description": "Saved configuration echoed back",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {}
+              }
+            }
           }
         }
       }
@@ -1195,7 +1231,7 @@
         "description": "Returns a list of config files in `/home/fpp/media/config` or an optional subdirectory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Directory listing",
             "content": {
               "application/json": {
                 "schema": {
@@ -1224,7 +1260,7 @@
         "description": "Deletes a config file from `/home/fpp/media/config`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "File deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -1247,7 +1283,15 @@
         "description": "Returns the contents of a specific config file, or a directory listing if the path resolves to a directory.",
         "responses": {
           "200": {
-            "description": "(Raw config file contents)"
+            "description": "Raw config file contents",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "(Raw config file contents)"
+              }
+            }
           }
         }
       },
@@ -1269,7 +1313,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "File uploaded",
             "content": {
               "application/json": {
                 "schema": {
@@ -1312,7 +1356,7 @@
         "description": "Deletes an empty subdirectory from the specified media directory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Subdirectory deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -1336,7 +1380,7 @@
         "description": "Creates a subdirectory inside the specified media directory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Subdirectory created",
             "content": {
               "application/json": {
                 "schema": {
@@ -1362,7 +1406,7 @@
         "description": "Returns a list of effect (`*.eseq`) files available in the effects directory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of effect filenames",
             "content": {
               "application/json": {
                 "schema": {
@@ -1387,7 +1431,7 @@
         "description": "Returns a combined list of all effect (`*.eseq`) files from both the effects directory and the sequences directory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Combined list of effect and sequence filenames",
             "content": {
               "application/json": {
                 "schema": {
@@ -1413,7 +1457,7 @@
         "description": "Configures outbound email using the existing settings.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Email configured",
             "content": {
               "application/json": {
                 "schema": {
@@ -1438,7 +1482,7 @@
         "description": "Sends a test email using the existing settings.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Test email sent",
             "content": {
               "application/json": {
                 "schema": {
@@ -1463,7 +1507,7 @@
         "description": "Returns a map of all event (`*.fevt`) files, keyed by event ID (filename without extension).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Map of all event files keyed by event ID",
             "content": {
               "application/json": {
                 "schema": {
@@ -1501,7 +1545,7 @@
         "description": "Returns the contents of a specific event file. If `{eventId}` is `ids`, returns a map of event IDs to display names.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Event file contents",
             "content": {
               "application/json": {
                 "schema": {
@@ -1537,7 +1581,7 @@
         "description": "Triggers the specified event by sending a `Trigger Event` command to `fppd`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Event triggered",
             "content": {
               "application/json": {
                 "schema": {
@@ -1579,7 +1623,7 @@
         "description": "Returns plugin-specific file info for the specified file path. The plugin name, extension category, and file path are read from route parameters. The metadata command is defined in the plugin's `pluginInfo.json`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin-specific file information",
             "content": {
               "application/json": {
                 "schema": {
@@ -1611,7 +1655,7 @@
         "description": "Moves the specified file from the `uploads` directory to the correct media subfolder based on its extension, returning a status of `OK` or an error message if not successful.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "File moved to media directory",
             "content": {
               "application/json": {
                 "schema": {
@@ -1645,7 +1689,7 @@
         "description": "Notifies any plugin that has registered an `onUpload` handler for the given file extension. `:ext` is the extension category and `**` is the file path.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin notified of upload",
             "content": {
               "application/json": {
                 "schema": {
@@ -1679,7 +1723,7 @@
         "description": "Handles chunked file uploads via `PATCH` (TUS-style). A `POST` to the same route initiates the session and returns a unique upload ID. Each `PATCH` request delivers a chunk identified by `Upload-Name`, `Upload-Offset`, and `Upload-Length` headers; when all chunks arrive, the file is assembled.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Upload chunk received",
             "content": {
               "application/json": {
                 "schema": {
@@ -1716,7 +1760,7 @@
         "description": "Deletes the specified file or directory from a media directory. Validates the resolved path against the allowed base directory to prevent path traversal.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "File or directory deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -1737,13 +1781,58 @@
           "file"
         ],
         "summary": "Get file contents",
-        "description": "Downloads the specified file from a media directory. Supports optional query params: `?tail=N` (return last N lines), `?play=1` (set playback content type), `?attach=1` (force attachment download for images).",
+        "description": "Downloads the specified file from a media directory.",
+        "parameters": [
+          {
+            "name": "tail",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Return the last N lines instead of the whole file"
+          },
+          {
+            "name": "play",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "When `1`, set a playback-oriented content type instead of a forced attachment"
+          },
+          {
+            "name": "attach",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "When `1`, force attachment download for images"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "The File Contents"
+            "description": "File contents; content type varies by file extension and query params",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           },
           "404": {
-            "description": "File <path> does not exist."
+            "description": "File not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "File <path> does not exist."
+              }
+            }
           }
         }
       }
@@ -1783,7 +1872,7 @@
         "description": "Copies the specified file from `:source` to `:dest` within the given directory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "File copied successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -1835,7 +1924,7 @@
         "description": "Renames the specified file from `:source` to `:dest` within the given directory.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "File renamed successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -1852,7 +1941,7 @@
         }
       }
     },
-    "/api/file/{DirName}/tailfollow/**": {
+    "/api/file/{DirName}/tailfollow/*": {
       "parameters": [
         {
           "name": "DirName",
@@ -1868,16 +1957,51 @@
           "file"
         ],
         "summary": "Stream tail of file",
-        "description": "Streams the tail of a log file using Server-Sent Events (SSE). Only works for files in the `logs` directory. Accepts optional `?lines=N` query param (default 50, max 500). Sends a heartbeat comment every 30 seconds to keep the connection alive, and wraps `tail` in a 300-second timeout.",
+        "description": "Streams the tail of a log file using Server-Sent Events (SSE). Only works for files in the `logs` directory.",
+        "parameters": [
+          {
+            "name": "lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Number of existing lines to seed into the stream, from 1 to 500, default 50"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Server-sent event stream of new log lines as they are appended"
+            "description": "Success",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "[12-May-2026 01:24:10] NOTICE: fpm is running, pid 80\n[12-May-2026 01:24:10] NOTICE: ready to handle connections"
+              }
+            }
           },
           "403": {
-            "description": "Tail follow is only allowed for log files."
+            "description": "Forbidden directory",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Tail follow is only allowed for log files."
+              }
+            }
           },
           "404": {
-            "description": "File not found: <filename>"
+            "description": "File not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "File not found: <filename>"
+              }
+            }
           }
         }
       }
@@ -1906,10 +2030,30 @@
           "file"
         ],
         "summary": "Upload file to directory",
-        "description": "Uploads a file to the specified media directory. Supports optional query params `bs` (block size) and `sb` (start block) for fragment uploads on systems with large file requirements.",
+        "description": "Uploads a file to the specified media directory.",
+        "parameters": [
+          {
+            "name": "bs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Block size used for fragmented uploads"
+          },
+          {
+            "name": "sb",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Starting block index used for fragmented uploads"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "File uploaded successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -1945,7 +2089,15 @@
         "description": "Downloads all files in the specified directory (or comma-separated list of directories) as a zip archive. `logs` and `config` are handled specially to include system log and config files.",
         "responses": {
           "200": {
-            "description": "A Zip file"
+            "description": "Binary file stream of the compressed system archive.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           }
         }
       }
@@ -1966,10 +2118,21 @@
           "files"
         ],
         "summary": "Get all files",
-        "description": "Returns a list of files in the specified media directory. Supports `?nameOnly=1` to return a flat array of filenames.",
+        "description": "Returns a list of files in the specified media directory.",
+        "parameters": [
+          {
+            "name": "nameOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "When `1`, return a flat array of filenames instead of the default object envelope"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Listing of files",
             "content": {
               "application/json": {
                 "schema": {
@@ -2002,7 +2165,7 @@
         "description": "Returns an array of branches available to switch to, filtering out obsolete version branches and Dependabot branches.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Available local branches",
             "content": {
               "application/json": {
                 "schema": {
@@ -2030,7 +2193,7 @@
         "description": "Returns a list of commits present in the `origin` (GitHub) but not in the local repository.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Commits in origin not yet in local",
             "content": {
               "application/json": {
                 "schema": {
@@ -2076,7 +2239,7 @@
         "description": "Returns lists of `.fppos` files available locally or on GitHub for the current platform. If the `{All}` path parameter is `\"all\"`, returns all releases regardless of platform.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Available OS release assets",
             "content": {
               "application/json": {
                 "schema": {
@@ -2116,7 +2279,7 @@
         "description": "Returns release asset size information from the GitHub `FalconChristmas/fpp` releases API.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Release asset sizes",
             "content": {
               "application/json": {
                 "schema": {
@@ -2141,7 +2304,7 @@
         "description": "Discard local changes Performs a hard reset on the current branch, discarding any local changes.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Reset complete",
             "content": {
               "application/json": {
                 "schema": {
@@ -2170,7 +2333,7 @@
         "description": "Returns the status of the local git branch, including any dirty files.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Local repository status",
             "content": {
               "application/json": {
                 "schema": {
@@ -2195,7 +2358,15 @@
         "description": "Returns an HTML page listing all available FPP API endpoints and their descriptions.",
         "responses": {
           "200": {
-            "description": "<html table listing all API endpoints>"
+            "description": "HTML page listing all API endpoints",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "<html table listing all API endpoints>"
+              }
+            }
           }
         }
       }
@@ -2209,7 +2380,7 @@
         "description": "Returns a list of media files (includes both music and video files).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of media filenames",
             "content": {
               "application/json": {
                 "schema": {
@@ -2244,7 +2415,7 @@
         "description": "Returns the duration of a media item.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Media duration",
             "content": {
               "application/json": {
                 "schema": {
@@ -2259,7 +2430,15 @@
             }
           },
           "404": {
-            "description": "Not found: {MediaName}"
+            "description": "Media file not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Not found: {MediaName}"
+              }
+            }
           }
         }
       }
@@ -2283,7 +2462,7 @@
         "description": "Returns metadata streams, codecs, profiles, type for a specific media file.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Media file metadata",
             "content": {
               "application/json": {
                 "schema": {
@@ -2317,7 +2496,7 @@
         "description": "Returns the current DNS configuration. If not configured, `status` will be `Not Configured`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current DNS configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -2354,7 +2533,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "DNS configuration updated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2382,7 +2561,7 @@
         "description": "Returns the currently configured default gateway IP address. May be empty when using DHCP.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current default gateway",
             "content": {
               "application/json": {
                 "schema": {
@@ -2416,7 +2595,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Default gateway saved",
             "content": {
               "application/json": {
                 "schema": {
@@ -2441,7 +2620,7 @@
         "description": "Returns detailed information about network interfaces, their IP addresses, and Wi-Fi signal strength.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Network interface details",
             "content": {
               "application/json": {
                 "schema": {
@@ -2500,7 +2679,7 @@
         "description": "Creates a new blank DHCP interface configuration file for the specified network interface (e.g. `eth1`, `wlan0`).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "DHCP interface created",
             "content": {
               "application/json": {
                 "schema": {
@@ -2534,7 +2713,7 @@
         "description": "Retrieves the current network interface configuration.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Network interface configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -2578,7 +2757,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Interface configuration saved",
             "content": {
               "application/json": {
                 "schema": {
@@ -2612,7 +2791,7 @@
         "description": "Applies the networking settings for the specified `{interface}` at the OS level and restarts the interface.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Networking configuration applied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2637,7 +2816,7 @@
         "description": "Removes interface persistent names by deleting systemd `.link` files and restoring any USB ethernet adapter config files back to `eth*` names.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Persistent names removed",
             "content": {
               "application/json": {
                 "schema": {
@@ -2659,7 +2838,7 @@
         "description": "Creates interface persistent names by writing systemd `.link` files that pin each interface's name to its MAC address.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Persistent names created",
             "content": {
               "application/json": {
                 "schema": {
@@ -2694,7 +2873,7 @@
         "description": "Returns information about Wi-Fi networks discoverable via the specified `{interface}`. Networks without an SSID may appear in the list.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Discoverable Wi-Fi networks",
             "content": {
               "application/json": {
                 "schema": {
@@ -2726,7 +2905,7 @@
         "description": "Returns signal strength information for wireless network interfaces.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Wi-Fi signal strength per interface",
             "content": {
               "application/json": {
                 "schema": {
@@ -2765,7 +2944,7 @@
         "description": "Returns the available options for the specified setting. Supports `AudioMixerDevice`, `AudioOutput`, `AudioInput`, and other platform-specific option sets.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Available options for the setting",
             "content": {
               "application/json": {
                 "schema": {
@@ -2799,7 +2978,7 @@
         "description": "Delete the playlist named {PlaylistName}.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -2833,7 +3012,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist details",
             "content": {
               "application/json": {
                 "schema": {
@@ -2893,7 +3072,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Updated playlist",
             "content": {
               "application/json": {
                 "schema": {
@@ -2946,7 +3125,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist started",
             "content": {
               "application/json": {
                 "schema": {
@@ -2995,7 +3174,7 @@
         ],
         "parameters": [
           {
-            "name": "scheduledProtected",
+            "name": "scheduleProtected",
             "in": "query",
             "required": false,
             "schema": {
@@ -3006,7 +3185,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist started",
             "content": {
               "application/json": {
                 "schema": {
@@ -3063,7 +3242,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist started",
             "content": {
               "application/json": {
                 "schema": {
@@ -3121,7 +3300,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Item inserted",
             "content": {
               "application/json": {
                 "schema": {
@@ -3146,7 +3325,7 @@
         "description": "Get list of playlist names.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of playlist names",
             "content": {
               "application/json": {
                 "schema": {
@@ -3195,7 +3374,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Newly created playlist",
             "content": {
               "application/json": {
                 "schema": {
@@ -3238,7 +3417,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist paused",
             "content": {
               "application/json": {
                 "schema": {
@@ -3263,7 +3442,7 @@
         "description": "Get a combined list of playlist names and `*.fseq` sequence filenames that are playable.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playable playlist and sequence names",
             "content": {
               "application/json": {
                 "schema": {
@@ -3295,7 +3474,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist resumed",
             "content": {
               "application/json": {
                 "schema": {
@@ -3326,7 +3505,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Playlist stopped",
             "content": {
               "application/json": {
                 "schema": {
@@ -3357,7 +3536,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Graceful stop initiated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3388,7 +3567,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Stop after loop initiated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3413,7 +3592,7 @@
         "description": "Returns a list of all playlists with any validation errors, total item counts, and total duration.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Validation results for all playlists",
             "content": {
               "application/json": {
                 "schema": {
@@ -3448,7 +3627,7 @@
         "description": "Get list of installed plugins.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of installed plugin names",
             "content": {
               "application/json": {
                 "schema": {
@@ -3489,7 +3668,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin installed",
             "content": {
               "application/json": {
                 "schema": {
@@ -3527,7 +3706,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin info fetched from remote URL",
             "content": {
               "application/json": {
                 "schema": {
@@ -3549,7 +3728,7 @@
         "description": "Returns header indicator data (e.g., notification badges) from all installed plugins that define a `headerIndicators.php` file.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin header indicator data",
             "content": {
               "application/json": {
                 "schema": {
@@ -3587,7 +3766,7 @@
         "description": "Uninstall plugin {RepoName}.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin uninstalled",
             "content": {
               "application/json": {
                 "schema": {
@@ -3610,7 +3789,7 @@
         "description": "Get `pluginInfo.json` for installed plugin `{RepoName}`. An additional `updatesAvailable` field indicates whether the plugin has commits that have been fetched but not yet merged.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin information",
             "content": {
               "application/json": {
                 "schema": {
@@ -3664,7 +3843,7 @@
         "description": "Returns the value of setting `{SettingName}` from plugin `{RepoName}`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin setting value",
             "content": {
               "application/json": {
                 "schema": {
@@ -3697,7 +3876,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin setting updated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3732,7 +3911,7 @@
         "description": "Check plugin `{RepoName}` for available updates by running `git fetch` in the plugin directory and checking for any unmerged commits.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Update check result",
             "content": {
               "application/json": {
                 "schema": {
@@ -3768,7 +3947,7 @@
         "description": "Pull in git updates for plugin `{RepoName}`. Supports an optional `?stream=true` query parameter for streaming output.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Plugin upgraded",
             "content": {
               "application/json": {
                 "schema": {
@@ -3793,7 +3972,7 @@
         "description": "Deletes all proxy entries by writing an empty `proxy-config.conf` and triggering an Apache graceful reload.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "All proxies deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -3813,7 +3992,7 @@
         "description": "Returns the list of IP addresses this FPP instance can proxy.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current proxy list",
             "content": {
               "application/json": {
                 "schema": {
@@ -3861,7 +4040,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Updated proxy list",
             "content": {
               "application/json": {
                 "schema": {
@@ -3885,7 +4064,7 @@
             }
           },
           "400": {
-            "description": "HTTP 400",
+            "description": "No valid proxies provided",
             "content": {
               "application/json": {
                 "schema": {
@@ -3919,7 +4098,7 @@
         "description": "Removes a single IP address from the FPP proxy list.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Updated proxy list",
             "content": {
               "application/json": {
                 "schema": {
@@ -3939,7 +4118,7 @@
         "description": "Adds a single IP address to the FPP proxy list if it does not already exist.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Updated proxy list",
             "content": {
               "application/json": {
                 "schema": {
@@ -3984,7 +4163,7 @@
         "description": "Fetches a URL on a remote FPP instance via server-side proxy to avoid CSP restrictions.",
         "responses": {
           "400": {
-            "description": "HTTP 400",
+            "description": "Invalid IP address",
             "content": {
               "application/json": {
                 "schema": {
@@ -3997,7 +4176,7 @@
             }
           },
           "502": {
-            "description": "HTTP 502",
+            "description": "Proxy fetch failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -4021,7 +4200,7 @@
         "description": "Proxies a named action to a remote FPP instance by IP address. Supported actions: `listUpgrades`, `reboot`, `restartFppd`, `upgradeOS`.",
         "responses": {
           "400": {
-            "description": "HTTP 400",
+            "description": "Invalid action",
             "content": {
               "application/json": {
                 "schema": {
@@ -4045,7 +4224,7 @@
         "description": "Returns the list of known remote FPP systems from `fppd` multiSync discovery.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Known remote FPP systems",
             "content": {
               "application/json": {
                 "schema": {
@@ -4070,7 +4249,7 @@
         "description": "Returns the current FPP schedule configuration from `schedule.json`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current schedule entries",
             "content": {
               "application/json": {
                 "schema": {
@@ -4124,7 +4303,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Saved schedule entries",
             "content": {
               "application/json": {
                 "schema": {
@@ -4146,8 +4325,16 @@
               }
             }
           },
-          "404": {
-            "description": "Unable to open schedule.json for writing."
+          "500": {
+            "description": "Failed to write schedule",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Unable to open schedule.json for writing."
+              }
+            }
           }
         }
       }
@@ -4167,7 +4354,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Schedule reloaded",
             "content": {
               "application/json": {
                 "schema": {
@@ -4192,7 +4379,7 @@
         "description": "Returns a list of currently installed scripts.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of installed script filenames",
             "content": {
               "application/json": {
                 "schema": {
@@ -4235,7 +4422,7 @@
         "description": "Installs a remote script from the script repository.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Remote script installed",
             "content": {
               "application/json": {
                 "schema": {
@@ -4277,7 +4464,15 @@
         "description": "Returns the source code of a remote script from the script repository.",
         "responses": {
           "200": {
-            "description": "The content of the script as a string"
+            "description": "Remote script source code",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "The content of the script as a string"
+              }
+            }
           }
         }
       }
@@ -4301,7 +4496,15 @@
         "description": "Returns the source code of an installed script.",
         "responses": {
           "200": {
-            "description": "The content of the script as a string"
+            "description": "Script source code",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "The content of the script as a string"
+              }
+            }
           }
         }
       },
@@ -4313,7 +4516,7 @@
         "description": "Writes the `POST` request body to the file specified by `{scriptName}`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Script saved",
             "content": {
               "application/json": {
                 "schema": {
@@ -4349,7 +4552,15 @@
         "description": "Runs a locally installed script.",
         "responses": {
           "200": {
-            "description": "The output of the script as a String"
+            "description": "Script output",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "The output of the script as a String"
+              }
+            }
           }
         }
       }
@@ -4363,7 +4574,7 @@
         "description": "Returns a list of all `*.fseq` sequence files.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of sequence names",
             "content": {
               "application/json": {
                 "schema": {
@@ -4395,7 +4606,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sequence stepped",
             "content": {
               "application/json": {
                 "schema": {
@@ -4429,7 +4640,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sequence stopped",
             "content": {
               "application/json": {
                 "schema": {
@@ -4463,7 +4674,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sequence play/pause toggled",
             "content": {
               "application/json": {
                 "schema": {
@@ -4497,7 +4708,7 @@
         "description": "Deletes the named `*.fseq` sequence file.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sequence deleted",
             "content": {
               "application/json": {
                 "schema": {
@@ -4520,10 +4731,26 @@
         "description": "Downloads the `*.fseq` file for the named sequence.",
         "responses": {
           "200": {
-            "description": "(Raw FSEQ file data)"
+            "description": "Raw FSEQ file download",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not found: {SequenceName}"
+            "description": "Sequence not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Not found: {SequenceName}"
+              }
+            }
           }
         }
       },
@@ -4545,7 +4772,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sequence uploaded",
             "content": {
               "application/json": {
                 "schema": {
@@ -4580,7 +4807,7 @@
         "description": "Returns `name`, `version`, `id`, `time`, and other details from the `*.fseq` file for the named sequence.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sequence metadata",
             "content": {
               "application/json": {
                 "schema": {
@@ -4599,7 +4826,15 @@
             }
           },
           "404": {
-            "description": "Not found: {SequenceName}"
+            "description": "Sequence not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Not found: {SequenceName}"
+              }
+            }
           }
         }
       }
@@ -4641,7 +4876,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sequence started",
             "content": {
               "application/json": {
                 "schema": {
@@ -4667,7 +4902,7 @@
         "description": "Returns the `settings.json` metadata file as a JSON list of settings.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "All settings metadata",
             "content": {
               "application/json": {
                 "schema": {
@@ -4718,7 +4953,7 @@
         "description": "Get info about a particular setting, including its current `value`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Setting metadata and current value",
             "content": {
               "application/json": {
                 "schema": {
@@ -4727,7 +4962,7 @@
                 "example": {
                   "name": "AudioFormat",
                   "description": "Audio Output Format",
-                  "tip": "The Audio Format generated by the decoder ",
+                  "tip": "The Audio Format generated by the decoder",
                   "level": 1,
                   "restart": 2,
                   "default": 0,
@@ -4762,7 +4997,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Setting saved",
             "content": {
               "application/json": {
                 "schema": {
@@ -4806,7 +5041,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Sub-value updated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4830,7 +5065,7 @@
         "description": "Deletes the cached statistics file.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Statistics cache cleared",
             "content": {
               "application/json": {
                 "schema": {
@@ -4863,7 +5098,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Usage statistics payload",
             "content": {
               "application/json": {
                 "schema": {
@@ -4879,17 +5114,12 @@
                     "fppdStatus": "running",
                     "fppdMode": "player",
                     "fppdUptimeSeconds": 3436,
-                    "wifiInterfaceCount": 0,
                     "platform": "Debian",
                     "version": "4.x-master-914-gebda8520",
                     "majorVersion": 4,
                     "minorVersion": 1000,
                     "typeId": 1,
                     "branch": "master",
-                    "osVersion": "v3.0",
-                    "Kernel": "4.19.0-6-amd64",
-                    "osRelease": "Debian GNU/Linux 10 (buster)",
-                    "channelRanges": "0-103",
                     "utilization": {
                       "CPU": 2.2,
                       "Memory": 15.9,
@@ -4922,7 +5152,7 @@
         "description": "Transmits the statistics payload to the remote stats server configured in the `statsPublishUrl` setting.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Statistics transmitted",
             "content": {
               "application/json": {
                 "schema": {
@@ -4947,7 +5177,7 @@
         "description": "Restarts the `fppd` process. Pass `?quick=1` to reload some configuration without a full restart.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "fppd restarted",
             "content": {
               "application/json": {
                 "schema": {
@@ -4971,7 +5201,7 @@
         "description": "Skips the current boot delay by creating a skip flag file, allowing FPP startup to proceed immediately.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Boot delay skip requested",
             "content": {
               "application/json": {
                 "schema": {
@@ -4996,7 +5226,7 @@
         "description": "Starts the `fppd` process idempotently (if it isn't already running).",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "fppd started",
             "content": {
               "application/json": {
                 "schema": {
@@ -5020,7 +5250,7 @@
         "description": "Stops the `fppd` process if it is running.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "fppd stopped",
             "content": {
               "application/json": {
                 "schema": {
@@ -5044,7 +5274,7 @@
         "description": "Returns basic information about the system.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "System information",
             "content": {
               "application/json": {
                 "schema": {
@@ -5093,7 +5323,7 @@
         "description": "Returns a list of all installed and available OS package names via `apt list --all-versions`.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "List of OS package names",
             "content": {
               "application/json": {
                 "schema": {
@@ -5129,7 +5359,7 @@
         "description": "Returns description, dependencies, and installation status for the specified OS package.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Package information",
             "content": {
               "application/json": {
                 "schema": {
@@ -5155,7 +5385,7 @@
         "description": "Reboots the operating system.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Reboot initiated",
             "content": {
               "application/json": {
                 "schema": {
@@ -5189,7 +5419,7 @@
         "description": "Returns release notes for the specified FPP version tag from the GitHub releases API.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Release notes",
             "content": {
               "application/json": {
                 "schema": {
@@ -5217,7 +5447,7 @@
         "description": "Executes a clean shutdown of the operating system.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Shutdown initiated",
             "content": {
               "application/json": {
                 "schema": {
@@ -5241,7 +5471,7 @@
         "description": "Returns `fppd`, network, current playlist, schedule, utilization, host, version, and MQTT status. Pass an optional array of IP addresses (e.g. `&ip[]=192.168.0.1&ip[]=192.168.0.2`) to query remote instances instead.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "System status",
             "content": {
               "application/json": {
                 "schema": {
@@ -5278,7 +5508,7 @@
         "description": "Returns the current FPP update/upgrade status, including whether a newer version is available, the current commit, and any major version or end-of-life warnings.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "FPP upgrade status",
             "content": {
               "application/json": {
                 "schema": {
@@ -5312,7 +5542,7 @@
         "description": "Returns the current volume if `fppd` is running, or the `Volume` setting value if not.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current volume",
             "content": {
               "application/json": {
                 "schema": {
@@ -5348,7 +5578,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Volume set",
             "content": {
               "application/json": {
                 "schema": {
@@ -5369,8 +5599,8 @@
         "tags": [
           "testmode"
         ],
-        "summary": "testmode",
-        "description": "Returns the current Test Mode state for this instance.",
+        "summary": "Get Test Mode state",
+        "description": "Returns the current Test Mode configuration for this instance.",
         "x-badges": [
           {
             "name": "FPP REQUIRED",
@@ -5379,7 +5609,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current Test Mode configuration",
             "content": {
               "application/json": {
                 "schema": {
@@ -5403,8 +5633,8 @@
         "tags": [
           "testmode"
         ],
-        "summary": "testmode",
-        "description": "Sets the current Test Mode configuration on this instance.",
+        "summary": "Set Test Mode configuration",
+        "description": "Sets the current Test Mode configuration for this instance.",
         "x-badges": [
           {
             "name": "FPP REQUIRED",
@@ -5431,7 +5661,7 @@
         },
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Test mode updated successfully",
             "content": {
               "application/json": {
                 "schema": {
@@ -5455,7 +5685,7 @@
         "description": "Returns the current system time as a formatted string.",
         "responses": {
           "200": {
-            "description": "Success",
+            "description": "Current system time",
             "content": {
               "application/json": {
                 "schema": {

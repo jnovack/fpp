@@ -34,6 +34,23 @@ BADGE_COLORS = {
     'info':     '#546e7a',
 }
 
+MEDIA_HINT_MAP = {
+    'json':   'application/json',
+    'text':   'text/plain',
+    'bytes':  'application/octet-stream',
+    'binary': 'application/octet-stream',
+    'xml':    'application/xml',
+    'html':   'text/html',
+}
+
+# Matches @response, its optional fenced code block, and stops before the next tag.
+# Groups: (1) status code, (2) description, (3) media hint, (4) block content
+RESPONSE_RE = re.compile(
+    r'@response(?:\s+(\d{3}))?\s+([^\n]+)'
+    r'(?:\n\s*```(\w+)\n(.*?)\n\s*```)?',
+    re.DOTALL,
+)
+
 
 # ---------------------------------------------------------------------------
 # PHPDoc parsing
@@ -113,9 +130,12 @@ def parse_docblocks(php_source):
             })
 
         responses = []
-        for rm in re.finditer(r'@response(?:\s+(\d{3}))?\s+(.+)', text):
+        for rm in RESPONSE_RE.finditer(text):
             status = int(rm.group(1)) if rm.group(1) else 200
-            responses.append((status, rm.group(2).strip()))
+            resp_desc = rm.group(2).strip()
+            media_hint = rm.group(3)           # e.g. 'json', 'text', 'bytes' or None
+            content = rm.group(4).strip() if rm.group(4) is not None else None
+            responses.append((status, resp_desc, media_hint, content))
 
         badges = []
         for bm in re.finditer(r'@badge\s+"([^"]+)"\s+(\w+)', text):
@@ -156,6 +176,24 @@ def parse_json_value(raw):
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return raw
+
+
+def extract_mime_override(block_content, default_type):
+    """
+    If the first line of block_content is a bracketed MIME-type hint such as
+      [Content-Type: text/event-stream]
+      [Raw Binary Stream: application/zip]
+    return (mime_type, remaining_content_stripped).
+    Otherwise return (default_type, block_content).
+    """
+    if not block_content:
+        return default_type, block_content
+    lines = block_content.splitlines()
+    m = re.match(r'^\[.*?([a-z]+/[a-z][a-z0-9+.\-]*)\]', lines[0], re.IGNORECASE)
+    if m:
+        rest = '\n'.join(lines[1:]).strip()
+        return m.group(1), rest
+    return default_type, block_content
 
 
 def extract_path_params(path):
@@ -240,24 +278,61 @@ def build_openapi(endpoints):
             responses = {}
             if ep['responses']:
                 seen = set()
-                for status, raw in ep['responses']:
+                for status, desc, media_hint, block_content in ep['responses']:
                     if status in seen:
                         continue
                     seen.add(status)
-                    val = parse_json_value(raw)
-                    if isinstance(val, str):
-                        responses[str(status)] = {'description': val}
+
+                    if media_hint is not None and block_content is not None:
+                        content_type = MEDIA_HINT_MAP.get(media_hint, 'application/octet-stream')
+
+                        if media_hint == 'json':
+                            parsed = parse_json_value(block_content)
+                            if isinstance(parsed, str):
+                                schema = {'type': 'string'}
+                                example = parsed
+                            else:
+                                schema = {'type': 'array' if isinstance(parsed, list) else 'object'}
+                                example = parsed
+                            responses[str(status)] = {
+                                'description': desc,
+                                'content': {content_type: {'schema': schema, 'example': example}},
+                            }
+                        elif media_hint == 'bytes':
+                            content_type, _ = extract_mime_override(block_content, content_type)
+                            responses[str(status)] = {
+                                'description': desc,
+                                'content': {content_type: {'schema': {'type': 'string', 'format': 'binary'}}},
+                            }
+                        else:
+                            # text, xml, html, and any unknown hint
+                            # A bracketed first line overrides the content type and is stripped from the example.
+                            content_type, example = extract_mime_override(block_content, content_type)
+                            responses[str(status)] = {
+                                'description': desc,
+                                'content': {
+                                    content_type: {
+                                        'schema': {'type': 'string'},
+                                        'example': example,
+                                    }
+                                },
+                            }
                     else:
-                        desc = 'Success' if status == 200 else f'HTTP {status}'
-                        responses[str(status)] = {
-                            'description': desc,
-                            'content': {
-                                'application/json': {
-                                    'schema': {'type': 'array' if isinstance(val, list) else 'object'},
-                                    'example': val,
-                                }
-                            },
-                        }
+                        # No fenced block — fall back: try to parse desc as inline JSON (legacy)
+                        val = parse_json_value(desc)
+                        if isinstance(val, str):
+                            responses[str(status)] = {'description': val}
+                        else:
+                            fallback_desc = 'Success' if status == 200 else f'HTTP {status}'
+                            responses[str(status)] = {
+                                'description': fallback_desc,
+                                'content': {
+                                    'application/json': {
+                                        'schema': {'type': 'array' if isinstance(val, list) else 'object'},
+                                        'example': val,
+                                    }
+                                },
+                            }
             else:
                 responses['200'] = {'description': 'Success'}
 

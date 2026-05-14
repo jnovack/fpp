@@ -7,7 +7,16 @@
  * that define a `headerIndicators.php` file.
  *
  * @route GET /api/plugin/headerIndicators
- * @response [{"pluginName": "fpp-matrixtools", "label": "1", "color": "red"}]
+ * @response 200 Plugin header indicator data
+ * ```json
+ * [
+ *   {
+ *     "pluginName": "fpp-matrixtools",
+ *     "label": "1",
+ *     "color": "red"
+ *   }
+ * ]
+ * ```
  */
 function GetPluginHeaderIndicators()
 {

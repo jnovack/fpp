@@ -7,8 +7,38 @@
  * (from `cape-info` settings).
  *
  * @route GET /api/cape
- * @response {"id": "K16A-Bv1", "name": "K16A-B", "description": "K16A-B is a cape for the BeagleBone Black...", "version": "1.0", "designer": "Daniel Kulp", "vendor": {"name": "Kulp Lights", "url": "https://kulplights.com/", "email": "sales@kulplights.com", "image": "https://kulplights.com/images/kulplights_small.png"}, "provides": ["strings"], "serialNumber": "XXXXXXXXXXXXXX", "validEepromLocation": true, "verifiedKeyId": "dk", "cs": "yfNvfkLTR1gbKbVGjH4DEg", "eepromLocation": "/sys/bus/i2c/devices/2-0050/eeprom", "modules": ["gpio_pcf857x", "pcm5102a", "lm75"], "i2cDevices": ["pca9675 0x20", "pcf8523 0x68", "lm75 0x48"], "defaultSettings": {"LEDDisplayType": "1", "piRTC": "4", "showAllOptions": "0"}}
- * @response 404 {"id": "No Cape!"}
+ * @response 200 Cape hardware information
+ * ```json
+ * {
+ *   "id": "K16A-Bv1",
+ *   "name": "K16A-B",
+ *   "description": "K16A-B is a cape for the BeagleBone Black...",
+ *   "version": "1.0",
+ *   "designer": "Daniel Kulp",
+ *   "vendor": {
+ *     "name": "Kulp Lights",
+ *     "url": "https://kulplights.com/",
+ *     "email": "sales@kulplights.com",
+ *     "image": "https://kulplights.com/images/kulplights_small.png"
+ *   },
+ *   "provides": ["strings"],
+ *   "serialNumber": "XXXXXXXXXXXXXX",
+ *   "validEepromLocation": true,
+ *   "verifiedKeyId": "dk",
+ *   "eepromLocation": "/sys/bus/i2c/devices/2-0050/eeprom",
+ *   "modules": ["gpio_pcf857x", "pcm5102a", "lm75"],
+ *   "i2cDevices": ["pca9675 0x20", "pcf8523 0x68", "lm75 0x48"],
+ *   "defaultSettings": {
+ *     "LEDDisplayType": "1",
+ *     "piRTC": "4",
+ *     "showAllOptions": "0"
+ *   }
+ * }
+ * ```
+ * @response 404 No cape detected
+ * ```json
+ * {"id": "No Cape!"}
+ * ```
  */
 function GetCapeInfo()
 {
@@ -27,7 +57,10 @@ function GetCapeInfo()
  * Returns a list of available cape EEPROM options for the current platform.
  *
  * @route GET /api/cape/options
- * @response ["--None--", "F16-B", "F32-B", "F4-B", "F8-B", "F8-Bv2", "RGB-123"]
+ * @response 200 Available cape EEPROM options
+ * ```json
+ * ["--None--", "F16-B", "F32-B", "F4-B", "F8-B", "F8-Bv2", "RGB-123"]
+ * ```
  */
 function GetCapeOptions()
 {
@@ -198,7 +231,15 @@ function GetSigningDataHelper($returnArray = false, $key = '', $order = '')
  * Returns the cape EEPROM signing data payload for use with an external signing service.
  *
  * @route GET /api/cape/eeprom/signingData/{key}/{order}
- * @response {"key": "ABCD-1234", "orderID": "42", "serial": "1000000012345678", "eeprom": "<base64-encoded binary>"}
+ * @response 200 EEPROM signing data payload
+ * ```json
+ * {
+ *   "key": "ABCD-1234",
+ *   "orderID": "42",
+ *   "serial": "1000000012345678",
+ *   "eeprom": "<base64-encoded binary>"
+ * }
+ * ```
  */
 function GetSigningData()
 {
@@ -217,7 +258,10 @@ function GetSigningData()
  * Downloads the cape EEPROM signing data as a binary file attachment.
  *
  * @route GET /api/cape/eeprom/signingFile/{key}/{order}
- * @response "Binary file download containing the signing data JSON"
+ * @response 200 EEPROM signing data as binary file attachment
+ * ```bytes
+ * [Content-Type: application/octet-stream]
+ * ```
  */
 function GetSigningFile()
 {
@@ -291,7 +335,10 @@ function SignEEPROMHelper($data)
  * using the provided `key` and order ID.
  *
  * @route POST /api/cape/eeprom/sign/{key}/{order}
- * @response {"Status": "OK", "Message": "EEPROM Signed."}
+ * @response 200 EEPROM signed successfully
+ * ```json
+ * {"Status": "OK", "Message": "EEPROM Signed."}
+ * ```
  */
 function SignEEPROM($key = '', $order = '')
 {
@@ -354,7 +401,10 @@ function SignEEPROM($key = '', $order = '')
  *
  * @route POST /api/cape/eeprom/signingData
  * @body {"key": "ABCD-1234", "orderID": "42", "serial": "1000000012345678", "eeprom": "<base64-encoded binary>"}
- * @response {"Status": "OK", "Message": "EEPROM Signed."}
+ * @response 200 Signed EEPROM written successfully
+ * ```json
+ * {"Status": "OK", "Message": "EEPROM Signed."}
+ * ```
  */
 function PostSigningData()
 {
@@ -392,7 +442,15 @@ function PostSigningData()
  *
  * @route POST /api/cape/eeprom/voucher
  * @body {"voucher": "XXXX-XXXX-XXXX-XXXX", "first_name": "John", "last_name": "Doe", "email": "john@example.com", "password": "secret"}
- * @response {"Status": "OK", "Message": "", "key": "ABCD-1234", "order": "42"}
+ * @response 200 Voucher redeemed successfully
+ * ```json
+ * {
+ *   "Status": "OK",
+ *   "Message": "",
+ *   "key": "ABCD-1234",
+ *   "order": "42"
+ * }
+ * ```
  */
 function RedeemVoucher()
 {
@@ -473,7 +531,10 @@ function RedeemVoucher()
  * Returns a list of available string cape configuration `key` values.
  *
  * @route GET /api/cape/strings
- * @response ["F16v3-strings", "F8v2-strings"]
+ * @response 200 Available string cape configuration keys
+ * ```json
+ * ["F16v3-strings", "F8v2-strings"]
+ * ```
  */
 function GetCapeStringOptions()
 {
@@ -494,7 +555,10 @@ function GetCapeStringOptions()
  * Returns a list of available LED panel cape configuration `key` values.
  *
  * @route GET /api/cape/panel
- * @response []
+ * @response 200 Available LED panel cape configuration keys
+ * ```json
+ * []
+ * ```
  */
 function GetCapePanelOptions()
 {
@@ -515,8 +579,23 @@ function GetCapePanelOptions()
  * Returns the string cape configuration JSON for the specified `key`.
  *
  * @route GET /api/cape/strings/{key}
- * @response {"name": "K16A-B", "longName": "K16A-B", "pinoutVersion": "1.x", "numSerial": 0, "supportsSmartReceivers": true, "outputs": [{"pin": "P8-45"}], "groups": [{"start": 1, "count": 16}], "serial": []}
- * @response 404 ["Not Found!"]
+ * @response 200 String cape configuration
+ * ```json
+ * {
+ *   "name": "K16A-B",
+ *   "longName": "K16A-B",
+ *   "pinoutVersion": "1.x",
+ *   "numSerial": 0,
+ *   "supportsSmartReceivers": true,
+ *   "outputs": [{"pin": "P8-45"}],
+ *   "groups": [{"start": 1, "count": 16}],
+ *   "serial": []
+ * }
+ * ```
+ * @response 404 Key not found
+ * ```json
+ * ["Not Found!"]
+ * ```
  */
 function GetCapeStringConfig()
 {
@@ -537,7 +616,10 @@ function GetCapeStringConfig()
  * Returns the LED panel cape configuration JSON for the specified `key`.
  *
  * @route GET /api/cape/panel/{key}
- * @response {}
+ * @response 200 LED panel cape configuration
+ * ```json
+ * {}
+ * ```
  */
 function GetCapePanelConfig()
 {

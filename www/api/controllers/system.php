@@ -9,7 +9,10 @@ require_once '../commandsocket.php';
  * Reboots the operating system.
  *
  * @route GET /api/system/reboot
- * @response {"status": "OK"}
+ * @response 200 Reboot initiated
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function RebootDevice()
 {
@@ -33,7 +36,10 @@ function RebootDevice()
  * Executes a clean shutdown of the operating system.
  *
  * @route GET /api/system/shutdown
- * @response {"status": "OK"}
+ * @response 200 Shutdown initiated
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function SystemShutdownOS()
 {
@@ -56,7 +62,10 @@ function SystemShutdownOS()
  * Starts the `fppd` process idempotently (if it isn't already running).
  *
  * @route GET /api/system/fppd/start
- * @response {"status": "OK"}
+ * @response 200 fppd started
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function StartFPPD()
 {
@@ -108,7 +117,10 @@ function StopFPPDNoStatus()
  * Stops the `fppd` process if it is running.
  *
  * @route GET /api/system/fppd/stop
- * @response {"status": "OK"}
+ * @response 200 fppd stopped
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function StopFPPD()
 {
@@ -124,7 +136,10 @@ function StopFPPD()
  * a full restart.
  *
  * @route GET /api/system/fppd/restart
- * @response {"status": "OK"}
+ * @response 200 fppd restarted
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function RestartFPPD()
 {
@@ -148,7 +163,16 @@ function RestartFPPD()
  * Returns release notes for the specified FPP version tag from the GitHub releases API.
  *
  * @route GET /api/system/releaseNotes/{version}
- * @response {"status": "OK", "draft": false, "prerelease": false, "body": "...", "published_at": "2026-01-08T03:09:40Z"}
+ * @response 200 Release notes
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "draft": false,
+ *   "prerelease": false,
+ *   "body": "...",
+ *   "published_at": "2026-01-08T03:09:40Z"
+ * }
+ * ```
  */
 function ViewReleaseNotes()
 {
@@ -177,7 +201,22 @@ function ViewReleaseNotes()
  * the current commit, and any major version or end-of-life warnings.
  *
  * @route GET /api/system/updateStatus
- * @response {"status": "OK", "branchUpgradeAvailable": false, "branchUpgradeTarget": "", "branchUpgradeVersion": "", "isMajorVersionUpgrade": false, "commitUpdateAvailable": false, "remoteCommit": "ece480e86b7dd8f2d013248e8f99bb0e8baac197", "currentBranch": "master", "localCommit": "ece480e86", "isEndOfLife": false, "latestMajorVersion": 9}
+ * @response 200 FPP upgrade status
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "branchUpgradeAvailable": false,
+ *   "branchUpgradeTarget": "",
+ *   "branchUpgradeVersion": "",
+ *   "isMajorVersionUpgrade": false,
+ *   "commitUpdateAvailable": false,
+ *   "remoteCommit": "ece480e86b7dd8f2d013248e8f99bb0e8baac197",
+ *   "currentBranch": "master",
+ *   "localCommit": "ece480e86",
+ *   "isEndOfLife": false,
+ *   "latestMajorVersion": 9
+ * }
+ * ```
  */
 function GetUpdateStatus()
 {
@@ -350,7 +389,10 @@ function GetUpdateStatus()
  *
  * @route POST /api/system/volume
  * @body {"volume": 34}
- * @response {"status": "OK", "volume": 34}
+ * @response 200 Volume set
+ * ```json
+ * {"status": "OK", "volume": 34}
+ * ```
  */
 function SystemSetAudio()
 {
@@ -378,7 +420,10 @@ function SystemSetAudio()
  * Returns the current volume if `fppd` is running, or the `Volume` setting value if not.
  *
  * @route GET /api/system/volume
- * @response {"status": "OK", "method": "FPPD", "volume": 70}
+ * @response 200 Current volume
+ * ```json
+ * {"status": "OK", "method": "FPPD", "volume": 70}
+ * ```
  */
 function SystemGetAudio()
 {
@@ -416,7 +461,25 @@ function SystemGetAudio()
  * remote instances instead.
  *
  * @route GET /api/system/status
- * @response {"fppd": "running", "status": 1, "status_name": "playing", "mode": 2, "mode_name": "player", "current_playlist": {"count": "4", "playlist": "Test1", "type": "pause", "index": "2"}, "volume": 70, "wifi": [], "interfaces": []}
+ * @response 200 System status
+ * ```json
+ * {
+ *   "fppd": "running",
+ *   "status": 1,
+ *   "status_name": "playing",
+ *   "mode": 2,
+ *   "mode_name": "player",
+ *   "current_playlist": {
+ *     "count": "4",
+ *     "playlist": "Test1",
+ *     "type": "pause",
+ *     "index": "2"
+ *   },
+ *   "volume": 70,
+ *   "wifi": [],
+ *   "interfaces": []
+ * }
+ * ```
  */
 function SystemGetStatus()
 {
@@ -595,7 +658,31 @@ function SystemGetStatus()
  * Returns basic information about the system.
  *
  * @route GET /api/system/info
- * @response {"HostName": "FPPPi", "HostDescription": "", "Platform": "Raspberry Pi", "Variant": "Pi 4", "Mode": "player", "Version": "6.0", "Branch": "master", "OSVersion": "v2022-02", "OSRelease": "Raspbian GNU/Linux 11 (bullseye)", "channelRanges": "1545-84479", "majorVersion": 6, "minorVersion": 1000, "typeId": 13, "uuid": "M1-10000000AAAAAAA", "Utilization": {"CPU": 0.12, "Memory": 1.96, "Uptime": "11 days"}, "Kernel": "5.10.92-v7l+", "LocalGitVersion": "b998f65", "RemoteGitVersion": "ed62c12", "UpgradeSource": "github.com", "IPs": ["192.168.3.84"]}
+ * @response 200 System information
+ * ```json
+ * {
+ *   "HostName": "FPPPi",
+ *   "HostDescription": "",
+ *   "Platform": "Raspberry Pi",
+ *   "Variant": "Pi 4",
+ *   "Mode": "player",
+ *   "Version": "6.0",
+ *   "Branch": "master",
+ *   "OSVersion": "v2022-02",
+ *   "OSRelease": "Raspbian GNU/Linux 11 (bullseye)",
+ *   "channelRanges": "1545-84479",
+ *   "majorVersion": 6,
+ *   "minorVersion": 1000,
+ *   "typeId": 13,
+ *   "uuid": "M1-10000000AAAAAAA",
+ *   "Utilization": {"CPU": 0.12, "Memory": 1.96, "Uptime": "11 days"},
+ *   "Kernel": "5.10.92-v7l+",
+ *   "LocalGitVersion": "b998f65",
+ *   "RemoteGitVersion": "ed62c12",
+ *   "UpgradeSource": "github.com",
+ *   "IPs": ["192.168.3.84"]
+ * }
+ * ```
  */
 function SystemGetInfo()
 {
@@ -691,7 +778,10 @@ function finalizeStatusJson($obj)
  * Returns a list of all installed and available OS package names via `apt list --all-versions`.
  *
  * @route GET /api/system/packages
- * @response ["apache2", "ffmpeg", "php"]
+ * @response 200 List of OS package names
+ * ```json
+ * ["apache2", "ffmpeg", "php"]
+ * ```
  */
 function GetOSPackages()
 {
@@ -720,7 +810,14 @@ function GetOSPackages()
  * Returns description, dependencies, and installation status for the specified OS package.
  *
  * @route GET /api/system/packages/info/{packageName}
- * @response {"Description": "The FFmpeg multimedia framework", "Depends": "libavcodec58, libavformat58", "Installed": "Yes"}
+ * @response 200 Package information
+ * ```json
+ * {
+ *   "Description": "The FFmpeg multimedia framework",
+ *   "Depends": "libavcodec58, libavformat58",
+ *   "Installed": "Yes"
+ * }
+ * ```
  */
 function GetOSPackageInfo()
 {
@@ -770,7 +867,10 @@ function GetOSPackageInfo()
  * Skips the current boot delay by creating a skip flag file, allowing FPP startup to proceed immediately.
  *
  * @route POST /api/system/fppd/skipBootDelay
- * @response {"status": "OK", "message": "Boot delay skip requested"}
+ * @response 200 Boot delay skip requested
+ * ```json
+ * {"status": "OK", "message": "Boot delay skip requested"}
+ * ```
  */
 function SkipBootDelay()
 {

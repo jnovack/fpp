@@ -4,7 +4,10 @@
  * Returns an HTML page listing all available FPP API endpoints and their descriptions.
  *
  * @route GET /api/help
- * @response "<html table listing all API endpoints>"
+ * @response 200 HTML page listing all API endpoints
+ * ```html
+ * <html table listing all API endpoints>
+ * ```
  */
 function help_help()
 {

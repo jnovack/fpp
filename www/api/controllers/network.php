@@ -9,7 +9,28 @@ require_once "../common.php";
  * and Wi-Fi signal strength.
  *
  * @route GET /api/network/interface
- * @response [{"ifindex": 2, "ifname": "wlan0", "flags": ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"], "mtu": 1500, "operstate": "UP", "addr_info": [{"family": "inet", "local": "192.168.50.146", "prefixlen": 24}], "wifi": {"interface": "wlan0", "link": 52, "level": -58, "noise": -256, "desc": "good"}}]
+ * @response 200 Network interface details
+ * ```json
+ * [
+ *   {
+ *     "ifindex": 2,
+ *     "ifname": "wlan0",
+ *     "flags": ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"],
+ *     "mtu": 1500,
+ *     "operstate": "UP",
+ *     "addr_info": [
+ *       {"family": "inet", "local": "192.168.50.146", "prefixlen": 24}
+ *     ],
+ *     "wifi": {
+ *       "interface": "wlan0",
+ *       "link": 52,
+ *       "level": -58,
+ *       "noise": -256,
+ *       "desc": "good"
+ *     }
+ *   }
+ * ]
+ * ```
  */
 function network_list_interfaces()
 {
@@ -22,7 +43,17 @@ function network_list_interfaces()
  * Returns signal strength information for wireless network interfaces.
  *
  * @route GET /api/network/wifi/strength
- * @response [{"interface": "wlan0", "link": 45, "level": -65, "noise": -256}]
+ * @response 200 Wi-Fi signal strength per interface
+ * ```json
+ * [
+ *   {
+ *     "interface": "wlan0",
+ *     "link": 45,
+ *     "level": -65,
+ *     "noise": -256
+ *   }
+ * ]
+ * ```
  */
 function network_wifi_strength()
 {
@@ -36,7 +67,20 @@ function network_wifi_strength()
  * `{interface}`. Networks without an SSID may appear in the list.
  *
  * @route GET /api/network/wifi/scan/{interface}
- * @response {"status": "OK", "networks": [{"lastSeen": "0 ms ago", "freq": 2437, "signal": "-61.00 dBm", "SSID": "Christmas"}]}
+ * @response 200 Discoverable Wi-Fi networks
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "networks": [
+ *     {
+ *       "lastSeen": "0 ms ago",
+ *       "freq": 2437,
+ *       "signal": "-61.00 dBm",
+ *       "SSID": "Christmas"
+ *     }
+ *   ]
+ * }
+ * ```
  */
 function network_wifi_scan()
 {
@@ -110,7 +154,10 @@ function network_wifi_scan()
  * restoring any USB ethernet adapter config files back to `eth*` names.
  *
  * @route DELETE /api/network/persistentNames
- * @response {"status": "OK"}
+ * @response 200 Persistent names removed
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function network_persistentNames_delete()
 {
@@ -158,7 +205,10 @@ function network_persistentNames_delete()
  * pin each interface's name to its MAC address.
  *
  * @route POST /api/network/persistentNames
- * @response {"status": "OK", "interfaceCnt": 2}
+ * @response 200 Persistent names created
+ * ```json
+ * {"status": "OK", "interfaceCnt": 2}
+ * ```
  */
 function network_persistentNames_create()
 {
@@ -214,7 +264,14 @@ function network_persistentNames_create()
  * be `Not Configured`.
  *
  * @route GET /api/network/dns
- * @response {"DNS1": "192.168.50.1", "DNS2": "192.168.1.1", "status": "OK"}
+ * @response 200 Current DNS configuration
+ * ```json
+ * {
+ *   "DNS1": "192.168.50.1",
+ *   "DNS2": "192.168.1.1",
+ *   "status": "OK"
+ * }
+ * ```
  */
 function network_get_dns()
 {
@@ -236,7 +293,16 @@ function network_get_dns()
  *
  * @route POST /api/network/dns
  * @body {"DNS1": "192.168.50.1", "DNS2": "192.168.1.1"}
- * @response {"status": "OK", "DNS": {"DNS1": "192.168.50.1", "DNS2": "192.168.1.1"}}
+ * @response 200 DNS configuration updated
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "DNS": {
+ *     "DNS1": "192.168.50.1",
+ *     "DNS2": "192.168.1.1"
+ *   }
+ * }
+ * ```
  */
 function network_save_dns()
 {
@@ -273,7 +339,10 @@ function network_save_dns()
  * when using DHCP.
  *
  * @route GET /api/network/gateway
- * @response {"GATEWAY": "192.168.1.1"}
+ * @response 200 Current default gateway
+ * ```json
+ * {"GATEWAY": "192.168.1.1"}
+ * ```
  */
 function network_get_gateway()
 {
@@ -305,7 +374,10 @@ function network_get_gateway()
  *
  * @route POST /api/network/gateway
  * @body {"GATEWAY": "192.168.1.1"}
- * @response {"status": "OK", "GATEWAY": "192.168.1.1"}
+ * @response 200 Default gateway saved
+ * ```json
+ * {"status": "OK", "GATEWAY": "192.168.1.1"}
+ * ```
  */
 function network_save_gateway()
 {
@@ -339,7 +411,18 @@ function network_save_gateway()
  * Retrieves the current network interface configuration.
  *
  * @route GET /api/network/interface/{interface}
- * @response {"INTERFACE": "eth0", "PROTO": "static", "ADDRESS": "192.168.1.149", "NETMASK": "255.255.255.0", "status": "OK", "CurrentAddress": "192.168.1.149", "CurrentNetmask": "255.255.255.0"}
+ * @response 200 Network interface configuration
+ * ```json
+ * {
+ *   "INTERFACE": "eth0",
+ *   "PROTO": "static",
+ *   "ADDRESS": "192.168.1.149",
+ *   "NETMASK": "255.255.255.0",
+ *   "status": "OK",
+ *   "CurrentAddress": "192.168.1.149",
+ *   "CurrentNetmask": "255.255.255.0"
+ * }
+ * ```
  */
 function network_get_interface()
 {
@@ -467,7 +550,10 @@ function network_get_interface()
  * network interface (e.g. `eth1`, `wlan0`).
  *
  * @route GET /api/network/interface/add/{interface}
- * @response {"status": "New Blank Interface created"}
+ * @response 200 DHCP interface created
+ * ```json
+ * {"status": "New Blank Interface created"}
+ * ```
  */
 function network_add_interface()
 {
@@ -502,7 +588,10 @@ function network_add_interface()
  *
  * @route POST /api/network/interface/{interface}
  * @body {"INTERFACE": "eth0", "PROTO": "static", "ADDRESS": "192.168.1.149", "NETMASK": "255.255.255.0", "GATEWAY": "192.168.1.1"}
- * @response {"status": "OK"}
+ * @response 200 Interface configuration saved
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function network_set_interface()
 {
@@ -610,7 +699,10 @@ function network_set_interface()
  * level and restarts the interface.
  *
  * @route POST /api/network/interface/{interface}/apply
- * @response {"status": "OK", "output": []}
+ * @response 200 Networking configuration applied
+ * ```json
+ * {"status": "OK", "output": []}
+ * ```
  */
 function network_apply_interface()
 {

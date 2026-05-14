@@ -52,7 +52,10 @@ function GetAvailableBackupsFromDir($backupDir)
  * Returns a list of full system backup files stored in the local `backups/` directory.
  *
  * @route GET /api/backups/list
- * @response ["/", "FPPDevP4", "FPPDevP4_2026_05_02"]
+ * @response 200 List of backup directory names
+ * ```json
+ * ["/", "FPPDevP4", "FPPDevP4_2026_05_02"]
+ * ```
  */
 function GetAvailableBackups()
 {
@@ -66,7 +69,17 @@ function GetAvailableBackups()
  * Returns a list of devices (e.g. USB drives, SSDs) attached to the system that can be used for backups.
  *
  * @route GET /api/backups/devices
- * @response [{"name": "sda1", "size": 7.5, "model": "Cruzer Blade", "vendor": "SanDisk"}]
+ * @response 200 List of available backup devices
+ * ```json
+ * [
+ *   {
+ *     "name": "sda1",
+ *     "size": 7.5,
+ *     "model": "Cruzer Blade",
+ *     "vendor": "SanDisk"
+ *   }
+ * ]
+ * ```
  */
 function RetrieveAvailableBackupsDevices()
 {
@@ -81,7 +94,10 @@ function RetrieveAvailableBackupsDevices()
  * Returns a list of full system backup files stored on the specified device (e.g. a USB drive).
  *
  * @route GET /api/backups/list/{DeviceName}
- * @response ["/", "FPPDevP4", "FPPDevP4_2026_05_02"]
+ * @response 200 List of backup directory names on the device
+ * ```json
+ * ["/", "FPPDevP4", "FPPDevP4_2026_05_02"]
+ * ```
  */
 function GetAvailableBackupsOnDevice()
 {
@@ -181,7 +197,14 @@ function DriveMountHelper($deviceName, $usercallback_function, $functionArgs = a
  * Mounts the specified device to `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).
  *
  * @route POST /api/backups/devices/mount/{DeviceName}/{MountLocation}
- * @response {"Status": "OK", "Message": "Device (sda1) mounted at (/mnt/api_mount)", "MountLocation": "/mnt/api_mount"}
+ * @response 200 Device mounted successfully
+ * ```json
+ * {
+ *   "Status": "OK",
+ *   "Message": "Device (sda1) mounted at (/mnt/api_mount)",
+ *   "MountLocation": "/mnt/api_mount"
+ * }
+ * ```
  */
 function MountDevice()
 {
@@ -233,7 +256,14 @@ function MountDevice()
  * Unmounts the drive at `/mnt/{MountLocation}` (defaults to `/mnt/api_mount`).
  *
  * @route POST /api/backups/devices/unmount/{DeviceName}/{MountLocation}
- * @response {"Status": "OK", "Message": "Device (sda1) unmounted from (/mnt/api_mount)", "MountLocation": "/mnt/api_mount"}
+ * @response 200 Device unmounted successfully
+ * ```json
+ * {
+ *   "Status": "OK",
+ *   "Message": "Device (sda1) unmounted from (/mnt/api_mount)",
+ *   "MountLocation": "/mnt/api_mount"
+ * }
+ * ```
  */
 function UnmountDevice()
 {
@@ -289,7 +319,27 @@ function UnmountDevice()
  * is set — a combined list from local storage and the configured USB device.
  *
  * @route GET /api/backups/configuration/list
- * @response [{"backup_alternative_location": false, "backup_filedirectory": "/home/fpp/media/config/backups", "backup_filename": "FPP_all-backup_v6_20230124212305.json", "backup_comment": "FPP Settings - Disable Scheduler setting was set to ( 0 ).", "backup_time": "Tue Jan 24 21:23:05 2023", "backup_time_unix": "1674559385"}, {"backup_alternative_location": true, "backup_filedirectory": "/mnt/tmp/Automatic_Backups/config/backups", "backup_filename": "FPP_all-backup_v6_20230124210519.json", "backup_comment": "Schedule was modified.", "backup_time": "Tue Jan 24 21:05:19 2023", "backup_time_unix": "1674558319"}]
+ * @response 200 List of available JSON configuration backups
+ * ```json
+ * [
+ *   {
+ *     "backup_alternative_location": false,
+ *     "backup_filedirectory": "/home/fpp/media/config/backups",
+ *     "backup_filename": "FPP_all-backup_v6_20230124212305.json",
+ *     "backup_comment": "FPP Settings - Disable Scheduler setting was set to ( 0 ).",
+ *     "backup_time": "Tue Jan 24 21:23:05 2023",
+ *     "backup_time_unix": "1674559385"
+ *   },
+ *   {
+ *     "backup_alternative_location": true,
+ *     "backup_filedirectory": "/mnt/tmp/Automatic_Backups/config/backups",
+ *     "backup_filename": "FPP_all-backup_v6_20230124210519.json",
+ *     "backup_comment": "Schedule was modified.",
+ *     "backup_time": "Tue Jan 24 21:05:19 2023",
+ *     "backup_time_unix": "1674558319"
+ *   }
+ * ]
+ * ```
  */
 function GetAvailableJSONBackups(){
 	global $settings;
@@ -395,7 +445,14 @@ function process_jsonbackup_file_data_helper($json_config_backup_Data, $source_d
  *
  * @route POST /api/backups/configuration
  * @body "The describing comment to be added to the backup"
- * @response {"success": true, "backup_file_path": "/home/fpp/media/config/backups/FPP_all-backup_v6_20230124212305.json", "copied_to_usb": true}
+ * @response 200 Backup created successfully
+ * ```json
+ * {
+ *   "success": true,
+ *   "backup_file_path": "/home/fpp/media/config/backups/FPP_all-backup_v6_20230124212305.json",
+ *   "copied_to_usb": true
+ * }
+ * ```
  */
 function MakeJSONBackup()
 {
@@ -460,7 +517,15 @@ function MakeJSONBackup()
  * is stored in the `jsonConfigBackupUSBLocation` setting.
  *
  * @route GET /api/backups/configuration/list/{DeviceName}
- * @response ["FPP_all-backup_v6_20230114025351.json", "FPP_all-backup_v6_20230114025354.json", "FPP_all-backup_v6_20230114214459.json", "FPP_all-backup_v6_20230114215622.json"]
+ * @response 200 List of JSON backup filenames on the device
+ * ```json
+ * [
+ *   "FPP_all-backup_v6_20230114025351.json",
+ *   "FPP_all-backup_v6_20230114025354.json",
+ *   "FPP_all-backup_v6_20230114214459.json",
+ *   "FPP_all-backup_v6_20230114215622.json"
+ * ]
+ * ```
  */
 function GetAvailableJSONBackupsOnDevice(){
 	global $SUDO, $settings;
@@ -486,7 +551,22 @@ function GetAvailableJSONBackupsOnDevice(){
  *
  * @route POST /api/backups/configuration/restore/{Directory}/{BackupFilename}
  * @body "all"
- * @response {"Success": true, "Message": {"success": true, "message": {"channelInputs": {"VALID_DATA": true, "ATTEMPT": true, "SUCCESS": true}}}}
+ * @response 200 Restore result
+ * ```json
+ * {
+ *   "Success": true,
+ *   "Message": {
+ *     "success": true,
+ *     "message": {
+ *       "channelInputs": {
+ *         "VALID_DATA": true,
+ *         "ATTEMPT": true,
+ *         "SUCCESS": true
+ *       }
+ *     }
+ *   }
+ * }
+ * ```
  */
 function RestoreJsonBackup(){
 	global $SUDO, $settings, $skipJSsettings,
@@ -580,8 +660,21 @@ function RestoreJsonBackup(){
  * directories and filenames.
  *
  * @route GET /api/backups/configuration/{Directory}/{BackupFilename}
- * @response "Contents of the specified JSON Settings backup as a download"
- * @response 404 {"Status": "File Not Found", "file": "FPP_all-backup_v6_20230124210514.json", "dir": "JsonBackups"}
+ * @response 200 Contents of the specified JSON Settings backup as a download.
+ * ```json
+ * {
+ *   "key": "value"
+ * }
+ * ```
+ *
+ * @response 404 Returned when the requested file cannot be located on disk.
+ * ```json
+ * {
+ *   "Status": "File Not Found",
+ *   "file": "FPP_all-backup_v6_20230124210514.json",
+ *   "dir": "JsonBackups"
+ * }
+ * ```
  */
 function DownloadJsonBackup(){
 	global $settings;
@@ -641,7 +734,14 @@ function DownloadJsonBackup(){
  * directories and filenames.
  *
  * @route DELETE /api/backups/configuration/{Directory}/{BackupFilename}
- * @response {"Status": "OK", "file": "FPP_all-backup_v6_20230124210514.json", "dir": "JsonBackupsAlternate"}
+ * @response 200 Backup deleted successfully
+ * ```json
+ * {
+ *   "Status": "OK",
+ *   "file": "FPP_all-backup_v6_20230124210514.json",
+ *   "dir": "JsonBackupsAlternate"
+ * }
+ * ```
  */
 function DeleteJsonBackup(){
 	global $settings;

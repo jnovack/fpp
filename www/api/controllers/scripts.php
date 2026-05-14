@@ -6,7 +6,10 @@
  * Returns a list of currently installed scripts.
  *
  * @route GET /api/scripts
- * @response ["script1.sh", "script2.sh"]
+ * @response 200 List of installed script filenames
+ * ```json
+ * ["script1.sh", "script2.sh"]
+ * ```
  */
 function scripts_list()
 {
@@ -35,7 +38,10 @@ function scripts_list()
  * Returns the source code of an installed script.
  *
  * @route GET /api/scripts/{scriptName}
- * @response "The content of the script as a string"
+ * @response 200 Script source code
+ * ```text
+ * The content of the script as a string
+ * ```
  */
 function script_get()
 {
@@ -56,7 +62,14 @@ function script_get()
  * Writes the `POST` request body to the file specified by `{scriptName}`.
  *
  * @route POST /api/scripts/{scriptName}
- * @response {"status": "OK", "scriptName": "test.py", "scriptBody": "#!/usr/bin/python\n\nprint(\"hi There Matt!\");\n"}
+ * @response 200 Script saved
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "scriptName": "test.py",
+ *   "scriptBody": "#!/usr/bin/python\n\nprint(\"hi There Matt!\");\n"
+ * }
+ * ```
  */
 function script_save()
 {
@@ -101,7 +114,10 @@ function script_save()
  * Runs a locally installed script.
  *
  * @route GET /api/scripts/{scriptName}/run
- * @response "The output of the script as a String"
+ * @response 200 Script output
+ * ```text
+ * The output of the script as a String
+ * ```
  */
 function script_run()
 {
@@ -123,7 +139,10 @@ function script_run()
  * Returns the source code of a remote script from the script repository.
  *
  * @route GET /api/scripts/viewRemote/{category}/{filename}
- * @response "The content of the script as a string"
+ * @response 200 Remote script source code
+ * ```text
+ * The content of the script as a string
+ * ```
  */
 function scripts_view_remote()
 {
@@ -141,7 +160,10 @@ function scripts_view_remote()
  * Installs a remote script from the script repository.
  *
  * @route GET /api/scripts/installRemote/{category}/{filename}
- * @response {"status": "OK"}
+ * @response 200 Remote script installed
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function scripts_install_remote()
 {

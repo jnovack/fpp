@@ -30,10 +30,10 @@ This scans every `controllers/*.php` file for `@route`-tagged docblocks and writ
 To also lint the result:
 
 ```bash
-npx @redocly/cli lint --config redocly.yaml openapi.json
+npx @redocly/cli lint --config openapi.lint.yaml openapi.json
 ```
 
-Lint rules are defined in `redocly.yaml`. `security-defined` is disabled (FPP has no auth
+Lint rules are defined in `openapi.lint.yaml`. `security-defined` is disabled (FPP has no auth
 layer); `operation-operationId` and `tag-description` are warnings only.
 
 ---
@@ -94,7 +94,10 @@ paragraphs are joined into the description.
  * One-sentence description of what this endpoint does.
  *
  * @route GET /api/example/{Param}
- * @response {"status": "OK", "value": "..."}
+ * @response 200 Success
+ * ```json
+ * {"status": "OK", "value": "..."}
+ * ```
  */
 function GetExample() { ... }
 ```
@@ -109,8 +112,14 @@ function GetExample() { ... }
  *
  * @route POST /api/widgets
  * @body {"name": "MyWidget"}
- * @response {"status": "OK", "name": "MyWidget"}
- * @response 400 {"status": "ERROR", "message": "Name already exists"}
+ * @response 200 Widget created
+ * ```json
+ * {"status": "OK", "name": "MyWidget"}
+ * ```
+ * @response 400 Name already exists
+ * ```json
+ * {"status": "ERROR", "message": "Name already exists"}
+ * ```
  */
 function CreateWidget() { ... }
 ```
@@ -120,11 +129,72 @@ function CreateWidget() { ... }
 | Tag | Required | Notes |
 | --- | --- | --- |
 | `@route METHOD /api/path/{Param}` | Yes | `METHOD` is `GET`, `POST`, `PUT`, `DELETE`, or `PATCH`. The `/api/` prefix is required. `{Param}` becomes an OpenAPI path parameter. |
-| `@response [statusCode] <json>` | Yes | JSON example for the response body. `statusCode` defaults to `200` if omitted. |
+| `@response [statusCode] <description>` | Yes | Plain-text description. `statusCode` defaults to `200` if omitted. Follow with a fenced block for the body (see [Responses](#responses)). |
 | `@body <json>` | No | JSON example for the request body. Omit for `GET`/`DELETE`. |
 | `@param type name Description` | No | Adds an OpenAPI query parameter. `type` is `int`, `bool`, `float`, or `string`. Names matching a `{Param}` in the route are ignored (path params are auto-detected). |
 | `@badge "Label" level` | No | Adds a colored badge to the operation. See [Badges](#badges) below. |
 | `@return type Description` | No (helpers only) | Standard PHPDoc; ignored by the OpenAPI generator. |
+
+### Responses
+
+Every `@response` follows a two-part format: a tag line followed by an optional fenced body block.
+
+```php
+ * @response <statusCode> <description>
+ * ```<hint>
+ * <body>
+ * ```
+```
+
+The fenced block is optional — omit it when there is no meaningful example body (e.g. a `204 No Content`). `statusCode` defaults to `200` when omitted.
+
+#### Hint values
+
+The language hint on the opening fence determines the emitted `content-type` and schema:
+
+| Hint | Content-Type | Schema |
+| --- | --- | --- |
+| `json` | `application/json` | `object` or `array` (inferred from the body) |
+| `text` | `text/plain` | `string` |
+| `bytes` | `application/octet-stream` | `string / format: binary` |
+| `xml` | `application/xml` | `string` |
+| `html` | `text/html` | `string` |
+
+#### Overriding the content type
+
+When the actual content type differs from the hint's default, add a bracketed MIME type as the **first line** of the block. The generator strips this line from the emitted example and uses it as the content type instead.
+
+```php
+ * @response 200 Compressed archive download
+ * ```bytes
+ * [Content-Type: application/zip]
+ * ```
+```
+
+```php
+ * @response 200 Server-Sent Event stream
+ * ```text
+ * [Content-Type: text/event-stream]
+ * data: {"status": "playing"}
+ * ```
+```
+
+#### Multiple responses
+
+List each status code as a separate `@response` block. When the same status code appears more than once, only the first is emitted in the spec.
+
+```php
+ * @response 200 File deleted
+ * ```json
+ * {"status": "OK", "file": "foo.fseq"}
+ * ```
+ * @response 404 File not found
+ * ```text
+ * File <path> does not exist.
+ * ```
+```
+
+---
 
 ### Path parameters
 
@@ -191,7 +261,7 @@ www/api/
 ├── index.php               # PHP router — maps URLs to controller functions
 ├── openapi.json            # Generated artifact — do not edit by hand
 ├── redoc.html              # Scalar HTML shell
-├── redocly.yaml            # Lint config for @redocly/cli
+├── openapi.lint.yaml       # Lint config for @redocly/cli
 ├── controllers/            # One PHP file per resource group
 │   ├── backups.php
 │   ├── cape.php

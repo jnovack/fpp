@@ -8,7 +8,22 @@ require_once('../commandsocket.php');
  * Returns the current FPP schedule configuration from `schedule.json`.
  *
  * @route GET /api/schedule
- * @response [{"day": 7, "enabled": 0, "endDate": "2099-12-31", "endTime": "23:00:00", "playlist": "Main Show", "repeat": 1, "startDate": "2014-01-01", "startTime": "17:00:00", "stopType": 0}]
+ * @response 200 Current schedule entries
+ * ```json
+ * [
+ *   {
+ *     "day": 7,
+ *     "enabled": 0,
+ *     "endDate": "2099-12-31",
+ *     "endTime": "23:00:00",
+ *     "playlist": "Main Show",
+ *     "repeat": 1,
+ *     "startDate": "2014-01-01",
+ *     "startTime": "17:00:00",
+ *     "stopType": 0
+ *   }
+ * ]
+ * ```
  */
 function GetSchedule() {
     global $settings;
@@ -31,8 +46,26 @@ function GetSchedule() {
  *
  * @route POST /api/schedule
  * @body [{"day": 7, "enabled": 0, "endDate": "2099-12-31", "endTime": "23:00:00", "playlist": "Main Show", "repeat": 1, "startDate": "2014-01-01", "startTime": "17:00:00", "stopType": 0}]
- * @response [{"day": 7, "enabled": 0, "endDate": "2099-12-31", "endTime": "23:00:00", "playlist": "Main Show", "repeat": 1, "startDate": "2014-01-01", "startTime": "17:00:00", "stopType": 0}]
- * @response 404 "Unable to open schedule.json for writing."
+ * @response 200 Saved schedule entries
+ * ```json
+ * [
+ *   {
+ *     "day": 7,
+ *     "enabled": 0,
+ *     "endDate": "2099-12-31",
+ *     "endTime": "23:00:00",
+ *     "playlist": "Main Show",
+ *     "repeat": 1,
+ *     "startDate": "2014-01-01",
+ *     "startTime": "17:00:00",
+ *     "stopType": 0
+ *   }
+ * ]
+ * ```
+ * @response 500 Failed to write schedule
+ * ```text
+ * Unable to open schedule.json for writing.
+ * ```
  */
 function SaveSchedule() {
     global $settings;
@@ -56,7 +89,7 @@ function SaveSchedule() {
         return GetSchedule();
     }
 
-    halt(404, 'Unable to open schedule.json for writing.');
+    halt(500, 'Unable to open schedule.json for writing.');
 }
 
 /**
@@ -66,7 +99,10 @@ function SaveSchedule() {
  *
  * @badge "FPP REQUIRED" critical
  * @route POST /api/schedule/reload
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Schedule reloaded
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function ReloadSchedule() {
     SendCommand('R');

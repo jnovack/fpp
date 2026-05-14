@@ -68,7 +68,14 @@ function MapDirectoryKey($dirName)
  * Copies the specified file from `:source` to `:dest` within the given directory.
  *
  * @route POST /api/file/{DirName}/copy/{source}/{dest}
- * @response {"status": "success", "original": "test.py", "new": "test2.py"}
+ * @response 200 File copied successfully
+ * ```json
+ * {
+ *   "status": "success",
+ *   "original": "test.py",
+ *   "new": "test2.py"
+ * }
+ * ```
  */
 function files_copy()
 {
@@ -102,7 +109,14 @@ function files_copy()
  * Renames the specified file from `:source` to `:dest` within the given directory.
  *
  * @route POST /api/file/{DirName}/rename/{source}/{dest}
- * @response {"status": "success", "original": "test.py", "new": "test2.py"}
+ * @response 200 File renamed successfully
+ * ```json
+ * {
+ *   "status": "success",
+ *   "original": "test.py",
+ *   "new": "test2.py"
+ * }
+ * ```
  */
 function files_rename()
 {
@@ -270,7 +284,21 @@ function GetFilesHelper($dirName, $prefix = '')
  *
  * @route GET /api/files/{DirName}
  * @param bool nameOnly When `1`, return a flat array of filenames instead of the default object envelope
- * @response {"status": "ok", "files": [{"name": "Christmas Every Day.mp3", "mtime": "09/23/20  07:47 PM", "sizeBytes": 7929000, "sizeHuman": "7.56MB", "playtimeSeconds": "03m:46s"}]}
+ * @response 200 Listing of files
+ * ```json
+ * {
+ *   "status": "ok",
+ *   "files": [
+ *     {
+ *       "name": "Christmas Every Day.mp3",
+ *       "mtime": "09/23/20  07:47 PM",
+ *       "sizeBytes": 7929000,
+ *       "sizeHuman": "7.56MB",
+ *       "playtimeSeconds": "03m:46s"
+ *     }
+ *   ]
+ * }
+ * ```
  */
 function GetFiles()
 {
@@ -296,7 +324,10 @@ function GetFiles()
  * The metadata command is defined in the plugin's `pluginInfo.json`.
  *
  * @route GET /api/file/info/{plugin}/{ext}/**
- * @response {}
+ * @response 200 Plugin-specific file information
+ * ```json
+ * {}
+ * ```
  */
 function GetPluginFileInfo()
 {
@@ -375,7 +406,10 @@ function CallPluginFileUploaded($dir, $filename)
  * file extension. `:ext` is the extension category and `**` is the file path.
  *
  * @route GET /api/file/onUpload/{ext}/**
- * @response {"status": "OK"}
+ * @response 200 Plugin notified of upload
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function PluginFileOnUpload()
 {
@@ -431,8 +465,14 @@ function MovePluginFile($uploadDir, $filename)
  * @param int tail Return the last N lines instead of the whole file
  * @param bool play When `1`, set a playback-oriented content type instead of a forced attachment
  * @param bool attach When `1`, force attachment download for images
- * @response "The File Contents"
- * @response 404 "File <path> does not exist."
+ * @response 200 File contents; content type varies by file extension and query params
+ * ```bytes
+ * [Content-Type: application/octet-stream]
+ * ```
+ * @response 404 File not found
+ * ```text
+ * File <path> does not exist.
+ * ```
  */
 function GetFile()
 {
@@ -587,7 +627,10 @@ function findFile($dir, $filename)
  * message if not successful.
  *
  * @route GET /api/file/move/{fileName}
- * @response {"status": "OK"}
+ * @response 200 File moved to media directory
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function MoveFile()
 {
@@ -681,7 +724,12 @@ function MoveFile()
  * include system log and config files.
  *
  * @route GET /api/files/zip/{DirNames}
- * @response "A Zip file"
+ * @response 200 Binary file stream of the compressed system archive.
+ * ```bytes
+ * [Raw Binary Stream: application/zip]
+ * Content-Disposition: attachment; filename="FPP_backup_20230124.zip"
+ * Size: Variable (compressed zip archive)
+ * ```
  */
 function GetZipDir()
 {
@@ -913,7 +961,14 @@ function removeDir(string $dir): void
  * the resolved path against the allowed base directory to prevent path traversal.
  *
  * @route DELETE /api/file/{DirName}/**
- * @response {"status": "OK", "file": "block_driveways.xbkp", "dir": "uploads"}
+ * @response 200 File or directory deleted
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "file": "block_driveways.xbkp",
+ *   "dir": "uploads"
+ * }
+ * ```
  */
 function DeleteFile()
 {
@@ -999,7 +1054,15 @@ function emulated_fseek_for_big_files($fp, $pos)
  *
  * @route POST /api/file/{DirName}
  * @route PATCH /api/file/{DirName}
- * @response {"status": "OK", "file": "block_driveways.xbkp", "dir": "uploads", "size": 1048576}
+ * @response 200 Upload chunk received
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "file": "block_driveways.xbkp",
+ *   "dir": "uploads",
+ *   "size": 1048576
+ * }
+ * ```
  */
 function PatchFile()
 {
@@ -1114,7 +1177,14 @@ function PatchFile()
  * @route POST /api/file/{DirName}/{Name}
  * @param int bs Block size used for fragmented uploads
  * @param int sb Starting block index used for fragmented uploads
- * @response {"status": "OK", "file": "beepbeep.fseq", "dir": "sequences"}
+ * @response 200 File uploaded successfully
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "file": "beepbeep.fseq",
+ *   "dir": "sequences"
+ * }
+ * ```
  */
 function PostFile()
 {
@@ -1224,7 +1294,14 @@ function GetFileInfo(&$list, $dirName, $fileName, $prefix = '')
  * Creates a subdirectory inside the specified media directory.
  *
  * @route POST /api/dir/{DirName}/{SubDir}
- * @response {"status": "OK", "subdir": "mySubDir", "dir": "sequences"}
+ * @response 200 Subdirectory created
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "subdir": "mySubDir",
+ *   "dir": "sequences"
+ * }
+ * ```
  */
 function CreateDir()
 {
@@ -1259,7 +1336,14 @@ function CreateDir()
  * Deletes an empty subdirectory from the specified media directory.
  *
  * @route DELETE /api/dir/{DirName}/{SubDir}
- * @response {"status": "OK", "subdir": "mySubDir", "dir": "sequences"}
+ * @response 200 Subdirectory deleted
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "subdir": "mySubDir",
+ *   "dir": "sequences"
+ * }
+ * ```
  */
 function DeleteDir()
 {
@@ -1293,11 +1377,26 @@ function DeleteDir()
  * Streams the tail of a log file using Server-Sent Events (SSE). Only works
  * for files in the `logs` directory.
  *
- * @route GET /api/file/{DirName}/tailfollow/**
+ * @route GET /api/file/{DirName}/tailfollow/*
  * @param int lines Number of existing lines to seed into the stream, from 1 to 500, default 50
- * @response "Server-sent event stream of new log lines as they are appended"
- * @response 403 "Tail follow is only allowed for log files."
- * @response 404 "File not found: <filename>"
+ * @response 200 Success
+ * ```text
+ * [Content-Type: text/event-stream]
+ * [12-May-2026 01:24:10] NOTICE: fpm is running, pid 80
+ * [12-May-2026 01:24:10] NOTICE: ready to handle connections
+ * ```
+ * @response 403 Forbidden directory
+ * ```text
+ * Tail follow is only allowed for log files.
+ * ```
+ * @response 403 Forbidden filename
+ * ```text
+ * Invalid file path.
+ * ```
+ * @response 404 File not found
+ * ```text
+ * File not found: <filename>
+ * ```
  */
 function TailFollowFile()
 {

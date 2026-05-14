@@ -6,7 +6,10 @@
  * Returns a list of all `*.fseq` sequence files.
  *
  * @route GET /api/sequence
- * @response ["GreatestShow", "StPatricksDay", "Valentine"]
+ * @response 200 List of sequence names
+ * ```json
+ * ["GreatestShow", "StPatricksDay", "Valentine"]
+ * ```
  */
 function GetSequences()
 {
@@ -27,8 +30,14 @@ function GetSequences()
  * Downloads the `*.fseq` file for the named sequence.
  *
  * @route GET /api/sequence/{SequenceName}
- * @response "(Raw FSEQ file data)"
- * @response 404 "Not found: {SequenceName}"
+ * @response 200 Raw FSEQ file download
+ * ```bytes
+ * [Content-Type: application/octet-stream]
+ * ```
+ * @response 404 Sequence not found
+ * ```text
+ * Not found: {SequenceName}
+ * ```
  */
 function GetSequence()
 {
@@ -63,8 +72,22 @@ function GetSequence()
  * Returns `name`, `version`, `id`, `time`, and other details from the `*.fseq` file for the named sequence.
  *
  * @route GET /api/sequence/{SequenceName}/meta
- * @response {"Name": "GreatestShow.fseq", "Version": "2.0", "ID": "1553194098754908", "StepTime": 25, "NumFrames": 10750, "MaxChannel": 84992, "ChannelCount": 84992}
- * @response 404 "Not found: {SequenceName}"
+ * @response 200 Sequence metadata
+ * ```json
+ * {
+ *   "Name": "GreatestShow.fseq",
+ *   "Version": "2.0",
+ *   "ID": "1553194098754908",
+ *   "StepTime": 25,
+ *   "NumFrames": 10750,
+ *   "MaxChannel": 84992,
+ *   "ChannelCount": 84992
+ * }
+ * ```
+ * @response 404 Sequence not found
+ * ```text
+ * Not found: {SequenceName}
+ * ```
  */
 function GetSequenceMetaData()
 {
@@ -103,7 +126,10 @@ function GetSequenceMetaData()
  *
  * @route POST /api/sequence/{SequenceName}
  * @body "(Raw FSEQ file data)"
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Sequence uploaded
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function PostSequence()
 {
@@ -136,7 +162,10 @@ function PostSequence()
  * Deletes the named `*.fseq` sequence file.
  *
  * @route DELETE /api/sequence/{SequenceName}
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Sequence deleted
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function DeleteSequences()
 {
@@ -169,7 +198,14 @@ function DeleteSequences()
  * @badge "DEVELOPER ONLY" info
  *
  * @route GET /api/sequence/{SequenceName}/start/{startSecond}
- * @response {"status": "OK", "SequenceName": "single_line.fseq", "startSecond": "9"}
+ * @response 200 Sequence started
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "SequenceName": "single_line.fseq",
+ *   "startSecond": "9"
+ * }
+ * ```
  */
 function GetSequenceStart()
 {
@@ -204,7 +240,10 @@ function GetSequenceStart()
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/sequence/current/step
- * @response {"status": "OK"}
+ * @response 200 Sequence stepped
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function GetSequenceStep()
 {
@@ -224,7 +263,10 @@ function GetSequenceStep()
  * @badge "FPP REQUIRED" critical
  * @badge "DEVELOPER ONLY" info
  * @route GET /api/sequence/current/togglePause
- * @response {"status": "OK"}
+ * @response 200 Sequence play/pause toggled
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function GetSequenceTogglePause()
 {
@@ -242,7 +284,10 @@ function GetSequenceTogglePause()
  * @badge "FPP REQUIRED" critical
  * @badge "DEVELOPER ONLY" info
  * @route GET /api/sequence/current/stop
- * @response {"status": "OK"}
+ * @response 200 Sequence stopped
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function GetSequenceStop()
 {

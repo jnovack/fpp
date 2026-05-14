@@ -8,7 +8,10 @@ require_once(__DIR__ . "/../../config.php");
  * Supported actions: `listUpgrades`, `reboot`, `restartFppd`, `upgradeOS`.
  *
  * @route GET /api/remoteAction
- * @response 400 {"error": "Invalid action given: badaction"}
+ * @response 400 Invalid action
+ * ```json
+ * {"error": "Invalid action given: badaction"}
+ * ```
  */
 function remoteAction()
 {
@@ -128,8 +131,18 @@ function LoadProxyList()
  *
  * @route POST /api/proxies
  * @body [{"host": "192.168.1.2", "description": "Mega Tree"}]
- * @response [{"host": "192.168.1.2", "description": "Mega Tree"}, {"host": "192.168.1.146", "description": "Yard"}, {"host": "192.168.1.148", "description": "Left House"}]
- * @response 400 {"error": "No valid proxies provided"}
+ * @response 200 Updated proxy list
+ * ```json
+ * [
+ *   {"host": "192.168.1.2", "description": "Mega Tree"},
+ *   {"host": "192.168.1.146", "description": "Yard"},
+ *   {"host": "192.168.1.148", "description": "Left House"}
+ * ]
+ * ```
+ * @response 400 No valid proxies provided
+ * ```json
+ * {"error": "No valid proxies provided"}
+ * ```
  */
 function PostProxies()
 {
@@ -228,7 +241,14 @@ function WriteProxyFile($proxies)
  * Returns the list of IP addresses this FPP instance can proxy.
  *
  * @route GET /api/proxies
- * @response [{"host": "192.168.1.2", "description": "Mega Tree"}, {"host": "192.168.1.146", "description": "Yard"}, {"host": "192.168.1.148", "description": "Left House"}]
+ * @response 200 Current proxy list
+ * ```json
+ * [
+ *   {"host": "192.168.1.2", "description": "Mega Tree"},
+ *   {"host": "192.168.1.146", "description": "Yard"},
+ *   {"host": "192.168.1.148", "description": "Left House"}
+ * ]
+ * ```
  */
 function GetProxies()
 {
@@ -242,7 +262,12 @@ function GetProxies()
  * Adds a single IP address to the FPP proxy list if it does not already exist.
  *
  * @route POST /api/proxies/{ProxyIp}
- * @response [{"host": "192.168.1.2", "description": "Mega Tree"}]
+ * @response 200 Updated proxy list
+ * ```json
+ * [
+ *   {"host": "192.168.1.2", "description": "Mega Tree"}
+ * ]
+ * ```
  */
 function AddProxy()
 {
@@ -270,7 +295,10 @@ function AddProxy()
  * Removes a single IP address from the FPP proxy list.
  *
  * @route DELETE /api/proxies/{ProxyIp}
- * @response []
+ * @response 200 Updated proxy list
+ * ```json
+ * []
+ * ```
  */
 function DeleteProxy()
 {
@@ -293,7 +321,13 @@ function DeleteProxy()
  * Returns the list of known remote FPP systems from `fppd` multiSync discovery.
  *
  * @route GET /api/remotes
- * @response {"192.168.1.10": "192.168.1.10 - remote-fpp", "192.168.1.11": "192.168.1.11"}
+ * @response 200 Known remote FPP systems
+ * ```json
+ * {
+ *   "192.168.1.10": "192.168.1.10 - remote-fpp",
+ *   "192.168.1.11": "192.168.1.11"
+ * }
+ * ```
  */
 function GetRemotes()
 {
@@ -322,8 +356,14 @@ function GetRemotes()
  * Fetches a URL on a remote FPP instance via server-side proxy to avoid CSP restrictions.
  *
  * @route GET /api/proxy/{Ip}/{urlPart}
- * @response 400 {"error": "Invalid IP address"}
- * @response 502 {"error": "Failed to fetch proxied URL"}
+ * @response 400 Invalid IP address
+ * ```json
+ * {"error": "Invalid IP address"}
+ * ```
+ * @response 502 Proxy fetch failed
+ * ```json
+ * {"error": "Failed to fetch proxied URL"}
+ * ```
  */
 function GetProxiedURL()
 {
@@ -402,7 +442,10 @@ function getDHCPLeases()
  * triggering an Apache graceful reload.
  *
  * @route DELETE /api/proxies
- * @response []
+ * @response 200 All proxies deleted
+ * ```json
+ * []
+ * ```
  */
 function DeleteAllProxies()
 {

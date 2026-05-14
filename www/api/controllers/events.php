@@ -6,7 +6,16 @@
  * Returns a map of all event (`*.fevt`) files, keyed by event ID (filename without extension).
  *
  * @route GET /api/events
- * @response {"1_1": {"name": "My Event", "effect": "rainbow", "startChannel": 1}}
+ * @response 200 Map of all event files keyed by event ID
+ * ```json
+ * {
+ *   "1_1": {
+ *     "name": "My Event",
+ *     "effect": "rainbow",
+ *     "startChannel": 1
+ *   }
+ * }
+ * ```
  */
 function events_list()
 {
@@ -37,7 +46,14 @@ function events_list()
  * of event IDs to display names.
  *
  * @route GET /api/events/{eventId}
- * @response {"name": "My Event", "effect": "rainbow", "startChannel": 1}
+ * @response 200 Event file contents
+ * ```json
+ * {
+ *   "name": "My Event",
+ *   "effect": "rainbow",
+ *   "startChannel": 1
+ * }
+ * ```
  */
 function event_get()
 {
@@ -79,7 +95,10 @@ function event_get()
  *
  * @badges "FPP REQUIRED" critical
  * @route GET /api/events/{eventId}/trigger
- * @response {"status": "OK"}
+ * @response 200 Event triggered
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function event_trigger()
 {

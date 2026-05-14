@@ -7,7 +7,10 @@ require_once '../common.php';
  * Configures outbound email using the existing settings.
  *
  * @route POST /api/email/configure
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Email configured
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function ConfigureEmail() {
     $result = Array();
@@ -29,7 +32,10 @@ function ConfigureEmail() {
  * Sends a test email using the existing settings.
  *
  * @route POST /api/email/test
- * @response {"Status": "OK", "Message": ""}
+ * @response 200 Test email sent
+ * ```json
+ * {"Status": "OK", "Message": ""}
+ * ```
  */
 function SendTestEmail() {
     global $settings;

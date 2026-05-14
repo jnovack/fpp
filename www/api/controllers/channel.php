@@ -8,7 +8,21 @@
  *
  * @badge "FPP REQUIRED" critical
  * @route GET /api/channel/input/stats
- * @response {"status": "OK", "universes": [{"bytesReceived": "325632", "errors": "1", "id": 1, "packetsReceived": "636", "startChannel": 1}]}
+ * @response 200 E1.31/DDP channel input statistics
+ * ```json
+ * {
+ *   "status": "OK",
+ *   "universes": [
+ *     {
+ *       "bytesReceived": "325632",
+ *       "errors": "1",
+ *       "id": 1,
+ *       "packetsReceived": "636",
+ *       "startChannel": 1
+ *     }
+ *   ]
+ * }
+ * ```
  */
 function channel_input_get_stats()
 {
@@ -33,7 +47,10 @@ function channel_input_get_stats()
  *
  * @badge "FPP REQUIRED" critical
  * @route DELETE /api/channel/input/stats
- * @response {"status": "OK"}
+ * @response 200 Statistics reset
+ * ```json
+ * {"status": "OK"}
+ * ```
  */
 function channel_input_delete_stats()
 {
@@ -57,7 +74,23 @@ function channel_input_delete_stats()
  * Returns the current configuration of any output processors.
  *
  * @route GET /api/channel/output/processors
- * @response {"outputProcessors": [{"type": "Brightness", "active": 0, "description": "", "start": 1, "count": 10, "brightness": 50, "gamma": 1}], "status": "OK"}
+ * @response 200 Current output processor configuration
+ * ```json
+ * {
+ *   "outputProcessors": [
+ *     {
+ *       "type": "Brightness",
+ *       "active": 0,
+ *       "description": "",
+ *       "start": 1,
+ *       "count": 10,
+ *       "brightness": 50,
+ *       "gamma": 1
+ *     }
+ *   ],
+ *   "status": "OK"
+ * }
+ * ```
  */
 function channel_get_output_processors()
 {
@@ -83,7 +116,23 @@ function channel_get_output_processors()
  *
  * @route POST /api/channel/output/processors
  * @body {"outputProcessors": [{"type": "Brightness", "active": 0, "description": "", "start": 1, "count": 10, "brightness": 50, "gamma": 1}]}
- * @response {"outputProcessors": [{"type": "Brightness", "active": 0, "description": "", "start": 1, "count": 10, "brightness": 50, "gamma": 1}], "status": "OK"}
+ * @response 200 Current output processor configuration
+ * ```json
+ * {
+ *   "outputProcessors": [
+ *     {
+ *       "type": "Brightness",
+ *       "active": 0,
+ *       "description": "",
+ *       "start": 1,
+ *       "count": 10,
+ *       "brightness": 50,
+ *       "gamma": 1
+ *     }
+ *   ],
+ *   "status": "OK"
+ * }
+ * ```
  */
 function channel_save_output_processors()
 {
@@ -110,7 +159,14 @@ function channel_save_output_processors()
  * a remote FPP instance.
  *
  * @route GET /api/channel/output/{file}
- * @response 404 {"status": "ERROR: File not found"}
+ * @response 200 Channel output configuration file contents
+ * ```json
+ * {}
+ * ```
+ * @response 404 File not found
+ * ```json
+ * {"status": "ERROR: File not found"}
+ * ```
  */
 function channel_get_output()
 {
@@ -168,7 +224,10 @@ function channel_get_output()
  *
  * @route POST /api/channel/output/{file}
  * @body "Format varies based on file"
- * @response "Format varies based on file"
+ * @response 200 Saved configuration echoed back
+ * ```json
+ * {}
+ * ```
  */
 function channel_save_output()
 {
