@@ -753,14 +753,14 @@ if (is_dir($stringsDir)) {
                                 <i class="fas fa-microchip"></i> Pin &amp; General Settings
                             </div>
                             <div class="row g-3">
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label fw-semibold">GPIO Pin <?= helpTip('The GPIO input pin to monitor for signal changes. Only pins not reserved by capes or channel outputs are listed.') ?></label>
                                     <select class="form-select" id="gpioModalPin"></select>
                                 </div>
-                                <div class="col-md-1 d-flex align-items-end pb-1">
+                                <div class="col-md-2 d-flex align-items-end pb-1">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="gpioModalEnabled">
-                                        <label class="form-check-label" for="gpioModalEnabled">Enabled <?= helpTip('When unchecked this trigger is loaded but never fires, letting you disable it temporarily without losing its configuration.') ?></label>
+                                        <label class="form-check-label ms-1" for="gpioModalEnabled">Enabled <?= helpTip('When unchecked this trigger is loaded but never fires, letting you disable it temporarily without losing its configuration.') ?></label>
                                     </div>
                                 </div>
                                 <div class="col-md-4">
