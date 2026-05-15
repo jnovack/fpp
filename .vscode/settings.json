@@ -1,5 +1,6 @@
 {
   "cSpell.words": [
+    "Alsa",
     "Avidemux",
     "colpick",
     "configfile",
@@ -27,6 +28,7 @@
     "ntime",
     "ntimeus",
     "OLED",
+    "pipewire",
     "Pixelnet",
     "Renard",
     "RGBAN",
@@ -38,6 +40,7 @@
     "testmode",
     "vbuffer",
     "wifi",
+    "wireplumber",
     "wlan",
     "xbkp"
   ],

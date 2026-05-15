@@ -912,7 +912,7 @@ function SetPipeWireGroupVolume()
 
     $env = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse";
 
-    exec($SUDO . " " . $env . " pactl set-sink-volume $sink ${volume}% 2>&1", $output, $return_val);
+    exec($SUDO . " " . $env . " pactl set-sink-volume $sink {$volume}% 2>&1", $output, $return_val);
 
     if ($return_val) {
         return json(array("status" => "ERROR", "message" => "Failed to set volume", "output" => implode("\n", $output)));
@@ -4248,7 +4248,7 @@ function RestorePipeWireGroupVolumes($groups = null)
 
         // Set group master volume
         $groupVol = isset($group['volume']) ? intval($group['volume']) : 100;
-        exec($SUDO . " " . $env . " pactl set-sink-volume " . escapeshellarg($groupNodeName) . " ${groupVol}% 2>/dev/null");
+        exec($SUDO . " " . $env . " pactl set-sink-volume " . escapeshellarg($groupNodeName) . " {$groupVol}% 2>/dev/null");
 
         // Set per-member volumes on the filter-chain sink nodes
         foreach ($group['members'] as $member) {
@@ -4258,7 +4258,7 @@ function RestorePipeWireGroupVolumes($groups = null)
             $memberVol = isset($member['volume']) ? intval($member['volume']) : 100;
             $cardIdNorm = preg_replace('/[^a-zA-Z0-9_]/', '_', strtolower($cardId));
             $fxNodeName = 'fpp_fx_g' . $groupId . '_' . $cardIdNorm;
-            exec($SUDO . " " . $env . " pactl set-sink-volume " . escapeshellarg($fxNodeName) . " ${memberVol}% 2>/dev/null");
+            exec($SUDO . " " . $env . " pactl set-sink-volume " . escapeshellarg($fxNodeName) . " {$memberVol}% 2>/dev/null");
         }
     }
 }
