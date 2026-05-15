@@ -600,13 +600,20 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 
 		// Returns a stable, light pastel background colour for a fixture index
 		// so adjacent fixtures are visually distinct on the DMX test grid.
+		var dmxDarkMode = document.documentElement.getAttribute('data-bs-theme') === 'dark';
 		function dmxFixtureColor(idx) {
-			var hue = (idx * 67) % 360; // golden-ish spread
-			return 'hsl(' + hue + ', 70%, 82%)';
+			var hue = (idx * 67) % 360;
+			// Dark mode: use a mid-dark background so dark text stays readable.
+			return dmxDarkMode ? 'hsl(' + hue + ', 45%, 28%)' : 'hsl(' + hue + ', 70%, 82%)';
 		}
 		function dmxFixtureBorderColor(idx) {
 			var hue = (idx * 67) % 360;
-			return 'hsl(' + hue + ', 55%, 45%)';
+			return dmxDarkMode ? 'hsl(' + hue + ', 50%, 50%)' : 'hsl(' + hue + ', 55%, 45%)';
+		}
+		function dmxFixtureTextColor(idx) {
+			// Light mode backgrounds (~82% lightness) need dark text.
+			// Dark mode backgrounds (~28% lightness) need light text.
+			return dmxDarkMode ? '#e8e8e8' : '#222';
 		}
 
 		// Find the model that contains the given absolute channel. Models with
@@ -721,7 +728,8 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 					if (fx) {
 						boxStyle =
 							'background-color: ' + dmxFixtureColor(fx.index) + ';' +
-							'border-color: ' + dmxFixtureBorderColor(fx.index) + ';';
+							'border-color: ' + dmxFixtureBorderColor(fx.index) + ';' +
+							'color: ' + dmxFixtureTextColor(fx.index) + ';';
 						boxClass += ' dmxChannelBoxFixture';
 						if (prevSameFixture) {
 							boxClass += ' dmxChannelBoxFixtureCont';
@@ -1156,7 +1164,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		.dmxFixtureName {
 			font-size: 0.8em;
 			font-weight: 600;
-			color: #222;
+			color: inherit;
 			white-space: nowrap;
 			overflow: visible;
 			margin-bottom: 2px;
@@ -1170,7 +1178,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 
 		.dmxRelChannel {
 			font-size: 0.78em;
-			color: #333;
+			color: inherit;
 			margin-bottom: 4px;
 		}
 
@@ -1188,6 +1196,10 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		.dmxChannelLabel {
 			margin-bottom: 6px;
 			font-size: 0.9em;
+		}
+
+		[data-bs-theme="dark"] .dmxChannelBox:not(.dmxChannelBoxFixture) .dmxChannelLabel {
+			color: var(--bs-body-color);
 		}
 
 		.dmxSliderWrapper {
