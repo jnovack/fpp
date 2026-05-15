@@ -70,7 +70,7 @@ PrintSettingGroup('generalAudio');
         <? PrintSettingGroup('alsaHardwareAudio', '', '', 1, '', '', false); ?>
     </div>
     <script>
-        $(document).ready(function () {
+        (function () {
             function updateAvSections(val) {
                 if (val === 'pipewire') {
                     $('#pipeWireSection').show();
@@ -105,7 +105,10 @@ PrintSettingGroup('generalAudio');
                     updateAvSections($('#MediaBackend').val());
                 };
             }
-        });
+            // Apply initial visibility immediately so the correct state is set
+            // before UpdateChildSettingsVisibility() runs after tab injection.
+            updateAvSections($('#MediaBackend').val());
+        })();
     </script>
     <?
 }
