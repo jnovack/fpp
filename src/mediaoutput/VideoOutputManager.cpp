@@ -1327,26 +1327,21 @@ std::vector<uint8_t> VideoOutputManager::BuildSAPPacket(const std::string& sourc
     struct in_addr srcAddr;
     inet_pton(AF_INET, sourceIP.c_str(), &srcAddr);
 
+    const uint8_t* ipBytes = reinterpret_cast<const uint8_t*>(&srcAddr.s_addr);
+    const uint8_t header[] = {
+        header0,
+        0,  // auth length
+        static_cast<uint8_t>((msgIdHash >> 8) & 0xFF),
+        static_cast<uint8_t>(msgIdHash & 0xFF),
+        ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3]
+    };
+    const char payloadType[] = "application/sdp";  // sizeof includes NUL terminator
+
     std::vector<uint8_t> packet;
-    packet.reserve(8 + 16 + sdp.size());
-    packet.push_back(header0);
-    packet.push_back(0);  // auth length
-    packet.push_back((msgIdHash >> 8) & 0xFF);
-    packet.push_back(msgIdHash & 0xFF);
-
-    uint8_t* ipBytes = reinterpret_cast<uint8_t*>(&srcAddr.s_addr);
-    packet.push_back(ipBytes[0]);
-    packet.push_back(ipBytes[1]);
-    packet.push_back(ipBytes[2]);
-    packet.push_back(ipBytes[3]);
-
-    const char* payloadType = "application/sdp";
-    for (const char* p = payloadType; *p; ++p)
-        packet.push_back(static_cast<uint8_t>(*p));
-    packet.push_back(0);  // NUL terminator
-
-    for (char c : sdp)
-        packet.push_back(static_cast<uint8_t>(c));
+    packet.reserve(sizeof(header) + sizeof(payloadType) + sdp.size());
+    packet.insert(packet.end(), header, header + sizeof(header));
+    packet.insert(packet.end(), payloadType, payloadType + sizeof(payloadType));
+    packet.insert(packet.end(), sdp.begin(), sdp.end());
 
     return packet;
 }

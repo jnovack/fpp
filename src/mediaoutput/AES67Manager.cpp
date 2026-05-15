@@ -62,7 +62,7 @@ static AES67Manager s_aes67Manager;
 AES67Manager& AES67Manager::INSTANCE = s_aes67Manager;
 
 AES67Manager::AES67Manager() {
-    m_configPath = FPP_DIR_CONFIG("/pipewire-aes67-instances.json");
+    m_configPath = getFPPMediaDir("/config/pipewire-aes67-instances.json");
 }
 
 AES67Manager::~AES67Manager() {

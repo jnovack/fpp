@@ -363,20 +363,23 @@ bool WLEDAPIResponder::DoWebSocketHandshake(int fd, const std::string& key) {
 }
 
 bool WLEDAPIResponder::SendTextFrame(int fd, const std::string& payload) {
-    std::vector<uint8_t> frame;
-    frame.reserve(payload.size() + 10);
-    frame.push_back(0x81); // FIN + text opcode
     size_t len = payload.size();
+    uint8_t header[10];
+    size_t headerLen = 0;
+    header[headerLen++] = 0x81; // FIN + text opcode
     if (len < 126) {
-        frame.push_back(static_cast<uint8_t>(len));
+        header[headerLen++] = static_cast<uint8_t>(len);
     } else if (len <= 0xffff) {
-        frame.push_back(126);
-        frame.push_back((len >> 8) & 0xff);
-        frame.push_back(len & 0xff);
+        header[headerLen++] = 126;
+        header[headerLen++] = (len >> 8) & 0xff;
+        header[headerLen++] = len & 0xff;
     } else {
-        frame.push_back(127);
-        for (int i = 7; i >= 0; --i) frame.push_back((len >> (i * 8)) & 0xff);
+        header[headerLen++] = 127;
+        for (int i = 7; i >= 0; --i) header[headerLen++] = (len >> (i * 8)) & 0xff;
     }
+    std::vector<uint8_t> frame;
+    frame.reserve(headerLen + len);
+    frame.insert(frame.end(), header, header + headerLen);
     frame.insert(frame.end(), payload.begin(), payload.end());
     return writeAll(fd, frame.data(), frame.size());
 }
