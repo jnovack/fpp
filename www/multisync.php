@@ -1322,9 +1322,25 @@
                             $('#' + rowID + '_mode').html(getFullMode(data, ip));
                             checkRemoteChannelIO(ip, rowID, data);
                         }
-                        if (data.hasOwnProperty('wifi')) {
-                            var wifi_html = [];
-                            data.wifi.forEach(function (w) {
+                        if (data.hasOwnProperty('wifi') && data.hasOwnProperty('interfaces')) {
+                            // Only show a wifi icon if the polled IP belongs to a wireless interface
+                            var ipIface = null;
+                            for (var i = 0; i < data.interfaces.length; i++) {
+                                var iface = data.interfaces[i];
+                                if (iface.addr_info) {
+                                    for (var j = 0; j < iface.addr_info.length; j++) {
+                                        if (iface.addr_info[j].local === ip) {
+                                            ipIface = iface;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (ipIface) break;
+                            }
+                            $('#' + rowID + "_ip").find(".wifi-icon").remove();
+                            if (ipIface && ipIface.hasOwnProperty('wifi')) {
+                                var w = ipIface.wifi;
+                                var wifi_html = [];
                                 wifi_html.push('<span title="');
                                 if (w.pct) {
                                     wifi_html.push(w.pct + '%');
@@ -1334,13 +1350,9 @@
                                 } else {
                                     wifi_html.push(w.level + w.unit);
                                 }
-
                                 wifi_html.push('" class="wifi-icon wifi-');
                                 wifi_html.push(w.desc);
                                 wifi_html.push('"></span>');
-                            });
-                            if (wifi_html.length > 0) {
-                                $('#' + rowID + "_ip").find(".wifi-icon").remove();
                                 $(wifi_html.join('')).appendTo('td[data-ip="' + ip + '"]');
                             }
                         }
@@ -1471,32 +1483,51 @@
                                     u += "<tr><td>Mem:&nbsp;</td><td>" + Math.round(fr) + "K Free</td></tr>";
                                 }
                                 if (data.advancedView.hasOwnProperty("rssi")) {
-                                    var rssi = +data.advancedView.rssi;
-                                    var quality = 2 * (rssi + 100);
+                                    // Only show wifi icon if the polled IP belongs to a wireless interface.
+                                    // For legacy systems without interfaces data, assume wifi (old behaviour).
+                                    var isWifiIp = true;
+                                    if (data.hasOwnProperty('interfaces') && data.interfaces.length > 0) {
+                                        isWifiIp = false;
+                                        outer: for (var i = 0; i < data.interfaces.length; i++) {
+                                            var iface = data.interfaces[i];
+                                            if (iface.addr_info) {
+                                                for (var j = 0; j < iface.addr_info.length; j++) {
+                                                    if (iface.addr_info[j].local === ip) {
+                                                        isWifiIp = iface.hasOwnProperty('wifi');
+                                                        break outer;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (isWifiIp) {
+                                        var rssi = +data.advancedView.rssi;
+                                        var quality = 2 * (rssi + 100);
 
-                                    if (rssi <= -100)
-                                        quality = 0;
-                                    else if (rssi >= -50)
-                                        quality = 100;
+                                        if (rssi <= -100)
+                                            quality = 0;
+                                        else if (rssi >= -50)
+                                            quality = 100;
 
-                                    var wifi_html = [];
+                                        var wifi_html = [];
 
-                                    wifi_html.push('<span title="');
-                                    wifi_html.push(quality + '%');
-                                    wifi_html.push(' ' + rssi + 'dBm');
-                                    wifi_html.push('" class="wifi-icon wifi-');
+                                        wifi_html.push('<span title="');
+                                        wifi_html.push(quality + '%');
+                                        wifi_html.push(' ' + rssi + 'dBm');
+                                        wifi_html.push('" class="wifi-icon wifi-');
 
-                                    if (quality < 25) { var desc = "weak"; }
-                                    else if (quality < 50) { var desc = "fair"; }
-                                    else if (quality < 75) { var desc = "good"; }
-                                    else { var desc = "excellent"; }
+                                        if (quality < 25) { var desc = "weak"; }
+                                        else if (quality < 50) { var desc = "fair"; }
+                                        else if (quality < 75) { var desc = "good"; }
+                                        else { var desc = "excellent"; }
 
-                                    wifi_html.push(desc);
-                                    wifi_html.push('"></span>');
+                                        wifi_html.push(desc);
+                                        wifi_html.push('"></span>');
 
-                                    if (wifi_html.length > 0) {
-                                        $('#' + rowID + "_ip").find(".wifi-icon").remove();
-                                        $(wifi_html.join('')).appendTo('td[data-ip="' + ip + '"]');
+                                        if (wifi_html.length > 0) {
+                                            $('#' + rowID + "_ip").find(".wifi-icon").remove();
+                                            $(wifi_html.join('')).appendTo('td[data-ip="' + ip + '"]');
+                                        }
                                     }
 
                                     //u += "<tr><td>RSSI:</td><td>" + rssi + "dBm / " + quality + "%</td></tr>";
