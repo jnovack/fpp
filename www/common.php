@@ -1106,7 +1106,15 @@ function " . $changedFunction . "() {
         $newValue = ($defaultValue !== "" && in_array($defaultValue, $values)) ? $defaultValue : $firstOption;
     }
 
+    $optionsLevel = isset($sData['optionsLevel']) ? $sData['optionsLevel'] : array();
+
     foreach ($values as $key => $value) {
+        // Skip options that require a higher UI level than the current user has,
+        // unless this option is the currently-saved value (always show what's active).
+        if (isset($optionsLevel[$value]) && $settings['uiLevel'] < $optionsLevel[$value] && $value !== $currentValue) {
+            continue;
+        }
+
         echo "<option value='$value'";
 
         if (isset($pluginSettings[$setting]) || isset($settings[$setting])) {
