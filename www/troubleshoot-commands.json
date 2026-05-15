@@ -246,6 +246,87 @@
                 }
             }
         },
+        "Media": {
+            "grpDisplayTitle": "Media Backend",
+            "grpDescription": "Set of tools for PipeWire and GStreamer media backend troubleshooting",
+            "platforms": [
+                "all"
+            ],
+            "commands": {
+                "PipeWireServiceStatus": {
+                    "title": "PipeWire Service Status",
+                    "description": "Status of the FPP PipeWire, PipeWire-Pulse, and WirePlumber systemd services",
+                    "cmd": "systemctl status fpp-pipewire fpp-pipewire-pulse fpp-wireplumber --no-pager",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "PipeWireServiceLogs": {
+                    "title": "PipeWire Service Logs",
+                    "description": "Recent journal logs for the FPP PipeWire stack services",
+                    "cmd": "journalctl -u fpp-pipewire -u fpp-wireplumber -u fpp-pipewire-pulse --no-pager | tail -50",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "WirePlumberStatus": {
+                    "title": "WirePlumber Graph Status",
+                    "description": "Full PipeWire graph showing all nodes, sinks, sources, and connected clients",
+                    "cmd": "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp wpctl status",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "PipeWireSinks": {
+                    "title": "PipeWire Sinks",
+                    "description": "Detailed sink information including current volume, sample format, and active port",
+                    "cmd": "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse pactl list sinks",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "PipeWireCards": {
+                    "title": "PipeWire Cards",
+                    "description": "All audio hardware cards as enumerated by PipeWire and WirePlumber",
+                    "cmd": "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse pactl list cards",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "PipeWireNodes": {
+                    "title": "PipeWire Nodes",
+                    "description": "Raw PipeWire node list, useful for diagnosing FX filter chain node IDs",
+                    "cmd": "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp XDG_RUNTIME_DIR=/run/pipewire-fpp timeout 3 pw-cli ls Node 2>/dev/null",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "GStreamerVersion": {
+                    "title": "GStreamer Version",
+                    "description": "Confirms GStreamer is installed and reports the version",
+                    "cmd": "gst-inspect-1.0 --version",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "GStreamerPipeWireSink": {
+                    "title": "GStreamer PipeWire Sink",
+                    "description": "Verifies the pipewiresink GStreamer plugin is present and shows its properties",
+                    "cmd": "gst-inspect-1.0 pipewiresink 2>&1",
+                    "platforms": [
+                        "all"
+                    ]
+                },
+                "FPPMediaSettings": {
+                    "title": "FPP Media Backend Settings",
+                    "description": "Active FPP settings for media backend, audio output, and video output",
+                    "cmd": "grep -E \"MediaBackend|ForceAudioId|AudioOutput|VideoOutput\" /home/fpp/media/settings 2>/dev/null || echo \"No media settings found\"",
+                    "platforms": [
+                        "all"
+                    ]
+                }
+            }
+        },
         "Midi": {
             "grpDisplayTitle": "Midi",
             "grpDescription": "Set of tools for Midi troubleshooting",
