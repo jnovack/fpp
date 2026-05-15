@@ -2,18 +2,22 @@
 Description=FPPd
 After=fpp_postnetwork.service
 Requires=fpp_postnetwork.service
+Conflicts=shutdown.target
+Before=shutdown.target
 DefaultDependencies=no
 StartLimitIntervalSec=200
 StartLimitBurst=5
 
 [Service]
 Type=simple
+EnvironmentFile=-/run/fppd/fpp-audio.env
 ExecStart=/opt/fpp/src/fppd -f
 ExecStop=/opt/fpp/scripts/fppd_stop
 ExecStartPre=-/opt/fpp/src/fppinit bootPre
 ExecStartPost=-/opt/fpp/src/fppinit bootPost
 ExecReload=/opt/fpp/src/fpp -r
 Restart=always
+TimeoutStopSec=15
 
 
 [Install]

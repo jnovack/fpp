@@ -64,8 +64,11 @@ OBJECTS_fpp_so += \
 	mediadetails.o \
 	mediaoutput/MediaOutputBase.o \
 	mediaoutput/mediaoutput.o \
-	mediaoutput/SDLOut.o \
-	mediaoutput/VLCOut.o \
+	mediaoutput/AES67Manager.o \
+	mediaoutput/GStreamerOut.o \
+	mediaoutput/StreamSlotManager.o \
+	mediaoutput/VideoInputManager.o \
+	mediaoutput/VideoOutputManager.o \
 	mqtt.o \
 	NetworkController.o \
  	NetworkMonitor.o \
@@ -145,28 +148,34 @@ LIBS_fpp_so += \
 	-lcrypto \
 	-lutil \
 	-ltag \
-	-lSDL2 \
-	-lavformat \
-	-lavcodec \
-	-lavutil \
-	-lswresample \
-	-lswscale \
 	-lGraphicsMagick \
 	-lGraphicsMagickWand \
 	-lGraphicsMagick++ \
     $(LIBS_GPIO_ADDITIONS)
 
-ifneq ($(wildcard /usr/local/include/vlc/vlc.h),)
-LIBS_fpp_so += -L/usr/local/lib -lvlc 
-else 
-ifneq ($(wildcard /usr/include/vlc/vlc.h),)
-LIBS_fpp_so += -lvlc
+# GStreamer support
+ifneq ($(wildcard /usr/include/gstreamer-1.0/gst/gst.h),)
+CFLAGS += $(shell pkg-config --cflags gstreamer-1.0 gstreamer-app-1.0 gstreamer-net-1.0)
+LIBS_fpp_so += $(shell pkg-config --libs gstreamer-1.0 gstreamer-app-1.0 gstreamer-net-1.0)
+ifneq ($(wildcard /usr/include/libdrm/drm.h),)
+CFLAGS += $(shell pkg-config --cflags libdrm)
+LIBS_fpp_so += -ldrm
 endif
 endif
 
 ifneq ($(wildcard /usr/include/xf86drm.h),)
 CFLAGS += -I/usr/include/libdrm
 LIBS_fpp_so += -ldrm
+endif
+
+# SDL support — prefer SDL3 when available, fall back to SDL2.
+# Plugins (e.g. gamepad input) link against whichever version is found.
+ifeq ($(shell pkg-config --exists sdl3 2>/dev/null && echo yes),yes)
+CFLAGS += $(shell pkg-config --cflags sdl3) -DHAS_SDL3
+LIBS_fpp_so += $(shell pkg-config --libs sdl3)
+else ifeq ($(shell pkg-config --exists sdl2 2>/dev/null && echo yes),yes)
+CFLAGS += $(shell pkg-config --cflags sdl2) -DHAS_SDL2
+LIBS_fpp_so += $(shell pkg-config --libs sdl2)
 endif
 
 

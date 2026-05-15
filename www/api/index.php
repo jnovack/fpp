@@ -103,6 +103,56 @@ dispatch_get('/network/wifi/strength', 'network_wifi_strength');
 
 dispatch_get('/options/:SettingName', 'GetOptions');
 
+dispatch_get('/audio/cardaliases', 'GetAudioCardAliases');
+dispatch_post('/audio/cardaliases', 'SaveAudioCardAliases');
+
+dispatch_get('/pipewire/audio/groups', 'GetPipeWireAudioGroups');
+dispatch_post('/pipewire/audio/groups', 'SavePipeWireAudioGroups');
+dispatch_post('/pipewire/audio/groups/apply', 'ApplyPipeWireAudioGroups');
+dispatch_get('/pipewire/audio/sinks', 'GetPipeWireSinks');
+dispatch_get('/pipewire/audio/cards', 'GetPipeWireAudioCards');
+dispatch_get('/pipewire/audio/sources', 'GetPipeWireAudioSources');
+dispatch_get('/pipewire/audio/input-groups', 'GetPipeWireInputGroups');
+dispatch_post('/pipewire/audio/input-groups', 'SavePipeWireInputGroups');
+dispatch_post('/pipewire/audio/input-groups/apply', 'ApplyPipeWireInputGroups');
+dispatch_post('/pipewire/audio/input-groups/volume', 'SetInputGroupMemberVolume');
+dispatch_post('/pipewire/audio/input-groups/effects', 'SaveInputGroupEffects');
+dispatch_post('/pipewire/audio/input-groups/eq/update', 'UpdateInputGroupEQRealtime');
+dispatch_get('/pipewire/audio/routing', 'GetRoutingMatrix');
+dispatch_post('/pipewire/audio/routing', 'SaveRoutingMatrix');
+dispatch_post('/pipewire/audio/routing/volume', 'SetRoutingPathVolume');
+dispatch_get('/pipewire/audio/routing/presets', 'GetRoutingPresets');
+dispatch_get('/pipewire/audio/routing/presets/names', 'GetRoutingPresetNames');
+dispatch_post('/pipewire/audio/routing/presets', 'SaveRoutingPreset');
+dispatch_post('/pipewire/audio/routing/presets/load', 'LoadRoutingPreset');
+dispatch_post('/pipewire/audio/routing/presets/live-apply', 'LiveApplyRoutingPreset');
+dispatch_delete('/pipewire/audio/routing/presets/:name', 'DeleteRoutingPreset');
+dispatch_post('/pipewire/audio/stream/volume', 'SetStreamSlotVolume');
+dispatch_get('/pipewire/audio/stream/status', 'GetStreamSlotStatus');
+dispatch_post('/pipewire/audio/group/volume', 'SetPipeWireGroupVolume');
+dispatch_post('/pipewire/audio/eq/update', 'UpdatePipeWireEQRealtime');
+dispatch_post('/pipewire/audio/delay/update', 'UpdatePipeWireDelayRealtime');
+dispatch_post('/pipewire/audio/sync/start', 'StartSyncCalibration');
+dispatch_post('/pipewire/audio/sync/stop', 'StopSyncCalibration');
+dispatch_get('/pipewire/video/groups', 'GetPipeWireVideoGroups');
+dispatch_post('/pipewire/video/groups', 'SavePipeWireVideoGroups');
+dispatch_post('/pipewire/video/groups/apply', 'ApplyPipeWireVideoGroups');
+dispatch_post('/pipewire/simple/apply', 'ApplyPipeWireSimpleConfig');
+dispatch_get('/pipewire/video/connectors', 'GetVideoOutputTargets');
+dispatch_get('/pipewire/video/routing', 'GetVideoRoutingMatrix');
+dispatch_post('/pipewire/video/routing', 'SaveVideoRoutingMatrix');
+dispatch_get('/pipewire/video/input-sources', 'GetPipeWireVideoInputSources');
+dispatch_post('/pipewire/video/input-sources', 'SavePipeWireVideoInputSources');
+dispatch_post('/pipewire/video/input-sources/apply', 'ApplyPipeWireVideoInputSources');
+dispatch_get('/pipewire/video/input-sources/v4l2-devices', 'GetV4L2Devices');
+
+dispatch_get('/pipewire/aes67/instances', 'GetAES67Instances');
+dispatch_post('/pipewire/aes67/instances', 'SaveAES67Instances');
+dispatch_post('/pipewire/aes67/apply', 'ApplyAES67Instances');
+dispatch_get('/pipewire/aes67/status', 'GetAES67Status');
+dispatch_get('/pipewire/aes67/interfaces', 'GetAES67NetworkInterfaces');
+dispatch_get('/pipewire/graph', 'GetPipeWireGraph');
+
 dispatch_get('/playlists', 'playlist_list');
 dispatch_post('/playlists', 'playlist_insert');
 dispatch_get('/playlists/playable', 'playlist_playable');

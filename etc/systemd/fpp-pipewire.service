@@ -1,0 +1,27 @@
+[Unit]
+Description=PipeWire Multimedia Service (FPP)
+After=sound.target
+Requires=sound.target
+
+[Service]
+Type=simple
+User=root
+Group=audio
+Environment=PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp
+Environment=XDG_RUNTIME_DIR=/run/pipewire-fpp
+Environment=PIPEWIRE_STATE_DIR=/var/lib/pipewire-fpp
+Environment=PIPEWIRE_CONFIG_DIR=/etc/pipewire
+RuntimeDirectory=pipewire-fpp
+RuntimeDirectoryMode=0775
+StateDirectory=pipewire-fpp
+StateDirectoryMode=0775
+ExecStart=/usr/bin/pipewire
+Restart=on-failure
+LimitRTPRIO=95
+LimitRTTIME=infinity
+LimitMEMLOCK=16777216
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
+
+[Install]
+WantedBy=multi-user.target

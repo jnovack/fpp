@@ -101,10 +101,19 @@ void CommandManager::Init() {
     addCommand(new InsertPlaylistCommand());
     addCommand(new InsertPlaylistImmediate());
     addCommand(new InsertRandomItemFromPlaylistCommand());
-#ifdef HAS_VLC
+#ifdef HAS_GSTREAMER
     addCommand(new PlayMediaCommand());
     addCommand(new StopMediaCommand());
     addCommand(new StopAllMediaCommand());
+    addCommand(new StopMediaSlotCommand());
+    addCommand(new SetSlotVolumeCommand());
+    addCommand(new MediaSlotStatusCommand());
+#endif
+#ifdef HAS_AES67_GSTREAMER
+    addCommand(new AES67ApplyCommand());
+    addCommand(new AES67CleanupCommand());
+    addCommand(new AES67TestCommand());
+    addCommand(new ApplyRoutingPresetCommand());
 #endif
     addCommand(new PlaylistPauseCommand());
     addCommand(new PlaylistResumeCommand());

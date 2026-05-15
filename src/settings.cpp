@@ -504,6 +504,16 @@ int getSettingInt(const char* setting, int defaultVal) {
     return settings.getSettingInt(setting, defaultVal);
 }
 
+bool isPipeWireBackend() {
+    std::string mb = settings.getSetting("MediaBackend", "");
+    // Lowercase compare without pulling in toLowerCopy here
+    for (char& c : mb) {
+        if (c >= 'A' && c <= 'Z')
+            c = c + ('a' - 'A');
+    }
+    return (mb == "pipewire" || mb == "pipewire-simple");
+}
+
 FPPMode getFPPmode(void) {
     return settings.fppMode;
 }

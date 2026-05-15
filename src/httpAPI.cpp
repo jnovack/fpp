@@ -63,8 +63,10 @@ extern volatile int runMainFPPDLoop;
 #include "channeloutput/ChannelOutputSetup.h"
 #include "channeltester/ChannelTester.h"
 #include "commands/Commands.h"
+#include "mediaoutput/AES67Manager.h"
 #include "mediaoutput/MediaOutputBase.h"
 #include "mediaoutput/MediaOutputStatus.h"
+#include "mediaoutput/StreamSlotManager.h"
 #include "mediaoutput/mediaoutput.h"
 #include "overlays/PixelOverlay.h"
 #include "playlist/Playlist.h"
@@ -239,6 +241,9 @@ void GetCurrentFPPDStatus(Json::Value& result) {
 
         Player::INSTANCE.GetCurrentStatus(result);
         result["scheduler"] = scheduler->GetInfo();
+
+        // Add multi-stream slot status
+        result["streamSlots"] = StreamSlotManager::Instance().GetAllSlotsStatus();
     }
 }
 
@@ -312,6 +317,16 @@ void APIServer::Init(void) {
         callback(resp);
     };
     app.registerHandlerViaRegex("/fppd/testing(/.*)?", handleTesting, {drogon::Get, drogon::Post, drogon::Head});
+
+#ifdef HAS_AES67_GSTREAMER
+    // AES67 status/test endpoint
+    auto handleAES67 = [](const HttpRequestPtr& req,
+                          std::function<void(const HttpResponsePtr&)>&& callback) {
+        callback(AES67Manager::INSTANCE.render_GET(req));
+    };
+    app.registerHandler("/aes67", handleAES67, {drogon::Get, drogon::Head});
+    app.registerHandlerViaRegex("/aes67/.*", handleAES67, {drogon::Get, drogon::Head});
+#endif
 
     // PlayerResource catch-all for all other /fppd/* paths (registered AFTER
     // specific /fppd/ports and /fppd/testing routes so they match first)
@@ -468,6 +483,10 @@ HttpResponsePtr PlayerResource::render_GET(const HttpRequestPtr& req) {
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
 
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
+
     LogDebug(VB_HTTP, "URL: %s %s\n", url.c_str(), req->query().c_str());
 
     // Keep IF statement in alphabetical order
@@ -582,6 +601,10 @@ HttpResponsePtr PlayerResource::render_POST(const HttpRequestPtr& req) {
 
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
+
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
 
     LogDebug(VB_HTTP, "POST URL: %s %s\n", url.c_str(), req->query().c_str());
 
@@ -714,6 +737,10 @@ HttpResponsePtr PlayerResource::render_DELETE(const HttpRequestPtr& req) {
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
 
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
+
     LogDebug(VB_HTTP, "DELETE URL: %s %s\n", url.c_str(), req->query().c_str());
 
     // Keep IF statement in alphabetical order
@@ -753,6 +780,10 @@ HttpResponsePtr PlayerResource::render_PUT(const HttpRequestPtr& req) {
 
     if (!replaceStart(url, "/fppd/", ""))
         replaceStart(url, "/fppd", "");
+
+    // Strip trailing slash to match endpoint definitions
+    if (endsWith(url, "/"))
+        url = url.substr(0, url.length() - 1);
 
     LogDebug(VB_HTTP, "PUT URL: %s %s\n", url.c_str(), req->query().c_str());
 

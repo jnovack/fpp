@@ -279,7 +279,7 @@ function list_plugin_entries($menu)
             <? if (!file_exists(__DIR__ . "/../src/fppd")) { ?>
                 <div id='rebuildPopup' title='FPP Upgrade' style="display: none">
                     <textarea style='width: 99%; height: 97%;' disabled id='rebuildText'>
-                                                                                                                                                                                                </textarea>
+                                                                                                                                                                                                    </textarea>
                 </div>
                 <script>
                     function RebuildFPPDDone() {

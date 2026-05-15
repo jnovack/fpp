@@ -162,6 +162,40 @@ function PutSetting()
         unset($output);
     } else if ($setting == "AudioOutput") {
         SetAudioOutput($value);
+        // In Simple PipeWire mode, the AudioOutput selection drives the
+        // synthesised PipeWire audio group config — re-apply it now.
+        $settings[$setting] = $value;
+        if (IsSimplePipeWireBackend($settings)) {
+            ob_start();
+            ApplyPipeWireSimpleConfig();
+            ob_end_clean();
+        }
+    } else if ($setting == "VideoOutput") {
+        ApplySetting($setting, $value);
+        SendCommand("SetSetting,$setting,$value,");
+        // In Simple PipeWire mode, the VideoOutput selection drives the
+        // synthesised PipeWire video group config — re-apply it now.
+        $settings[$setting] = $value;
+        if (IsSimplePipeWireBackend($settings)) {
+            ob_start();
+            ApplyPipeWireSimpleConfig();
+            ob_end_clean();
+        }
+    } else if ($setting == "MediaBackend") {
+        ApplySetting($setting, $value);
+        SendCommand("SetSetting,$setting,$value,");
+        exec($SUDO . " " . $settings['fppDir'] . "/src/fppinit setupAudio", $output, $return_val);
+        unset($output);
+        // When switching INTO Simple PipeWire mode, generate and apply the
+        // single-card / single-display config from the existing AudioOutput
+        // / VideoOutput selections.  Advanced-mode JSON files are left
+        // untouched so users can switch back without losing custom configs.
+        $settings[$setting] = $value;
+        if (IsSimplePipeWireBackend($settings)) {
+            ob_start();
+            ApplyPipeWireSimpleConfig();
+            ob_end_clean();
+        }
     } else if ($setting == "EnableTethering") {
         $ssid = ReadSettingFromFile("TetherSSID");
         $psk = ReadSettingFromFile("TetherPSK");

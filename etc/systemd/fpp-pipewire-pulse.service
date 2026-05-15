@@ -1,0 +1,27 @@
+[Unit]
+Description=PipeWire PulseAudio Compatibility (FPP)
+After=fpp-pipewire.service fpp-wireplumber.service
+Requires=fpp-pipewire.service fpp-wireplumber.service
+
+[Service]
+Type=simple
+User=root
+Group=audio
+Environment=PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp
+Environment=XDG_RUNTIME_DIR=/run/pipewire-fpp
+Environment=PIPEWIRE_STATE_DIR=/var/lib/pipewire-fpp
+Environment=PIPEWIRE_CONFIG_DIR=/etc/pipewire
+Environment=PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse
+Environment=PULSE_STATE_PATH=/var/lib/pipewire-fpp/pulse
+ExecStartPre=/bin/mkdir -p /run/pipewire-fpp/pulse
+ExecStartPre=/bin/chown root:audio /run/pipewire-fpp/pulse
+ExecStartPre=/bin/chmod 0775 /run/pipewire-fpp/pulse
+ExecStart=/usr/bin/pipewire-pulse
+Restart=on-failure
+LimitRTPRIO=95
+LimitRTTIME=infinity
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
+
+[Install]
+WantedBy=multi-user.target

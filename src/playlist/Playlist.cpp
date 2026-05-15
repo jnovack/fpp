@@ -45,6 +45,7 @@
 #include "PlaylistEntryScript.h"
 #include "PlaylistEntrySequence.h"
 #include "PlaylistEntryURL.h"
+#include "../mediaoutput/StreamSlotManager.h"
 #include "../util/RegExCache.h"
 
 static std::list<Playlist*> PL_CLEANUPS;
@@ -667,6 +668,9 @@ int Playlist::StopNow(int forceStop) {
         return 1;
     }
 
+    // Stop all background stream slots
+    StreamSlotManager::Instance().StopAllSlots();
+
     std::map<std::string, std::string> keywords;
     keywords["PLAYLIST_NAME"] = m_name;
     if (CommandManager::INSTANCE.HasPreset("PLAYLIST_STOPPING_NOW")) {
@@ -790,6 +794,9 @@ int Playlist::FileHasBeenModified(void) {
 int Playlist::Process(void) {
     static time_t lastCheckTime = time(nullptr);
     time_t procTime = time(nullptr);
+
+    // Process any background stream slots (2-5) — fire-and-forget media on secondary streams
+    StreamSlotManager::Instance().ProcessBackgroundSlots();
 
     // LogExcess(VB_PLAYLIST, "Playlist::Process: %s, section %s, position: %d\n", m_name.c_str(), m_currentSectionStr.c_str(), m_sectionPosition);
 

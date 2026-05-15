@@ -444,7 +444,11 @@ function setVolume($vol)
             $vol = 50 + ($vol / 2.0);
         }
 
-        // Why do we do this here and in fppd's settings.c
-        $status = exec($SUDO . " amixer -c $card set '$mixerDevice' -- " . $vol . "%");
+        // PipeWire backend handles volume through fppd, skip direct amixer call.
+        // Simple PipeWire mode shares the same runtime pipeline as Advanced.
+        if (!IsPipeWireBackend($settings)) {
+            // Why do we do this here and in fppd's settings.c
+            $status = exec($SUDO . " amixer -c $card set '$mixerDevice' -- " . $vol . "%");
+        }
     }
 }

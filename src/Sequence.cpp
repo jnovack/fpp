@@ -44,7 +44,7 @@
 #include "channeloutput/channeloutputthread.h"
 #include "channeltester/ChannelTester.h"
 #include "commands/Commands.h"
-#include "mediaoutput/SDLOut.h"
+#include "mediaoutput/GStreamerOut.h"
 #include "overlays/PixelOverlay.h"
 #include "playlist/Playlist.h"
 
@@ -53,8 +53,6 @@
 using namespace std::literals;
 using namespace std::chrono_literals;
 using namespace std::literals::chrono_literals;
-
-#include "mediaoutput/SDLOut.h"
 
 #define SEQUENCE_CACHE_FRAMECOUNT 40
 
@@ -736,8 +734,16 @@ void Sequence::ProcessSequenceData(int ms) {
     if (IsEffectRunning())
         OverlayEffects(m_seqData);
 
-    if (SDLOutput::IsOverlayingVideo()) {
-        SDLOutput::ProcessVideoOverlay(ms);
+    if (
+#ifdef HAS_GSTREAMER
+        GStreamerOutput::IsOverlayingVideo()
+#else
+        false
+#endif
+        ) {
+#ifdef HAS_GSTREAMER
+        GStreamerOutput::ProcessVideoOverlay(ms);
+#endif
     }
     if (PixelOverlayManager::INSTANCE.hasActiveOverlays()) {
         PixelOverlayManager::INSTANCE.doOverlays((uint8_t*)m_seqData);

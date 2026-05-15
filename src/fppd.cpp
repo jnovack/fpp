@@ -23,7 +23,6 @@
 #endif
 
 #include <Magick++/Image.h>
-#include <SDL2/SDL_events.h>
 #include <curl/curl.h>
 #include <magick/magick.h>
 #include <sys/stat.h>
@@ -78,8 +77,11 @@
 #include "channeloutput/channeloutputthread.h"
 #include "channeltester/ChannelTester.h"
 #include "commands/Commands.h"
+#include "mediaoutput/AES67Manager.h"
 #include "mediaoutput/MediaOutputBase.h"
 #include "mediaoutput/MediaOutputStatus.h"
+#include "mediaoutput/VideoInputManager.h"
+#include "mediaoutput/VideoOutputManager.h"
 #include "mediaoutput/mediaoutput.h"
 #include "overlays/PixelOverlay.h"
 #include "playlist/Playlist.h"
@@ -265,7 +267,7 @@ static const char* safe(const char* in) {
     return in ? in : "<NULL>";
 }
 
-static void handleCrash(int s) {
+static void handleCrash(int s, siginfo_t* si, void* ctx) {
     static volatile bool inCrashHandler = false;
     if (inCrashHandler) {
         // need to ignore any crashes in the crash handler
@@ -274,11 +276,13 @@ static void handleCrash(int s) {
     inCrashHandler = true;
     int crashLog = getSettingInt("ShareCrashData", 3);
 #ifndef PLATFORM_OSX
-    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d (SIG%s: %s)\n", gettid(), s, safe(sigabbrev_np(s)), safe(sigdescr_np(s)));
+    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d (SIG%s: %s) addr=%p si_code=%d\n",
+           gettid(), s, safe(sigabbrev_np(s)), safe(sigdescr_np(s)),
+           si ? si->si_addr : nullptr, si ? si->si_code : -1);
 #else
     uint64_t tid;
     pthread_threadid_np(NULL, &tid);
-    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d\n", tid, s);
+    LogErr(VB_ALL, "Crash handler called in thread %u:  signal=%d addr=%p\n", tid, s, si ? si->si_addr : nullptr);
 #endif
 
     if (!sequence->m_seqFilename.empty()) {
@@ -380,8 +384,27 @@ static void handleCrash(int s) {
         }
     }
     inCrashHandler = false;
-    runMainFPPDLoop = 0;
     if (s != SIGQUIT && s != SIGUSR1) {
+        // For SIGBUS in non-main threads, terminate only the faulting thread
+        // instead of the entire process.  This allows fppd to survive
+        // DRM/KMS buffer crashes in video consumer threads while keeping
+        // audio and other functionality running.
+        if (s == SIGBUS && gettid() != getpid()) {
+            LogErr(VB_ALL, "SIGBUS in non-main thread %u — terminating thread only\n", gettid());
+            WarningHolder::AddWarning(1, "Video thread crashed (SIGBUS). Video output may be unavailable.");
+            WarningHolder::WriteWarningsFile();
+            // Restore default SIGBUS handler for this thread so the
+            // pthread_exit cleanup doesn't loop back here if it touches
+            // the same bad mapping.
+            struct sigaction sa;
+            sa.sa_handler = SIG_DFL;
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = 0;
+            sigaction(SIGBUS, &sa, NULL);
+            pthread_exit(NULL);
+            return; // unreachable, but satisfies compiler
+        }
+        runMainFPPDLoop = 0;
         WarningHolder::StopNotifyThread();
         WarningHolder::RemoveAllWarnings();
         WarningHolder::AddWarning(1, "FPPD has crashed.  Check crash reports.");
@@ -407,9 +430,9 @@ bool setupExceptionHandlers() {
         // some systems extend it with non std fields, so zero everything
         memset(&act, 0, sizeof(act));
 
-        act.sa_handler = handleCrash;
+        act.sa_sigaction = handleCrash;
         sigemptyset(&act.sa_mask);
-        act.sa_flags = 0;
+        act.sa_flags = SA_SIGINFO;
 
         ok &= sigaction(SIGFPE, &act, &s_handlerFPE) == 0;
         ok &= sigaction(SIGILL, &act, &s_handlerILL) == 0;
@@ -636,6 +659,15 @@ bool checkASan(int argc, char** argv) {
 }
 
 int main(int argc, char* argv[]) {
+    auto ensureEnvDefault = [](const char* key, const char* value) {
+        if (!getenv(key)) {
+            setenv(key, value, 0);
+        }
+    };
+
+    // Force line-buffered stdout so logs via systemd/journald appear promptly
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     setupExceptionHandlers();
     FPPLogger::INSTANCE.Init();
 
@@ -643,6 +675,20 @@ int main(int argc, char* argv[]) {
         return 1;
 
     LoadSettings(argv[0]);
+
+    // Align runtime audio library backend defaults with configured FPP backend.
+    // This is a safety net in case the service env file is stale/missing.
+    std::string mediaBackend = toLowerCopy(getSetting("MediaBackend"));
+    if (mediaBackend == "pipewire" || mediaBackend == "pipewire-simple") {
+        ensureEnvDefault("SDL_AUDIODRIVER", "pulse");
+        ensureEnvDefault("ALSOFT_DRIVERS", "pulse");
+    } else {
+        ensureEnvDefault("SDL_AUDIODRIVER", "alsa");
+        ensureEnvDefault("ALSOFT_DRIVERS", "alsa");
+    }
+    LogInfo(VB_MEDIAOUT, "Audio env: SDL_AUDIODRIVER=%s  ALSOFT_DRIVERS=%s\n",
+            getenv("SDL_AUDIODRIVER") ? getenv("SDL_AUDIODRIVER") : "(unset)",
+            getenv("ALSOFT_DRIVERS") ? getenv("ALSOFT_DRIVERS") : "(unset)");
 
     curl_global_init(CURL_GLOBAL_ALL);
 
@@ -780,6 +826,12 @@ int main(int argc, char* argv[]) {
     PluginManager::INSTANCE.init();
 
     InitMediaOutput();
+#ifdef HAS_AES67_GSTREAMER
+    AES67Manager::INSTANCE.Init();
+    AES67Manager::INSTANCE.ApplyConfig();
+#endif
+    VideoInputManager::Instance().Init();
+    VideoOutputManager::Instance().Init();
     PixelOverlayManager::INSTANCE.Initialize();
     PingManager::INSTANCE.Initialize();
     WLEDAPIResponder::INSTANCE.Initialize();
@@ -813,6 +865,12 @@ int main(int argc, char* argv[]) {
     // partway through (e.g. fppd_stop's 1s timeout), at least other
     // discovery clients won't keep our entries cached for the TTL.
     MDNSManager::INSTANCE.Cleanup();
+
+    VideoInputManager::Instance().Shutdown();
+    VideoOutputManager::Instance().Shutdown();
+#ifdef HAS_AES67_GSTREAMER
+    AES67Manager::INSTANCE.Shutdown();
+#endif
     CleanupMediaOutput();
     CloseEffects();
     CloseChannelOutputs();
@@ -1070,10 +1128,6 @@ void MainLoop(void) {
             idleCount++;
             if (idleCount >= 20) {
                 doPing = true;
-            }
-            SDL_Event event;
-            while (SDL_PollEvent(&event)) {
-                // for now, discard event, but at least the queue doesn't grow
             }
         } else if (idleCount > 0) {
             doPing = true;

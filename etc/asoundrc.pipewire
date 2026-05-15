@@ -1,0 +1,13 @@
+pcm.!default {
+    type plug
+    slave.pcm pipewire
+}
+
+pcm.pipewire {
+    type pipewire
+    playback_node "FPP PipeWire Output"
+}
+
+ctl.!default {
+    type pipewire
+}

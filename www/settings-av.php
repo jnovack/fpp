@@ -38,11 +38,87 @@ if (!isset($settings['AudioMixerDevice'])) {
 
 ?>
 
-<script>
-</script>
-
-
 <?
+PrintSettingGroup('avModes');
+
 PrintSettingGroup('generalAudio');
-PrintSettingGroup('generalVideo');
+
+// PipeWire-advanced section — always rendered, visibility controlled dynamically by MediaBackend
+{
+    $mediaBackend = isset($settings['MediaBackend']) ? $settings['MediaBackend'] : 'alsa';
+    $isPipeWireAdv = ($mediaBackend === 'pipewire');
+    $isPipeWireSimple = ($mediaBackend === 'pipewire-simple');
+    $isAlsa = (!$isPipeWireAdv && !$isPipeWireSimple);
+    ?>
+    <div id="pipeWireSection" <?= $isPipeWireAdv ? '' : ' style="display:none;"' ?>>
+        <h2>General PipeWire</h2>
+        <?
+        PrintSettingGroup('pipeWireGeneral', '', '', 1, '', '', false);
+        ?>
+
+        <h2>PipeWire Audio</h2>
+
+        <?
+        PrintSettingGroup('pipeWireAudio', '', '', 1, '', '', false);
+        ?>
+
+
+    </div>
+
+    <div id="alsaHardwareAudioSection" <?= $isPipeWireAdv ? ' style="display:none;"' : '' ?>>
+        <h2 id="alsaHardwareAudioHeader"><?= $isPipeWireSimple ? 'Simple PipeWire Audio' : 'ALSA Hardware Audio' ?></h2>
+        <? PrintSettingGroup('alsaHardwareAudio', '', '', 1, '', '', false); ?>
+    </div>
+    <script>
+        $(document).ready(function () {
+            function updateAvSections(val) {
+                if (val === 'pipewire') {
+                    $('#pipeWireSection').show();
+                    $('#pipeWireVideoSection').show();
+                    $('#alsaHardwareAudioSection').hide();
+                    $('#hardwareDirectVideoSection').hide();
+                } else if (val === 'pipewire-simple') {
+                    $('#pipeWireSection').hide();
+                    $('#pipeWireVideoSection').hide();
+                    $('#alsaHardwareAudioSection').show();
+                    $('#hardwareDirectVideoSection').show();
+                    $('#alsaHardwareAudioHeader').text('Simple PipeWire Audio');
+                    $('#hardwareDirectVideoHeader').text('Simple PipeWire Video');
+                    // AudioOutput / VideoOutput live in the 'alsa' children
+                    // list, so the children logic hides them here.  Re-show
+                    // them — they are the primary controls in Simple mode.
+                    $('#AudioOutputRow').show();
+                    $('#VideoOutputRow').show();
+                } else {
+                    $('#pipeWireSection').hide();
+                    $('#pipeWireVideoSection').hide();
+                    $('#alsaHardwareAudioSection').show();
+                    $('#hardwareDirectVideoSection').show();
+                    $('#alsaHardwareAudioHeader').text('ALSA Hardware Audio');
+                    $('#hardwareDirectVideoHeader').text('Hardware Direct Video');
+                }
+            }
+            var origChildFn = window.UpdateMediaBackendChildren;
+            if (typeof origChildFn === 'function') {
+                window.UpdateMediaBackendChildren = function (mode) {
+                    origChildFn(mode);
+                    updateAvSections($('#MediaBackend').val());
+                };
+            }
+        });
+    </script>
+    <?
+}
 ?>
+
+<div id="pipeWireVideoSection" <?= ($mediaBackend === 'pipewire') ? '' : ' style="display:none;"' ?>>
+    <?
+    PrintSettingGroup('pipeWireVideo');
+    ?>
+</div>
+
+<div id="hardwareDirectVideoSection" <?= ($mediaBackend === 'pipewire') ? ' style="display:none;"' : '' ?>>
+    <h2 id="hardwareDirectVideoHeader">
+        <?= ($mediaBackend === 'pipewire-simple') ? 'Simple PipeWire Video' : 'Hardware Direct Video' ?></h2>
+    <? PrintSettingGroup('generalVideo', '', '', 1, '', '', false); ?>
+</div>

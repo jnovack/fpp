@@ -70,6 +70,34 @@ function ScrubFile($filename, $taboo = array("emailpass", "emailgpass", "MQTTPas
     return $dataStr;
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// Returns true if the active MediaBackend uses the PipeWire/GStreamer stack
+// (either the simple or advanced mode).  Both modes share the same runtime
+// pipeline; only the configuration UI differs.
+function IsPipeWireBackend($settingsArray = null)
+{
+    global $settings;
+    if ($settingsArray === null) {
+        $settingsArray = $settings;
+    }
+    $mb = isset($settingsArray['MediaBackend']) ? strtolower($settingsArray['MediaBackend']) : '';
+    return ($mb === 'pipewire' || $mb === 'pipewire-simple');
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Returns true only when the user has selected the Simple PipeWire UI mode.
+// Used by the auto-config generator that converts the legacy AudioOutput /
+// VideoOutput single-card selections into a one-group PipeWire config.
+function IsSimplePipeWireBackend($settingsArray = null)
+{
+    global $settings;
+    if ($settingsArray === null) {
+        $settingsArray = $settings;
+    }
+    $mb = isset($settingsArray['MediaBackend']) ? strtolower($settingsArray['MediaBackend']) : '';
+    return ($mb === 'pipewire-simple');
+}
+
 function ReadSettingFromFile($settingName, $plugin = "")
 {
     global $settingsFile;
@@ -647,6 +675,66 @@ function PrintSetting($setting, $callback = '', $options = array(), $plugin = ''
 
                 PrintSettingTextSaved($setting, $restart, $reboot, $max, $min, $plugin, $default, $callback, '', 'number', $s);
                 break;
+            case 'modal':
+                // Renders a button that opens a fullscreen modal dialog with an iframe
+                // settings.json properties:
+                //   modalUrl      - URL to load in the modal iframe (required)
+                //   icon          - FontAwesome icon class (e.g. "fas fa-layer-group")
+                //   buttonText    - Text for the button (defaults to description)
+                //   modalTitle    - Title for the modal dialog (defaults to description)
+                //   modalId       - HTML id for the modal (defaults to setting name + "Dlg")
+                $modalUrl = isset($s['modalUrl']) ? $s['modalUrl'] : '';
+                $icon = isset($s['icon']) ? $s['icon'] : '';
+                $buttonText = isset($s['buttonText']) ? $s['buttonText'] : $s['description'];
+                $modalTitle = isset($s['modalTitle']) ? $s['modalTitle'] : $s['description'];
+                $modalId = isset($s['modalId']) ? $s['modalId'] : $setting . 'Dlg';
+                $modalOnClose = isset($s['modalOnClose']) ? $s['modalOnClose'] : '';
+                $iconHtml = $icon ? "<i class='" . htmlspecialchars($icon) . "'></i> " : '';
+
+                echo "<button class='buttons' onclick='OpenSettingModal_" . $setting . "()'>";
+                echo $iconHtml . htmlspecialchars($buttonText);
+                echo "</button>";
+
+                echo "<script>\n";
+                echo "function OpenSettingModal_" . $setting . "() {\n";
+                echo "    DoModalDialog({\n";
+                echo "        id: '" . $modalId . "',\n";
+                echo "        title: '" . addslashes($iconHtml . $modalTitle) . "',\n";
+                echo "        body: '<iframe src=\"" . addslashes($modalUrl) . "\" style=\"width:100%;height:100%;border:none;\"></iframe>',\n";
+                echo "        open: function () {\n";
+                echo "            var dlg = $('#" . $modalId . "');\n";
+                echo "            dlg.find('.modal-dialog').addClass('modal-fullscreen');\n";
+                echo "            dlg.find('.modal-content').css({ 'background': '#fff', 'color': '#212529' });\n";
+                echo "            dlg.find('.modal-body').css({ 'padding': '0', 'overflow': 'hidden' });\n";
+                echo "            dlg.find('.modal-header').css({ 'background': '#fff', 'color': '#212529' });\n";
+                if ($modalOnClose) {
+                    echo "            dlg.one('hidden.bs.modal', function() { " . $modalOnClose . "(); });\n";
+                }
+                echo "        },\n";
+                echo "        buttons: {\n";
+                echo "            Close: function () {\n";
+                echo "                bootstrap.Modal.getInstance(document.getElementById('" . $modalId . "')).hide();\n";
+                echo "            }\n";
+                echo "        }\n";
+                echo "    });\n";
+                echo "}\n";
+                echo "</script>\n";
+                break;
+            case 'link':
+                // Renders a button that navigates to a URL in the same window
+                // settings.json properties:
+                //   linkUrl       - URL to navigate to (required)
+                //   icon          - FontAwesome icon class (e.g. "fas fa-project-diagram")
+                //   buttonText    - Text for the button (defaults to description)
+                $linkUrl = isset($s['linkUrl']) ? $s['linkUrl'] : '';
+                $icon = isset($s['icon']) ? $s['icon'] : '';
+                $buttonText = isset($s['buttonText']) ? $s['buttonText'] : $s['description'];
+                $iconHtml = $icon ? "<i class='" . htmlspecialchars($icon) . "'></i> " : '';
+
+                echo "<a class='buttons' href='" . htmlspecialchars($linkUrl) . "'>";
+                echo $iconHtml . htmlspecialchars($buttonText);
+                echo "</a>";
+                break;
             default:
                 printf("FIXME, handle %s setting type for %s\n", $s['type'], $setting);
                 break;
@@ -1018,7 +1106,15 @@ function " . $changedFunction . "() {
         $newValue = ($defaultValue !== "" && in_array($defaultValue, $values)) ? $defaultValue : $firstOption;
     }
 
+    $optionsLevel = isset($sData['optionsLevel']) ? $sData['optionsLevel'] : array();
+
     foreach ($values as $key => $value) {
+        // Skip options that require a higher UI level than the current user has,
+        // unless this option is the currently-saved value (always show what's active).
+        if (isset($optionsLevel[$value]) && $settings['uiLevel'] < $optionsLevel[$value] && $value !== $currentValue) {
+            continue;
+        }
+
         echo "<option value='$value'";
 
         if (isset($pluginSettings[$setting]) || isset($settings[$setting])) {

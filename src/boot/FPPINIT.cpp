@@ -27,9 +27,13 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <algorithm>
+#include <regex>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <vector>
+#include <cctype>
 
 #include "common_mini.h"
 #include <arpa/inet.h>
@@ -1351,7 +1355,24 @@ static bool waitForInterfacesUp(bool flite, int timeOut) {
     } else {
         printf("FPP - Waited for %0.1f seconds for IP address\n", (((float)count) * 0.2f));
         if (!getRawSettingInt("disableIPAnnouncement", 0) && FileExists("/usr/bin/flite") && flite) {
-            execbg("/usr/bin/flite -voice awb -t \"" + announce + "\" &");
+            // When PipeWire is the audio backend, flite (an ALSA client) needs
+            // the PipeWire environment variables so the ALSA-PipeWire plugin in
+            // .asoundrc can locate the PipeWire socket.  Without these, flite
+            // silently fails to produce any audio output.
+            std::string mediaBackend;
+            getRawSetting("MediaBackend", mediaBackend);
+            std::string abLower = mediaBackend;
+            std::transform(abLower.begin(), abLower.end(), abLower.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            std::string fliteCmd;
+            if (abLower == "pipewire" || abLower == "pipewire-simple") {
+                fliteCmd = "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp "
+                           "XDG_RUNTIME_DIR=/run/pipewire-fpp "
+                           "/usr/bin/flite -voice awb -t \"" + announce + "\" &";
+            } else {
+                fliteCmd = "/usr/bin/flite -voice awb -t \"" + announce + "\" &";
+            }
+            execbg(fliteCmd);
         }
         return true;
     }
@@ -1552,10 +1573,73 @@ void removeDummyInterface() {
     exec("ip link delete dummy0 > /dev/null 2>&1");
 }
 
+// Resolve ALSA card number to stable card ID (e.g., 3 -> "S3", 0 -> "ICUSBAUDIO7D")
+// Reads /proc/asound/cards: " 3 [S3             ]: USB-Audio - ..."
+// Falls back to the card number as string if not found.
+// Read the USB product name for an ALSA card from sysfs (e.g. "USB Sound Device").
+// Falls back to the ALSA card type name if sysfs is unavailable.
+static std::string getAlsaCardProductName(int cardNum, const std::string& fallback) {
+    std::string devicePath = "/sys/class/sound/card" + std::to_string(cardNum) + "/device";
+    char resolved[PATH_MAX];
+    if (realpath(devicePath.c_str(), resolved)) {
+        // The ALSA device sysfs node points to a USB interface.
+        // The USB product string is in the parent USB device node.
+        std::string parentDir = resolved;
+        auto pos = parentDir.rfind('/');
+        if (pos != std::string::npos) {
+            std::string productFile = parentDir.substr(0, pos) + "/product";
+            std::string product = GetFileContents(productFile);
+            TrimWhiteSpace(product);
+            if (!product.empty()) {
+                return product;
+            }
+        }
+    }
+    return fallback;
+}
+
+static std::string getAlsaCardId(int cardNum) {
+    std::string cardsContent = GetFileContents("/proc/asound/cards");
+    if (!cardsContent.empty()) {
+        std::istringstream iss(cardsContent);
+        std::string line;
+        while (std::getline(iss, line)) {
+            // Match: " 3 [S3             ]: ..."
+            auto bracket = line.find('[');
+            auto closeBracket = line.find(']');
+            if (bracket != std::string::npos && closeBracket != std::string::npos && closeBracket > bracket) {
+                std::string numStr = line.substr(0, bracket);
+                TrimWhiteSpace(numStr);
+                try {
+                    int num = std::stoi(numStr);
+                    if (num == cardNum) {
+                        std::string cardId = line.substr(bracket + 1, closeBracket - bracket - 1);
+                        TrimWhiteSpace(cardId);
+                        if (!cardId.empty()) {
+                            return cardId;
+                        }
+                    }
+                } catch (...) {}
+            }
+        }
+    }
+    return std::to_string(cardNum);
+}
+
 static void setupAudio() {
     if (!FileExists("/root/.libao")) {
         PutFileContents("/root/.libao", "dev=default");
     }
+    std::string mediaBackend = "alsa";
+    getRawSetting("MediaBackend", mediaBackend);
+    std::string mediaBackendLower = mediaBackend;
+    std::transform(mediaBackendLower.begin(), mediaBackendLower.end(), mediaBackendLower.begin(), [](unsigned char c) {
+        return std::tolower(c);
+    });
+    bool usePipeWireBackend = (mediaBackendLower == "pipewire" || mediaBackendLower == "pipewire-simple");
+    bool runningInDocker = FileExists("/.dockerenv");
+    const std::string audioEnvPath = "/run/fppd/fpp-audio.env";
+    printf("FPP - Audio backend: %s\n", usePipeWireBackend ? "PipeWire" : "ALSA");
     std::string aplay = execAndReturn("/usr/bin/aplay -l 2>&1");
     std::vector<std::string> lines = split(aplay, '\n');
     std::map<std::string, std::string> cards;
@@ -1689,22 +1773,29 @@ static void setupAudio() {
     cardType = cardType.substr(0, cardType.find("]"));
     printf("FPP - Found sound card of type %s\n", cardType.c_str());
     std::string asoundrc;
-    if (FileExists("/home/fpp/media/tmp/asoundrc")) {
-        if (contains(cardType, "pcm510")) {
-            printf("FPP - Using Cape Provided asoundrc\n");
-            asoundrc = GetFileContents("/home/fpp/media/tmp/asoundrc");
-        } else {
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+    if (usePipeWireBackend) {
+        if (!FileExists("/etc/pipewire/client.conf") && FileExists("/usr/share/pipewire/client.conf")) {
+            CopyFileContents("/usr/share/pipewire/client.conf", "/etc/pipewire/client.conf");
         }
-    }
-    if (asoundrc.empty()) {
-        if (contains(cardType, "vc4-hdmi")) {
-            replaceAll(cardType, "-", "");
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.hdmi");
-        } else if (contains(cardType, "bcm2")) {
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.plain");
-        } else {
-            asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+        asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.pipewire");
+    } else {
+        if (FileExists("/home/fpp/media/tmp/asoundrc")) {
+            if (contains(cardType, "pcm510")) {
+                printf("FPP - Using Cape Provided asoundrc\n");
+                asoundrc = GetFileContents("/home/fpp/media/tmp/asoundrc");
+            } else {
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+            }
+        }
+        if (asoundrc.empty()) {
+            if (contains(cardType, "vc4-hdmi")) {
+                replaceAll(cardType, "-", "");
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.hdmi");
+            } else if (contains(cardType, "bcm2")) {
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.plain");
+            } else {
+                asoundrc = GetFileContents("/opt/fpp/etc/asoundrc.dmix");
+            }
         }
     }
     int bufSize = getRawSettingInt("AudioBufferSize", 3072);
@@ -1718,6 +1809,7 @@ static void setupAudio() {
         }
     }
     int rate = getRawSettingInt("AudioFormat", 0);
+    int pipewireSampleRate = 44100;
     switch (rate) {
     case 1:
     case 2:
@@ -1728,16 +1820,176 @@ static void setupAudio() {
     case 5:
     case 6:
         replaceAll(asoundrc, "rate 44100", "rate 48000");
+        pipewireSampleRate = 48000;
         break;
     case 7:
     case 8:
     case 9:
         replaceAll(asoundrc, "rate 44100", "rate 96000");
+        pipewireSampleRate = 96000;
         break;
     default:
         break;
     }
     PutFileContents("/root/.asoundrc", asoundrc);
+    const std::string pipewireSinkConfPath = "/etc/pipewire/pipewire.conf.d/95-fpp-alsa-sink.conf";
+    if (usePipeWireBackend) {
+        exec("/bin/mkdir -p /etc/pipewire/pipewire.conf.d");
+        // Create FPP ALSA adapter nodes for ALL playback-capable cards present
+        // at boot.  This ensures consistent naming (fpp_alsa_{cardIdNorm}) and
+        // prevents WirePlumber from creating confusingly-named duplicates.
+        // USB devices plugged in after boot get adapters created at Apply time
+        // by GeneratePipeWireGroupsConfig() in pipewire.php.
+        std::string arecordAll = execAndReturn("/usr/bin/arecord -l 2>/dev/null");
+        std::ostringstream pipewireSink;
+        pipewireSink << "context.objects = [\n";
+        for (const auto& [key, cardName] : cards) {
+            int cardNum = std::stoi(key.substr(5)); // "card N" -> N
+            std::string cId = getAlsaCardId(cardNum);
+            if (cId.empty()) cId = cardName;
+            // Normalise card ID for node name: lowercase, non-alnum → underscore
+            std::string cidNorm = cId;
+            std::transform(cidNorm.begin(), cidNorm.end(), cidNorm.begin(), ::tolower);
+            for (auto& ch : cidNorm) {
+                if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '_') ch = '_';
+            }
+
+            // Probe ALSA HW params — if this fails the device can't be opened
+            // (e.g. HDMI with nothing connected → error 524/ENOMEDIUM).
+            // Also skip cards that only support IEC958/passthrough formats —
+            // PipeWire's adapter can't negotiate those as normal PCM sinks.
+            std::string hwParams = execAndReturn("timeout 2 /usr/bin/aplay -D hw:" + cId + " --dump-hw-params /dev/zero 2>&1 | head -40");
+            if (!contains(hwParams, "HW Params")) {
+                printf("FPP - PipeWire: skipping card %d (%s) — device cannot be opened\n",
+                       cardNum, cId.c_str());
+                continue;
+            }
+            // Verify card supports at least one standard PCM format
+            bool hasPcmFormat = contains(hwParams, "S16_LE") || contains(hwParams, "S24_LE")
+                             || contains(hwParams, "S24_3LE") || contains(hwParams, "S32_LE");
+            if (!hasPcmFormat) {
+                printf("FPP - PipeWire: skipping card %d (%s) — no standard PCM format (IEC958 only?)\n",
+                       cardNum, cId.c_str());
+                continue;
+            }
+
+            std::string productName = getAlsaCardProductName(cardNum, cardName);
+            std::string desc = productName + " (" + cId + ")";
+
+            // Detect max playback channels from ALSA HW params
+            int maxChannels = 2;
+            // Match CHANNELS line — formats: "CHANNELS: 8", "CHANNELS[2]: 2 8", "CHANNELS: [1 8]"
+            std::smatch chMatch;
+            // Try discrete list first: "CHANNELS[N]: val1 val2 ..." or "CHANNELS: val"
+            if (std::regex_search(hwParams, chMatch, std::regex(R"(CHANNELS\[?\d*\]?:\s+(.+))"))) {
+                std::string chLine = chMatch[1].str();
+                // Find the largest number on the line
+                std::regex numRe(R"(\d+)");
+                std::sregex_iterator it(chLine.begin(), chLine.end(), numRe);
+                std::sregex_iterator end;
+                for (; it != end; ++it) {
+                    int ch = std::stoi((*it)[0].str());
+                    if (ch > maxChannels) maxChannels = ch;
+                }
+            }
+            if (maxChannels > 8) maxChannels = 8; // cap at 7.1
+
+            // Detect best audio format from ALSA HW params
+            // FORMAT line examples: "FORMAT: S16_LE S24_3LE", "FORMAT: S16_LE S24_LE S32_LE"
+            // Priority: S32 > S24 > S16.  ALSA uses _ (S24_3LE), PipeWire drops it (S24LE).
+            std::string audioFormat = "S16LE"; // safe default all cards support
+            std::smatch fmtMatch;
+            if (std::regex_search(hwParams, fmtMatch, std::regex(R"(FORMAT[^:]*:\s+(.+))"))) {
+                std::string fmtLine = fmtMatch[1].str();
+                if (fmtLine.find("S32_LE") != std::string::npos) {
+                    audioFormat = "S32LE";
+                } else if (fmtLine.find("S24_LE") != std::string::npos) {
+                    audioFormat = "S24_32LE"; // 24-bit in 32-bit container
+                } else if (fmtLine.find("S24_3LE") != std::string::npos) {
+                    audioFormat = "S24LE"; // packed 24-bit (3 bytes)
+                }
+            }
+
+            // Channel position arrays matching PipeWire convention
+            static const char* positionArrays[] = {
+                nullptr,
+                "[ MONO ]",
+                "[ FL FR ]",
+                "[ FL FR FC ]",
+                "[ FL FR RL RR ]",
+                "[ FL FR FC RL RR ]",
+                "[ FL FR FC LFE RL RR ]",
+                "[ FL FR FC LFE RL RR RC ]",
+                "[ FL FR FC LFE RL RR SL SR ]"
+            };
+            const char* posStr = (maxChannels >= 1 && maxChannels <= 8) ? positionArrays[maxChannels] : "[ FL FR ]";
+
+            // USB audio cards need extra headroom: their independent oscillators
+            // drift relative to the PipeWire graph driver clock, causing resyncs.
+            bool isUsbCard = cardLines.count(key) && cardLines[key].find("USB-Audio") != std::string::npos;
+            int headroom = isUsbCard ? 4096 : 256;
+
+            printf("FPP - PipeWire: creating adapter fpp_alsa_%s for card %d (%s) [%dch %s]%s\n",
+                   cidNorm.c_str(), cardNum, cId.c_str(), maxChannels, audioFormat.c_str(),
+                   isUsbCard ? " (USB, headroom=4096)" : "");
+            pipewireSink << "  { factory = adapter\n"
+                         << "    args = {\n"
+                         << "      factory.name = api.alsa.pcm.sink\n"
+                         << "      node.name = \"fpp_alsa_" << cidNorm << "\"\n"
+                         << "      node.description = \"" << desc << "\"\n"
+                         << "      media.class = \"Audio/Sink\"\n"
+                         << "      api.alsa.path = \"hw:" << cId << "\"\n"
+                         << "      api.alsa.period-size = " << perSize << "\n"
+                         << "      api.alsa.headroom = " << headroom << "\n"
+                         << "      audio.format = \"" << audioFormat << "\"\n"
+                         << "      audio.rate = " << pipewireSampleRate << "\n"
+                         << "      audio.channels = " << maxChannels << "\n"
+                         << "      audio.position = " << posStr << "\n"
+                         << "    }\n"
+                         << "  }\n";
+            // If this card has capture capability, also create an Audio/Source node.
+            if (arecordAll.find("card " + std::to_string(cardNum) + ":") != std::string::npos) {
+                // Detect capture channel count from ALSA HW params
+                int capChannels = 2; // safe default — most USB cards need at least 2
+                std::string capParams = execAndReturn("timeout 2 /usr/bin/arecord -D hw:" + cId + " --dump-hw-params /dev/zero 2>&1 | head -40");
+                if (contains(capParams, "HW Params")) {
+                    std::smatch capChMatch;
+                    if (std::regex_search(capParams, capChMatch, std::regex(R"(CHANNELS\[?\d*\]?:\s+(.+))"))) {
+                        std::string capChLine = capChMatch[1].str();
+                        // Find the smallest number (minimum channels)
+                        std::regex capNumRe(R"(\d+)");
+                        std::sregex_iterator capIt(capChLine.begin(), capChLine.end(), capNumRe);
+                        std::sregex_iterator capEnd;
+                        int minCap = 99;
+                        for (; capIt != capEnd; ++capIt) {
+                            int c = std::stoi((*capIt)[0].str());
+                            if (c > 0 && c < minCap) minCap = c;
+                        }
+                        if (minCap > 0 && minCap < 99) capChannels = minCap;
+                    }
+                }
+                printf("FPP - PipeWire: card %d (%s) has capture [%dch], creating source node\n",
+                       cardNum, cId.c_str(), capChannels);
+                pipewireSink << "  { factory = adapter\n"
+                             << "    args = {\n"
+                             << "      factory.name = api.alsa.pcm.source\n"
+                             << "      node.name = \"fpp_alsain_" << cidNorm << "\"\n"
+                             << "      node.description = \"" << desc << "\"\n"
+                             << "      node.nick = \"" << cId << "\"\n"
+                             << "      media.class = \"Audio/Source\"\n"
+                             << "      api.alsa.path = \"hw:" << cId << "\"\n"
+                             << "      audio.format = \"" << audioFormat << "\"\n"
+                             << "      audio.rate = 44100\n"
+                             << "      audio.channels = " << capChannels << "\n"
+                             << "    }\n"
+                             << "  }\n";
+            }
+        }
+        pipewireSink << "]\n";
+        PutFileContents(pipewireSinkConfPath, pipewireSink.str());
+    } else if (FileExists(pipewireSinkConfPath)) {
+        unlink(pipewireSinkConfPath.c_str());
+    }
     std::string mixers = execAndReturn("/usr/bin/amixer -c " + std::to_string(card) + " scontrols | cut -f2 -d\"'\"");
     if (mixers.empty()) {
         // for some sound cards, the mixer devices won't show up
@@ -1762,6 +2014,169 @@ static void setupAudio() {
     }
     exec("/usr/bin/amixer -c " + std::to_string(card) + " set " + mixer + " " + std::to_string(v) + "% > /dev/null 2>&1");
     setRawSetting("AudioCardType", cardType);
+
+    if (!runningInDocker) {
+        mkdir("/run/fppd", 0755);
+        std::ostringstream audioEnv;
+        audioEnv << "SDL_AUDIODRIVER=" << (usePipeWireBackend ? "pulse" : "alsa") << "\n";
+        // Keep OpenAL on the same backend as the rest of FPP audio.
+        // In hardware (ALSA) mode this prevents OpenAL from defaulting to
+        // PulseAudio and aborting during teardown if Pulse is unavailable.
+        audioEnv << "ALSOFT_DRIVERS=" << (usePipeWireBackend ? "pulse" : "alsa") << "\n";
+        if (usePipeWireBackend) {
+            audioEnv << "PIPEWIRE_RUNTIME_DIR=/run/pipewire-fpp\n"
+                     << "XDG_RUNTIME_DIR=/run/pipewire-fpp\n"
+                     << "PIPEWIRE_CONFIG_DIR=/etc/pipewire\n"
+                     << "PULSE_RUNTIME_PATH=/run/pipewire-fpp/pulse\n";
+        }
+        PutFileContents(audioEnvPath, audioEnv.str());
+    } else if (FileExists(audioEnvPath)) {
+        unlink(audioEnvPath.c_str());
+    }
+
+    // --- Audio Output Groups Configuration ---
+    // On first PipeWire setup, create default output and input group configs
+    // that mirror the legacy ALSA configuration: one output group with the
+    // configured sound card, and one input group with fppd_stream_1 routed
+    // to it.  This ensures audio works immediately when switching to PipeWire.
+    const std::string groupsJsonPath = FPP_MEDIA_DIR + "/config/pipewire-audio-groups.json";
+    const std::string igJsonPath = FPP_MEDIA_DIR + "/config/pipewire-input-groups.json";
+    if (usePipeWireBackend && !runningInDocker && !FileExists(groupsJsonPath)) {
+        std::string defCardId = getAlsaCardId(card);
+        printf("FPP - First PipeWire setup: creating default output group (card %s) and input group\n", defCardId.c_str());
+
+        // Default output group: one group with the legacy audio device
+        Json::Value ogRoot;
+        Json::Value group;
+        group["id"] = 1;
+        group["name"] = "Main Output";
+        group["enabled"] = true;
+        Json::Value member;
+        member["cardId"] = defCardId;
+        member["channels"] = 2;
+        member["delayMs"] = 0.0;
+        group["members"] = Json::Value(Json::arrayValue);
+        group["members"].append(member);
+        ogRoot["groups"] = Json::Value(Json::arrayValue);
+        ogRoot["groups"].append(group);
+
+        PutFileContents(groupsJsonPath, SaveJsonToString(ogRoot));
+
+        // Default input group: fppd_stream_1 routed to output group 1
+        Json::Value igRoot;
+        Json::Value ig;
+        ig["id"] = 1;
+        ig["name"] = "Mix Bus 1";
+        ig["enabled"] = true;
+        ig["channels"] = 2;
+        ig["volume"] = 100;
+        Json::Value igMember;
+        igMember["type"] = "fppd_stream";
+        igMember["sourceId"] = "fppd_stream_1";
+        igMember["name"] = "Media Playback";
+        igMember["volume"] = 100;
+        igMember["mute"] = false;
+        ig["members"] = Json::Value(Json::arrayValue);
+        ig["members"].append(igMember);
+        ig["outputs"] = Json::Value(Json::arrayValue);
+        ig["outputs"].append(1);
+        igRoot["inputGroups"] = Json::Value(Json::arrayValue);
+        igRoot["inputGroups"].append(ig);
+
+        PutFileContents(igJsonPath, SaveJsonToString(igRoot));
+    }
+
+    // Restore cached combine-stream and input group configs so group sinks
+    // survive reboot.  These are initially copied as-is so PipeWire starts
+    // with the right module layout.  After PipeWire is up and WirePlumber
+    // has enumerated devices, a regeneration script re-resolves card→sink
+    // mappings to handle card-number changes.
+    const std::string groupsConfCache = FPP_MEDIA_DIR + "/config/pipewire-audio-groups.conf";
+    const std::string groupsConfDest = "/etc/pipewire/pipewire.conf.d/97-fpp-audio-groups.conf";
+    const std::string igConfCache = FPP_MEDIA_DIR + "/config/pipewire-input-groups.conf";
+    const std::string igConfDest = "/etc/pipewire/pipewire.conf.d/96-fpp-input-groups.conf";
+    bool hasGroupsConfig = false;
+    if (usePipeWireBackend && !runningInDocker && FileExists(groupsConfCache)) {
+        printf("FPP - Restoring PipeWire audio output groups config\n");
+        exec("/bin/cp " + groupsConfCache + " " + groupsConfDest);
+        hasGroupsConfig = true;
+    } else if (usePipeWireBackend && !runningInDocker && FileExists(groupsJsonPath)) {
+        // JSON exists but no cached .conf yet (e.g. first-time default creation).
+        // The regeneration script will generate the .conf from the JSON.
+        hasGroupsConfig = true;
+    } else if (usePipeWireBackend && !runningInDocker && FileExists(groupsConfDest)) {
+        // JSON config was deleted but stale conf remains — clean up
+        if (!FileExists(groupsJsonPath)) {
+            unlink(groupsConfDest.c_str());
+        }
+    }
+    if (usePipeWireBackend && !runningInDocker && FileExists(igConfCache)) {
+        printf("FPP - Restoring PipeWire input groups config\n");
+        exec("/bin/cp " + igConfCache + " " + igConfDest);
+    }
+
+    // --- AES67 cleanup ---
+    // AES67 is now managed by AES67Manager in fppd (GStreamer-based).
+    // Remove any leftover PipeWire RTP module configs from the legacy Python approach.
+    unlink("/etc/pipewire/pipewire.conf.d/96-fpp-aes67-rtp.conf");
+    unlink("/etc/pipewire/pipewire.conf.d/96-fpp-aes67-sap.conf");
+    unlink("/etc/ptp4l-fpp.conf");
+    // Kill any leftover legacy daemons
+    exec("pkill -f fpp_aes67_sap 2>/dev/null || true");
+    exec("pkill -f 'ptp4l.*ptp4l-fpp' 2>/dev/null || true");
+
+    // Single PipeWire restart after all configs are written.
+    // systemctl restart is synchronous — it waits for the service to be
+    // active before returning. fpp-pipewire-pulse has After=/Requires=
+    // on the other two, so restarting fpp-pipewire triggers a cascade.
+    // We restart all three explicitly to ensure clean state.
+    if (usePipeWireBackend && !runningInDocker) {
+        // Pre-start validation: regenerate audio group configs BEFORE starting
+        // PipeWire so that adapters for unplugged ALSA devices are removed.
+        // The cached config may reference devices that were present when it was
+        // last generated but have since been disconnected — PipeWire crashes
+        // fatally if it tries to open a missing ALSA device via context.objects.
+        // This regeneration runs without pw-dump (PipeWire isn't up yet) and
+        // relies on stored nodeTargets + ALSA card presence checks.
+        if (hasGroupsConfig && FileExists(groupsConfDest)) {
+            printf("FPP - Validating PipeWire audio group config against current hardware...\n");
+            system("/usr/bin/php /opt/fpp/scripts/regenerate_pipewire_groups --force");
+        }
+
+        exec("/usr/bin/systemctl restart fpp-pipewire.service fpp-wireplumber.service fpp-pipewire-pulse.service");
+
+        // Wait for WirePlumber to enumerate ALSA devices before regenerating
+        // configs.  WirePlumber needs a moment to discover USB sound cards
+        // and create their PipeWire sink nodes.
+        if (hasGroupsConfig) {
+            printf("FPP - Waiting for WirePlumber to enumerate devices...\n");
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+
+            // Regenerate output/input group configs using current device state.
+            // This fixes card-number shifts after reboot and resolves any
+            // previously unresolved members.  Exit code 2 = config changed.
+            printf("FPP - Regenerating PipeWire audio group configs...\n");
+            int regenResult = system("/usr/bin/php /opt/fpp/scripts/regenerate_pipewire_groups --force");
+            regenResult = WEXITSTATUS(regenResult);
+            if (regenResult == 2) {
+                // Config was changed — restart PipeWire to pick up the new config
+                printf("FPP - PipeWire group config changed, restarting PipeWire...\n");
+                exec("/usr/bin/systemctl restart fpp-pipewire.service fpp-wireplumber.service fpp-pipewire-pulse.service");
+                // Wait for WirePlumber & combine-stream/filter-chain nodes to come up
+                std::this_thread::sleep_for(std::chrono::seconds(3));
+            }
+
+            // Restore per-group and per-member volume levels from the JSON config.
+            // WirePlumber may restore stale volume state on startup.
+            printf("FPP - Restoring PipeWire audio group volumes...\n");
+            system("/usr/bin/php /opt/fpp/scripts/restore_pipewire_volumes");
+        }
+    } else if (!runningInDocker) {
+        exec("/usr/bin/systemctl stop fpp-pipewire-pulse.service fpp-wireplumber.service fpp-pipewire.service");
+    }
+
+    // AES67 is now initialized by AES67Manager in fppd after PipeWire is running.
+    // No external daemons to start here.
 }
 void setupKiosk(bool force = false) {
     int km = getRawSettingInt("Kiosk", 0);

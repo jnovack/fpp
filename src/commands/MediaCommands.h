@@ -12,7 +12,7 @@
  */
 
 #include "Commands.h"
-#include "mediaoutput/VLCOut.h"
+#include "mediaoutput/GStreamerOut.h"
 #include "mediaoutput/mediaoutput.h"
 
 class SetVolumeCommand : public Command {
@@ -45,7 +45,7 @@ public:
     virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
 };
 
-#ifdef HAS_VLC
+#ifdef HAS_GSTREAMER
 class PlayMediaCommand : public Command {
 public:
     PlayMediaCommand();
@@ -61,6 +61,50 @@ public:
 class StopAllMediaCommand : public Command {
 public:
     StopAllMediaCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class StopMediaSlotCommand : public Command {
+public:
+    StopMediaSlotCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class SetSlotVolumeCommand : public Command {
+public:
+    SetSlotVolumeCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class MediaSlotStatusCommand : public Command {
+public:
+    MediaSlotStatusCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+#endif
+
+#ifdef HAS_AES67_GSTREAMER
+class AES67ApplyCommand : public Command {
+public:
+    AES67ApplyCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class AES67CleanupCommand : public Command {
+public:
+    AES67CleanupCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class AES67TestCommand : public Command {
+public:
+    AES67TestCommand();
+    virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
+};
+
+class ApplyRoutingPresetCommand : public Command {
+public:
+    ApplyRoutingPresetCommand();
     virtual std::unique_ptr<Command::Result> run(const std::vector<std::string>& args) override;
 };
 #endif

@@ -20,8 +20,11 @@
 
 #include "../Timers.h"
 #include "../log.h"
+#include "../settings.h"
 
 #include "MediaCommands.h"
+#include "../mediaoutput/GStreamerOut.h"
+#include "../mediaoutput/StreamSlotManager.h"
 
 SetVolumeCommand::SetVolumeCommand() :
     Command("Volume Set", "Sets the volume to the specific value. (0 - 100)") {
@@ -212,56 +215,89 @@ std::unique_ptr<Command::Result> URLCommand::run(const std::vector<std::string>&
     return std::make_unique<CURLResult>(args);
 }
 
-#ifdef HAS_VLC
-class VLCPlayData : public VLCOutput {
-public:
-    VLCPlayData(const std::string& file, int l, int vol);
-    virtual ~VLCPlayData();
-    virtual void Stopped() override;
-    std::string filename;
-    int volumeAdjust = 0;
-    MediaOutputStatus status;
-};
+#ifdef HAS_GSTREAMER
+
+// Common data for tracking running command media
 std::mutex runningMediaLock;
-std::map<std::string, VLCPlayData*> runningCommandMedia;
+std::map<std::string, MediaOutputBase*> runningCommandMedia;
 
-VLCPlayData::VLCPlayData(const std::string& file, int l, int vol) :
-    VLCOutput(file, &status, "--hdmi--", l),
-    filename(file),
-    volumeAdjust(vol) {
-    SetVolumeAdjustment(vol);
-    runningMediaLock.lock();
-    while (runningCommandMedia.find(filename) != runningCommandMedia.end()) {
-        filename += "_";
-    }
-    runningCommandMedia[filename] = this;
-    runningMediaLock.unlock();
-}
-
-VLCPlayData::~VLCPlayData() {
-}
-
-void VLCPlayData::Stopped() {
-    VLCOutput::Stopped();
-    VLCPlayData* dt = this;
-    intptr_t i = (intptr_t)this;
+static void RemoveRunningMedia(const std::string& filename, MediaOutputBase* self) {
+    intptr_t i = (intptr_t)self;
+    MediaOutputBase* dt = self;
+    std::string fn = filename;
 
     // Trigger MEDIA_STOPPED event
     std::map<std::string, std::string> keywords;
-    keywords["MEDIA_NAME"] = dt->filename;
+    keywords["MEDIA_NAME"] = fn;
     if (CommandManager::INSTANCE.HasPreset("MEDIA_STOPPED")) {
         CommandManager::INSTANCE.TriggerPreset("MEDIA_STOPPED", keywords);
     }
 
-    Timers::INSTANCE.addTimer(std::to_string(i), GetTimeMS() + 1, [dt]() {
+    Timers::INSTANCE.addTimer(std::to_string(i), GetTimeMS() + 1, [dt, fn]() {
         runningMediaLock.lock();
-        if (runningCommandMedia[dt->filename] == dt) {
-            runningCommandMedia.erase(dt->filename);
-            LogDebug(VB_COMMAND, "Removed cached VLCPlayData for file: \"%s\"\n", dt->filename.c_str());
+        auto it = runningCommandMedia.find(fn);
+        if (it != runningCommandMedia.end() && it->second == dt) {
+            runningCommandMedia.erase(it);
+            LogDebug(VB_COMMAND, "Removed cached PlayData for file: \"%s\"\n", fn.c_str());
         }
         runningMediaLock.unlock();
         delete dt;
     });
+}
+
+static std::string RegisterRunningMedia(const std::string& file, MediaOutputBase* media) {
+    std::string filename = file;
+    runningMediaLock.lock();
+    while (runningCommandMedia.find(filename) != runningCommandMedia.end()) {
+        filename += "_";
+    }
+    runningCommandMedia[filename] = media;
+    runningMediaLock.unlock();
+    return filename;
+}
+
+#ifdef HAS_GSTREAMER
+class GStreamerPlayData : public GStreamerOutput {
+public:
+    GStreamerPlayData(const std::string& file, int l, int vol, int slot = 1);
+    virtual ~GStreamerPlayData();
+    virtual void Stopped() override;
+    std::string filename;
+    int volumeAdjust = 0;
+    int streamSlot = 1;
+    MediaOutputStatus status;
+};
+
+GStreamerPlayData::GStreamerPlayData(const std::string& file, int l, int vol, int slot) :
+    GStreamerOutput(file,
+                    (slot > 1 && slot <= StreamSlotManager::MAX_SLOTS)
+                        ? StreamSlotManager::Instance().GetStatus(slot)
+                        : &status,
+                    "", slot),
+    filename(file),
+    volumeAdjust(vol),
+    streamSlot(slot) {
+    SetLoopCount(l > 0 ? l - 1 : 0);
+    SetVolumeAdjustment(vol);
+    filename = RegisterRunningMedia(file, this);
+}
+
+GStreamerPlayData::~GStreamerPlayData() {
+}
+
+void GStreamerPlayData::Stopped() {
+    GStreamerOutput::Stopped();
+    RemoveRunningMedia(filename, this);
+}
+#endif
+
+// Runtime backend selection for "Play Media" command
+static bool UseGStreamerForPlayMedia() {
+#ifdef HAS_GSTREAMER
+    // GStreamer is the sole media player for all backends
+    return true;
+#endif
+    return false;
 }
 
 PlayMediaCommand::PlayMediaCommand() :
@@ -269,20 +305,39 @@ PlayMediaCommand::PlayMediaCommand() :
     args.push_back(CommandArg("media", "string", "Media").setContentListUrl("api/media"));
     args.push_back(CommandArg("loop", "int", "Loop Count").setDefaultValue(std::string("1")).setRange(1, 100));
     args.push_back(CommandArg("volume", "int", "Volume Adjust").setDefaultValue(std::string("0")).setRange(-100, 100));
+    args.push_back(CommandArg("slot", "int", "Stream Slot").setDefaultValue(std::string("1")).setRange(1, StreamSlotManager::MAX_SLOTS));
 }
 std::unique_ptr<Command::Result> PlayMediaCommand::run(const std::vector<std::string>& args) {
-    int loop = std::atoi(args[1].c_str());
+    int loop = args.size() > 1 ? std::atoi(args[1].c_str()) : 1;
     int volAdjust = 0;
     if (args.size() > 2) {
         volAdjust = std::atoi(args[2].c_str());
     }
+    int slot = 1;
+    if (args.size() > 3) {
+        slot = std::atoi(args[3].c_str());
+        if (slot < 1 || slot > StreamSlotManager::MAX_SLOTS) slot = 1;
+    }
     if (loop < 1) {
         loop = 1;
     }
-    VLCOutput* out = new VLCPlayData(args[0], loop, volAdjust);
+
+    MediaOutputBase* out = nullptr;
+#ifdef HAS_GSTREAMER
+    if (UseGStreamerForPlayMedia()) {
+        out = new GStreamerPlayData(args[0], loop, volAdjust, slot);
+        LogInfo(VB_COMMAND, "Play Media using GStreamer backend for: %s (slot %d)\n", args[0].c_str(), slot);
+    }
+#endif
+
+    if (!out) {
+        return std::make_unique<Command::ErrorResult>("No media backend available");
+    }
+
     if (out->Start()) {
         std::map<std::string, std::string> keywords;
         keywords["MEDIA_NAME"] = args[0];
+        keywords["STREAM_SLOT"] = std::to_string(slot);
         if (CommandManager::INSTANCE.HasPreset("MEDIA_STARTED")) {
             CommandManager::INSTANCE.TriggerPreset("MEDIA_STARTED", keywords);
         }
@@ -301,7 +356,7 @@ std::unique_ptr<Command::Result> StopMediaCommand::run(const std::vector<std::st
     }
     std::string rc = "Media Not Running";
     runningMediaLock.lock();
-    VLCPlayData* media_ptr = nullptr;
+    MediaOutputBase* media_ptr = nullptr;
     try {
         media_ptr = runningCommandMedia.at(args[0]);
     } catch (const std::out_of_range& oor) {
@@ -330,5 +385,142 @@ std::unique_ptr<Command::Result> StopAllMediaCommand::run(const std::vector<std:
     }
     runningMediaLock.unlock();
     return std::make_unique<Command::Result>("Stopped");
+}
+
+StopMediaSlotCommand::StopMediaSlotCommand() :
+    Command("Stop Media Slot", "Stop playback on a specific stream slot (1-5)") {
+    args.push_back(CommandArg("slot", "int", "Stream Slot").setRange(1, StreamSlotManager::MAX_SLOTS).setDefaultValue("1"));
+}
+std::unique_ptr<Command::Result> StopMediaSlotCommand::run(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return std::make_unique<Command::ErrorResult>("No slot specified");
+    }
+    int slot = std::atoi(args[0].c_str());
+    if (slot < 1 || slot > StreamSlotManager::MAX_SLOTS) {
+        return std::make_unique<Command::ErrorResult>("Invalid slot number (1-" + std::to_string(StreamSlotManager::MAX_SLOTS) + ")");
+    }
+
+    // Try command-started media first (matches by slot)
+    std::string stoppedFile;
+    runningMediaLock.lock();
+    for (const auto& item : runningCommandMedia) {
+#ifdef HAS_GSTREAMER
+        GStreamerPlayData* gpd = dynamic_cast<GStreamerPlayData*>(item.second);
+        if (gpd && gpd->streamSlot == slot) {
+            gpd->Stop();
+            stoppedFile = item.first;
+            break;
+        }
+#endif
+    }
+    runningMediaLock.unlock();
+
+    if (!stoppedFile.empty()) {
+        LogInfo(VB_COMMAND, "Stop Media Slot %d: stopped command media '%s'\n", slot, stoppedFile.c_str());
+        return std::make_unique<Command::Result>("Stopped slot " + std::to_string(slot));
+    }
+
+    // Fall back to StreamSlotManager (catches playlist-started media)
+    GStreamerOutput* output = StreamSlotManager::Instance().GetActiveOutput(slot);
+    if (output) {
+        output->Stop();
+        LogInfo(VB_COMMAND, "Stop Media Slot %d: stopped active output\n", slot);
+        return std::make_unique<Command::Result>("Stopped slot " + std::to_string(slot));
+    }
+
+    return std::make_unique<Command::Result>("Slot " + std::to_string(slot) + " not playing");
+}
+
+SetSlotVolumeCommand::SetSlotVolumeCommand() :
+    Command("Set Slot Volume", "Sets the volume on a specific stream slot (1-5)") {
+    args.push_back(CommandArg("slot", "int", "Stream Slot").setRange(1, StreamSlotManager::MAX_SLOTS).setDefaultValue("1"));
+    args.push_back(CommandArg("volume", "int", "Volume").setRange(0, 100).setDefaultValue("70"));
+}
+std::unique_ptr<Command::Result> SetSlotVolumeCommand::run(const std::vector<std::string>& args) {
+    if (args.size() < 2) {
+        return std::make_unique<Command::ErrorResult>("Requires slot and volume arguments");
+    }
+    int slot = std::atoi(args[0].c_str());
+    int volume = std::atoi(args[1].c_str());
+    if (slot < 1 || slot > StreamSlotManager::MAX_SLOTS) {
+        return std::make_unique<Command::ErrorResult>("Invalid slot number (1-" + std::to_string(StreamSlotManager::MAX_SLOTS) + ")");
+    }
+    if (volume < 0) volume = 0;
+    if (volume > 100) volume = 100;
+
+    if (StreamSlotManager::Instance().SetSlotVolume(slot, volume)) {
+        return std::make_unique<Command::Result>("Volume set on slot " + std::to_string(slot));
+    }
+    return std::make_unique<Command::ErrorResult>("Slot " + std::to_string(slot) + " not active");
+}
+
+MediaSlotStatusCommand::MediaSlotStatusCommand() :
+    Command("Media Slot Status", "Returns the current playback status of all stream slots") {
+}
+std::unique_ptr<Command::Result> MediaSlotStatusCommand::run(const std::vector<std::string>& args) {
+    Json::Value status = StreamSlotManager::Instance().GetAllSlotsStatus();
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    std::string result = Json::writeString(builder, status);
+    return std::make_unique<Command::Result>(result);
+}
+#endif
+
+#ifdef HAS_AES67_GSTREAMER
+#include "mediaoutput/AES67Manager.h"
+
+AES67ApplyCommand::AES67ApplyCommand() :
+    Command("AES67 Apply", "Apply AES67 audio-over-IP configuration") {
+}
+std::unique_ptr<Command::Result> AES67ApplyCommand::run(const std::vector<std::string>& args) {
+    if (AES67Manager::INSTANCE.ApplyConfig()) {
+        return std::make_unique<Command::Result>("AES67 config applied");
+    }
+    return std::make_unique<Command::ErrorResult>("AES67 apply failed");
+}
+
+AES67CleanupCommand::AES67CleanupCommand() :
+    Command("AES67 Cleanup", "Stop all AES67 pipelines and clean up") {
+}
+std::unique_ptr<Command::Result> AES67CleanupCommand::run(const std::vector<std::string>& args) {
+    AES67Manager::INSTANCE.Cleanup();
+    return std::make_unique<Command::Result>("AES67 cleaned up");
+}
+
+AES67TestCommand::AES67TestCommand() :
+    Command("AES67 Test", "Run AES67 subsystem self-test") {
+}
+std::unique_ptr<Command::Result> AES67TestCommand::run(const std::vector<std::string>& args) {
+    auto tests = AES67Manager::INSTANCE.RunSelfTest();
+    int passed = 0, failed = 0;
+    std::string report;
+    for (const auto& t : tests) {
+        report += (t.passed ? "PASS" : "FAIL");
+        report += ": " + t.testName + " - " + t.message + "\n";
+        if (t.passed) passed++; else failed++;
+    }
+    report += "\nTotal: " + std::to_string(tests.size()) +
+              " | Passed: " + std::to_string(passed) +
+              " | Failed: " + std::to_string(failed);
+    if (failed == 0) {
+        return std::make_unique<Command::Result>(report);
+    }
+    return std::make_unique<Command::ErrorResult>(report);
+}
+
+ApplyRoutingPresetCommand::ApplyRoutingPresetCommand() :
+    Command("Pipewire Apply Routing Preset", "Live-apply a saved PipeWire routing preset without stopping playback") {
+    args.push_back(CommandArg("Preset", "string", "Routing Preset Name")
+                       .setContentListUrl("api/pipewire/audio/routing/presets/names"));
+}
+std::unique_ptr<Command::Result> ApplyRoutingPresetCommand::run(const std::vector<std::string>& args) {
+    if (args.empty() || args[0].empty()) {
+        return std::make_unique<Command::ErrorResult>("No preset name specified");
+    }
+    // Build the API call — POST to the live-apply endpoint with the preset name
+    std::string url = "http://localhost/api/pipewire/audio/routing/presets/live-apply";
+    std::string postData = "{\"name\":\"" + args[0] + "\"}";
+    std::vector<std::string> curlArgs = { url, "POST", postData };
+    return std::make_unique<CURLResult>(curlArgs);
 }
 #endif

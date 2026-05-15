@@ -31,12 +31,15 @@ ARG PACKAGE_LIST="alsa-utils arping avahi-daemon avahi-utils locales nano net-to
     mp3info exim4 mailutils dhcp-helper parprouted bridge-utils libiio-utils \
     php${PHPVER} php${PHPVER}-cli php${PHPVER}-fpm php${PHPVER}-common php${PHPVER}-curl php-pear \
     php${PHPVER}-bcmath php${PHPVER}-sqlite3 php${PHPVER}-zip php${PHPVER}-xml \
-    libavcodec-dev libavformat-dev libswresample-dev libswscale-dev libavdevice-dev libavfilter-dev libtag1-dev \
+    libtag1-dev \
     vorbis-tools libgraphicsmagick++-dev graphicsmagick-libmagick-dev-compat libdrogon-dev \
     gettext x265 libtheora-dev libvorbis-dev libx265-dev iputils-ping mp3gain \
     libmosquitto-dev mosquitto-clients mosquitto libzstd-dev xz-utils zstd gpiod libgpiod-dev libjsoncpp-dev libcurl4-openssl-dev libnl-3-dev libnl-genl-3-dev \
-    fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev mesa-common-dev qrencode libusb-1.0-0-dev \
-    flex bison pkg-config libasound2-dev python3-setuptools libssl-dev libtool bsdextrautils iw rsyslog tzdata ccache libsystemd-dev"
+    fonts-freefont-ttf flex bison pkg-config libasound2-dev libsdl2-dev libsdl3-dev mesa-common-dev qrencode libusb-1.0-0-dev \
+    flex bison pkg-config libasound2-dev python3-setuptools libssl-dev libtool bsdextrautils iw rsyslog tzdata ccache libsystemd-dev \
+    pipewire pipewire-bin pipewire-alsa pipewire-pulse pipewire-jack pipewire-audio-client-libraries wireplumber \
+    libpipewire-0.3-dev libspa-0.2-bluetooth pulseaudio-utils \
+    yt-dlp"
 
 ARG PACKAGE_LIST_DOCKER=ssh
 
@@ -62,9 +65,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -yq -o Dpkg
 
 RUN apt-get clean
 
-# similar to above, do this once and Docker can cache the intermediary
-COPY SD/buildVLC.sh /root/buildVLC.sh
-RUN ( yes | /root/buildVLC.sh ) || true
 
 
 # Pass --build-arg EXTRA_INSTALL_FLAG=--skip-clone to build without
