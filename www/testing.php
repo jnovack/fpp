@@ -1685,7 +1685,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 												pixels, and other devices. Adjust each slider (0-255) to set the
 												value for that channel. Channel numbers shown are absolute FPP
 												channel numbers starting at the configured Start Channel. Fixtures
-												defined in <i>model-overlays.json</i> are highlighted with a
+												defined in <i>Input/Output Setup->Pixel Overlay Models</i> are highlighted with a
 												coloured bar and show their name plus the channel position within
 												the fixture (e.g. <i>Ch&nbsp;3 / 16</i>) so you can identify which
 												function a given absolute channel maps to.
