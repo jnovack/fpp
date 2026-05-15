@@ -110,6 +110,11 @@ function loadPageReadyActions () {
 function common_PageLoad_DOM_Setup () {
 	OnSystemStatusChange(RefreshHeaderBar);
 	OnSystemStatusChange(IsFPPDrunning);
+	// If status was pre-populated server-side, fire callbacks immediately so
+	// the header/footer render without waiting for the first AJAX round-trip.
+	if (lastStatusJSON) {
+		triggerStatusChangeFunctions();
+	}
 	bindVisibilityListener();
 
 	$('a.link-to-fpp-manual').attr('href', getManualLink());

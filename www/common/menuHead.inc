@@ -99,6 +99,16 @@ if (isset($themeInfo["postFPPStyleSheet"])) {
     href="api/configfile/custom.css?ref=<?php echo filemtime($mediaDirectory . '/config/custom.css'); ?>">
 <? } ?>
 <script type="text/javascript" src="js/fpp.js?ref=<?php echo filemtime('js/fpp.js'); ?>"></script>
+<?php
+// Pre-populate lastStatusJSON from the local API so the header renders
+// immediately on first page load instead of waiting for the AJAX call.
+$ctx = stream_context_create(['http' => ['timeout' => 2]]);
+$_fpp_status_raw = @file_get_contents('http://127.0.0.1/api/system/status', false, $ctx);
+if ($_fpp_status_raw !== false && $_fpp_status_raw !== '') {
+    echo '<script type="text/javascript">lastStatusJSON = ' . $_fpp_status_raw . '; lastStatus = lastStatusJSON.status;</script>' . "\n";
+}
+unset($_fpp_status_raw, $ctx);
+?>
 <? if (file_exists($mediaDirectory . "/config/custom.js")) { ?>
 <script type="text/javascript"
     src="api/configfile/custom.js?ref=<?php echo filemtime($mediaDirectory . '/config/custom.js'); ?>"></script>

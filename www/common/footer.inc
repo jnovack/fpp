@@ -30,7 +30,7 @@
     <div class="dropup" id="fppModeDropdown">
       <button class="buttons btn-outline-light dropdown-toggle" type="button" id="fppModeDropdownButton"
         data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-        FPP Mode: <span id="fppModeDropdownButtonModeText"></span>
+        FPP Mode: <span id="fppModeDropdownButtonModeText"><?= isset($settings['fppMode']) ? ($settings['fppMode'] == 'player' ? 'Player' : $settings['fppMode']) : '' ?></span>
       </button>
       <div class="dropdown-menu dropdown-menu-right" aria-labelledby="fppModeDropdownButton">
         <button class="dropdown-item" onClick="SetFPPDmode('player');" data-bs-toggle="tooltip"
