@@ -583,7 +583,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 
 		/////////////////////////////////////////////////////////////////////////////
 		/////////////////////////////////////////////////////////////////////////////
-		// DMX Tester Functions
+		// Channel Fader Functions
 		/////////////////////////////////////////////////////////////////////////////
 		/////////////////////////////////////////////////////////////////////////////
 		var dmxValues = [];
@@ -610,7 +610,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		}
 
 		// Find the model that contains the given absolute channel. Models with
-		// huge channel counts (matrices, props) are skipped so the DMX tester
+		// huge channel counts (matrices, props) are skipped so the Channel Fader
 		// only highlights small fixtures from model-overlays.json.
 		function dmxFindFixtureForChannel(absCh) {
 			if (!modelInfos || !modelInfos.length) return null;
@@ -637,7 +637,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 		}
 
 		// Apply the selected model's start channel and channel count to the
-		// DMX tester inputs and rebuild the slider grid. The dropdown stores
+		// Channel Fader inputs and rebuild the slider grid. The dropdown stores
 		// the index into modelInfos as its value; an empty value means
 		// "manual" and leaves the current inputs alone.
 		function DMXUpdateFromModel() {
@@ -727,11 +727,23 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 							boxClass += ' dmxChannelBoxFixtureCont';
 						}
 						// Only show the fixture name on the first channel of the
-						// fixture in this row to avoid repeating the label on
-						// every box.
+						// fixture in this tab to avoid repeating the label on
+						// every box. Compute how many consecutive channels in
+						// this tab belong to the same fixture so we can set a
+						// min-width that lets the name span the full group width
+						// without being clipped to the first 90px column.
 						if (!prevSameFixture) {
+							var groupSpan = 1;
+							for (var j = i + 1; j <= last; j++) {
+								var jFx = dmxFindFixtureForChannel(startCh + j);
+								if (jFx && jFx.index === fx.index) groupSpan++;
+								else break;
+							}
+							// Each box is 90px wide; gap between boxes is 8px.
+							var nameMinWidth = groupSpan * 90 + (groupSpan - 1) * 8;
 							fixtureLabel = '<div class="dmxFixtureName" title="' +
-								dmxEscapeHtml(fx.model.Name) + '">' +
+								dmxEscapeHtml(fx.model.Name) +
+								'" style="min-width:' + nameMinWidth + 'px">' +
 								dmxEscapeHtml(fx.model.Name) + '</div>';
 						} else {
 							fixtureLabel = '<div class="dmxFixtureName dmxFixtureNameSpacer">&nbsp;</div>';
@@ -931,7 +943,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 							modelInfos[i].ChannelsPerString = parseInt(modelInfos[i].ChannelCount / modelInfos[i].StringCount);
 							var option = "<option value='" + i + "'>" + modelInfos[i].Name + "</option>\n";
 							$('#modelName').append(option);
-							// Populate the DMX tester model dropdown too, but
+							// Populate the Channel Fader model dropdown too, but
 							// limit it to fixture-sized models (<= 512ch) so
 							// users don't accidentally pick a giant matrix.
 							if (modelInfos[i].ChannelCount <= 512) {
@@ -945,7 +957,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 							}
 						}
 					}
-					// Re-render the DMX tester so fixture groupings from
+					// Re-render the Channel Fader so fixture groupings from
 					// model-overlays.json are highlighted on the slider grid.
 					if (typeof RebuildDMXSliders === 'function') {
 						RebuildDMXSliders();
@@ -1146,9 +1158,10 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 			font-weight: 600;
 			color: #222;
 			white-space: nowrap;
-			overflow: hidden;
-			text-overflow: ellipsis;
+			overflow: visible;
 			margin-bottom: 2px;
+			position: relative;
+			z-index: 10;
 		}
 
 		.dmxFixtureNameSpacer {
@@ -1227,7 +1240,7 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 							<li class="nav-item">
 								<a class="nav-link" id="tab-dmx-tab" data-bs-toggle="tab" data-bs-target="#tab-dmx"
 									href="#tab-dmx" role="tab" aria-controls="tab-dmx" aria-selected="false">
-									DMX Tester
+									Channel Fader
 								</a>
 							</li>
 							<?php if (isset($settings['fppMode']) && ($settings['fppMode'] == 'player')) { ?>
@@ -1665,17 +1678,17 @@ if (file_exists($mediaDirectory . "/fpp-info.json")) {
 										</div>
 									</div>
 									<div class="col-md-9">
-										<h2>DMX Channel Tester</h2>
+										<h2>Channel Fader</h2>
 										<div class="callout callout-primary">
-											<p><b>Note:</b> Use this tester to control individual DMX channels for
-												troubleshooting moving heads, dumb RGB fixtures, fog machines, and
-												other DMX devices. Adjust each slider (0-255) to set the value for that
-												channel. Channel numbers shown are absolute FPP channel numbers
-												starting at the configured Start Channel. Fixtures defined in
-												<i>model-overlays.json</i> are highlighted with a coloured bar and
-												show their name plus the channel position within the fixture
-												(e.g. <i>Ch&nbsp;3 / 16</i>) so you can identify which DMX function
-												a given absolute channel maps to.
+											<p><b>Note:</b> Use this tool to control individual channels for
+												troubleshooting moving heads, dumb RGB fixtures, fog machines,
+												pixels, and other devices. Adjust each slider (0-255) to set the
+												value for that channel. Channel numbers shown are absolute FPP
+												channel numbers starting at the configured Start Channel. Fixtures
+												defined in <i>model-overlays.json</i> are highlighted with a
+												coloured bar and show their name plus the channel position within
+												the fixture (e.g. <i>Ch&nbsp;3 / 16</i>) so you can identify which
+												function a given absolute channel maps to.
 											</p>
 										</div>
 										<ul class="nav nav-pills pageContent-tabs" id="dmxSliderTabsNav" role="tablist">
