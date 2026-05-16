@@ -526,7 +526,14 @@ void GPIOManager::addState(GPIOState* state) {
 
 void GPIOManager::GPIOState::doAction(int v) {
     LogDebug(VB_GPIO, "GPIO %s triggered.  Value:  %d\n", pin->name.c_str(), v);
-
+    // Publish GPIO edge events to MQTT
+    if (v == 1) {
+        std::string risingTopic = "gpio/" + pin->name + "/rising";
+        Events::Publish(risingTopic, 1);
+    } else {
+        std::string fallingTopic = "gpio/" + pin->name + "/falling";
+        Events::Publish(fallingTopic, 0);
+    }
     // When the input is suppressed post-trigger, skip all commands and LED
     // effects — the LED is already parked off by startLEDIdle() and should
     // stay that way until the input is re-enabled.
